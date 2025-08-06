@@ -1,0 +1,58 @@
+# Build directories (custom scheme)
+build/*/
+
+# But keep the build folder itself
+!build/
+
+# CMake files
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+# Conan artifacts
+conan.lock
+conanbuild/
+conanfile.lock
+build/graph_info.json
+
+# Compiler/linker artifacts
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dll
+*.dylib
+*.exe
+*.out
+
+# Logs and test output
+*.log
+Testing/
+test_detail.xml
+Catch2TestList.txt
+
+# IDE/editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.bak
+*~
+
+# macOS/Linux artifacts
+.DS_Store
+*.dSYM/
+*.trace
+*.gcno
+*.gcda
+*.gcov
+
+# Windows artifacts
+Thumbs.db
+desktop.ini
+
+# Optional user config files
+*.user
+*.userprefs

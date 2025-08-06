@@ -1,0 +1,59 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 22,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "clang-debug",
+      "displayName": "Clang Debug",
+      "generator": "Ninja",
+      "description": "Use Clang with Debug info",
+      "binaryDir": "${sourceDir}/build/clang-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/build/clang-debug/conan_toolchain.cmake",
+        "CMAKE_C_COMPILER": "clang-18",
+        "CMAKE_CXX_COMPILER": "clang++-18"
+      }
+    },
+    {
+      "name": "gcc-release",
+      "displayName": "GCC Release",
+      "generator": "Ninja",
+      "description": "Use GCC with optimizations",
+      "binaryDir": "${sourceDir}/build/gcc-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/build/gcc-release/conan_toolchain.cmake",
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++"
+      }
+    },
+    {
+      "name": "msvc-debug",
+      "displayName": "MSVC Debug",
+      "generator": "Ninja",
+      "description": "Use MSVC in debug mode",
+      "binaryDir": "${sourceDir}/build/msvc-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/build/msvc-debug/conan_toolchain.cmake"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "build",
+      "configurePreset": "clang-debug"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "test",
+      "configurePreset": "clang-debug"
+    }
+  ]
+}
