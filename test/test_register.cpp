@@ -34,9 +34,13 @@ TEST_CASE("Basic Register tests", "[register]")
   CHECK(xreg.read() == std::byte{0xFF});
 
   // Resetting a register sets it back to zero
-  areg.reset();
-  xreg.reset();
+  using YRegister = Register<Y_reg, std::byte{0x10}>;
+  YRegister yreg;  // Custom reset value
+  CHECK(yreg.read() == std::byte{0x10});
+  yreg.write(std::byte{0x20});
+  CHECK(yreg.read() == std::byte{0x20});
 
-  CHECK(areg.read() == std::byte{0x00});
-  CHECK(xreg.read() == std::byte{0x00});
+  // Reset by re-initializing
+  yreg = YRegister{};
+  CHECK(yreg.read() == std::byte{0x10});
 }
