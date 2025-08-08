@@ -10,7 +10,5 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include(cmake/Common.cmake)
 include(${CMAKE_BINARY_DIR}/conan_toolchain.cmake OPTIONAL)
 
-add_subdirectory(src)
-
-enable_testing()
-add_subdirectory(test)
+add_subdirectory(util)
+add_subdirectory(Mos6502)

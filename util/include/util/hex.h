@@ -4,14 +4,14 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <iterator>
+#include <span>
 #include <stdexcept>
 
 // User-defined literal helper
 template<std::size_t N>
 struct HexLiteral
 {
-  std::array<std::byte, N / 2> data{};  // Conservative over-allocation
+  std::array<uint8_t, N / 2> data{};  // Conservative over-allocation
 
   static constexpr std::uint8_t ToHex(char c) noexcept
   {
@@ -58,13 +58,13 @@ struct HexLiteral
       if (hi == 0xFF || lo == 0xFF)
         throw std::runtime_error("Invalid hex digit in literal");
 
-      data[index++] = std::byte{static_cast<uint8_t>((hi << 4) | lo)};
+      data[index++] = uint8_t{static_cast<uint8_t>((hi << 4) | lo)};
     }
   }
 
   constexpr auto size() const noexcept
   {
-    return std::count_if(data.begin(), data.end(), [](std::byte b) { return b != std::byte{0}; });
+    return std::count_if(data.begin(), data.end(), [](uint8_t b) { return b != uint8_t{0}; });
   }
 
   constexpr auto begin() const noexcept
@@ -76,9 +76,9 @@ struct HexLiteral
     return data.end();
   }
 
-  constexpr operator std::span<const std::byte>() const noexcept
+  constexpr operator std::span<const uint8_t>() const noexcept
   {
-    return std::span<const std::byte>(data.data(), size());
+    return std::span<const uint8_t>(data.data(), size());
   }
 };
 
