@@ -7,25 +7,27 @@
 
 #include "util/hex.h"
 
-TEST_CASE("Cpu6502: ADC Immediate", "[cpu][adc]")
+using Address = Mos6502::Address;
+
+TEST_CASE("Mos6502: ADC Immediate", "[cpu][adc]")
 {
-  Cpu6502 cpu;
-  
+  Mos6502 cpu;
+
   // Setup
-  cpu.reset(0x1000);
+  cpu.reset();
   cpu.set_a(0x10);  // A = 0x10
   cpu.set_status(0);  // Make sure Carry is cleared (C = 0)
 
-  [[maybe_unused]]HexLiteral hex_literal(R"(
-    69 22  ; ADC #0x22
-  )");
-
   // Write instruction to memory
-  cpu.write_memory(0x1000, R"(
-    69 22  ; ADC $0x22
+  cpu.write_memory(Address{0x1000}, R"(
+    69 22  ; ADC #$22
   )"_hex);
 
-  // Execute
+  cpu.set_pc(Address{0x1000});  // Set program counter to start of instruction
+
+  // Execute (it takes 3 cycles for ADC immediate)
+  cpu.step();
+  cpu.step();
   cpu.step();
 
   // Verify result: 0x10 + 0x22 + 0 = 0x32
