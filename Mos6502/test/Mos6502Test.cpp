@@ -5,30 +5,52 @@
 #include <cstdint>  // for std::uint8_t
 #include <utility>  // for std::pair
 
+#include "Mos6502/Bus.h"
+#include "Mos6502/Memory.h"
 #include "util/hex.h"
-
-using Address = Mos6502::Address;
 
 TEST_CASE("Mos6502: ADC Immediate", "[cpu][adc]")
 {
-  Mos6502 cpu;
-
   // Setup
+  Memory memory;
+  // Write instruction to memory
+  memory.Load(Address{0x1000}, R"(
+    69 22  ; ADC #$22
+  )"_hex);
+
+  Bus bus = {};
+
+  Mos6502 cpu;
   cpu.reset();
   cpu.set_a(0x10);  // A = 0x10
   cpu.set_status(0);  // Make sure Carry is cleared (C = 0)
 
-  // Write instruction to memory
-  cpu.write_memory(Address{0x1000}, R"(
-    69 22  ; ADC #$22
-  )"_hex);
+  auto tick = [&](Bus bus)
+  {
+    bus = cpu.Tick(bus);
+    bus = memory.Tick(bus);
+    return bus;
+  };
 
-  cpu.set_pc(Address{0x1000});  // Set program counter to start of instruction
+  auto programStart = Address{0x1000};
 
-  // Execute (it takes 3 cycles for ADC immediate)
-  cpu.step();
-  cpu.step();
-  cpu.step();
+  // Set the reset vector to 0x1000
+  memory[Mos6502::c_brkVector] = LoByte(programStart);
+  memory[Mos6502::c_brkVector + 1] = HiByte(programStart);
+
+  // Execute (it takes 7 cycles for the reset + 2 for ADC immediate)
+  bus.control = Control::Read | Control::Sync;
+  bus = tick(bus);
+  bus = tick(bus);
+  bus = tick(bus);
+  bus = tick(bus);
+  bus = tick(bus);
+  bus = tick(bus);
+  // Reset should be done
+  bus = tick(bus);
+  bus = tick(bus);
+  bus = tick(bus);
+  // ADC should be done
 
   // Verify result: 0x10 + 0x22 + 0 = 0x32
   CHECK(cpu.a() == 0x32);

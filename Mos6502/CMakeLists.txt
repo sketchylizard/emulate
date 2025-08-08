@@ -1,8 +1,12 @@
 find_package(Catch2 REQUIRED)
 
 add_library(Mos6502 STATIC
-  src/Mos6502.cpp
+  include/Mos6502/Bus.h
+  include/Mos6502/Memory.h
   include/Mos6502/Mos6502.h
+  src/Bus.cpp
+  src/Memory.cpp
+  src/Mos6502.cpp
 )
 
 target_include_directories(Mos6502 PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)

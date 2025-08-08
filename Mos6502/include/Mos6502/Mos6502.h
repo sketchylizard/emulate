@@ -1,20 +1,24 @@
 #pragma once
 
 #include <algorithm>
-#include <array>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
-#include <ranges>
-#include <span>
+#include <string_view>
+#include <tuple>
+
+#include "Mos6502/Bus.h"
 
 class Mos6502
 {
 public:
-  using Byte = uint8_t;
-  enum class Address
-  {
-  };
+  static constexpr Byte c_ZeroPage{0x00};
+  static constexpr Byte c_StackPage{0x01};
+
+  static constexpr Address c_nmiVector = Address{0xFFFA};
+  static constexpr Address c_resetVector = Address{0xFFFC};
+  static constexpr Address c_irqVector = Address{0xFFFE};
+  static constexpr Address c_brkVector = Address{0xFFFE};
 
   constexpr Mos6502()
   {
@@ -39,22 +43,13 @@ public:
   [[nodiscard]] Byte status() const noexcept;
   void set_status(Byte flags) noexcept;
 
-  [[nodiscard]] Byte read_memory(Address address) const noexcept;
-  void write_memory(Address address, Byte value) noexcept;
-  void write_memory(Address address, std::span<const Byte> bytes) noexcept;
-
-  void step() noexcept;
+  Bus Tick(Bus bus) noexcept;
 
   void reset() noexcept;
 
 private:
-  static constexpr Address c_nmiVector = Address{0xFFFA};
-  static constexpr Address c_resetVector = Address{0xFFFC};
-  static constexpr Address c_irqVector = Address{0xFFFE};
-  static constexpr Address c_brkVector = Address{0xFFFE};
-
   //! Action should return true if the instruction is complete
-  using Action = bool (*)(Mos6502&, size_t step);
+  using Action = bool (*)(Mos6502&, Bus& bus, size_t step);
 
   struct Instruction
   {
@@ -65,40 +60,41 @@ private:
   };
 
   //! Addressing modes
-  static bool implied(Mos6502&, size_t step);
-  static bool immediate(Mos6502& cpu, size_t step);
+  static constexpr Action c_implied = nullptr;
+  static bool immediate(Mos6502& cpu, Bus& bus, size_t step);
 
-  static bool zero_page(Mos6502& cpu, size_t step);
-  static bool zero_page_x(Mos6502& cpu, size_t step);
-  static bool zero_page_y(Mos6502& cpu, size_t step);
+  static bool zero_page(Mos6502& cpu, Bus& bus, size_t step);
+  static bool zero_page_x(Mos6502& cpu, Bus& bus, size_t step);
+  static bool zero_page_y(Mos6502& cpu, Bus& bus, size_t step);
 
-  static bool absolute(Mos6502& cpu, size_t step);
-  static bool absolute_x(Mos6502& cpu, size_t step);
-  static bool absolute_y(Mos6502& cpu, size_t step);
+  static bool absolute(Mos6502& cpu, Bus& bus, size_t step);
+  static bool absolute_x(Mos6502& cpu, Bus& bus, size_t step);
+  static bool absolute_y(Mos6502& cpu, Bus& bus, size_t step);
 
-  static bool indirect(Mos6502& cpu, size_t step);
-  static bool indirect_x(Mos6502& cpu, size_t step);
-  static bool indirect_y(Mos6502& cpu, size_t step);
+  static bool indirect(Mos6502& cpu, Bus& bus, size_t step);
+  static bool indirect_x(Mos6502& cpu, Bus& bus, size_t step);
+  static bool indirect_y(Mos6502& cpu, Bus& bus, size_t step);
 
   //! Operations
   // Note: These operations will be called by the instruction execution loop and should return true when the operation
   // is complete.
-  static bool adc(Mos6502& cpu, size_t step);
+
+  static bool brk(Mos6502& cpu, Bus& bus, size_t step);
+  static bool adc(Mos6502& cpu, Bus& bus, size_t step);
 
   static constexpr Instruction instructions[] = {
-      {"NOP", 0xEA, &Mos6502::implied, nullptr},  //
+      {"BRK", 0x00, c_implied, &Mos6502::brk},  //
+      {"NOP", 0xEA, c_implied, nullptr},  //
       {"ADC", 0x69, &Mos6502::immediate, &Mos6502::adc},
       // Add more instructions as needed
   };
 
-  Byte fetch() noexcept;
-
-  void decodeNextInstruction() noexcept;
+  void decodeNextInstruction(Byte opcode) noexcept;
 
   Address m_pc;
-  Byte m_aRegister;
-  Byte m_xRegister;
-  Byte m_yRegister;
+  Byte m_a;
+  Byte m_x;
+  Byte m_y;
   Byte m_sp;
   Byte m_status;
 
@@ -107,8 +103,8 @@ private:
 
   struct CurrentState
   {
-    const Instruction* instruction = nullptr;
-    Action action = nullptr;
+    const Instruction* instruction = &instructions[0];  // default to BRK;
+    Action action = instructions[0].addressMode;
     size_t cycle = 0;
   };
 
@@ -117,42 +113,39 @@ private:
   // Scratchpad for addressing calculations
   Address m_address = Address{0};
   Byte m_operand = 0;
-
-  // Memory is just a placeholder — inject later
-  std::array<Byte, 65536> m_memory{};
 };
 
-inline Mos6502::Byte Mos6502::a() const noexcept
+inline Byte Mos6502::a() const noexcept
 {
-  return m_aRegister;
+  return m_a;
 }
 
 inline void Mos6502::set_a(Byte v) noexcept
 {
-  m_aRegister = v;
+  m_a = v;
 }
 
-inline Mos6502::Byte Mos6502::x() const noexcept
+inline Byte Mos6502::x() const noexcept
 {
-  return m_xRegister;
+  return m_x;
 }
 
 inline void Mos6502::set_x(Byte v) noexcept
 {
-  m_xRegister = v;
+  m_x = v;
 }
 
-inline Mos6502::Byte Mos6502::y() const noexcept
+inline Byte Mos6502::y() const noexcept
 {
-  return m_yRegister;
+  return m_y;
 }
 
 inline void Mos6502::set_y(Byte v) noexcept
 {
-  m_yRegister = v;
+  m_y = v;
 }
 
-inline Mos6502::Byte Mos6502::sp() const noexcept
+inline Byte Mos6502::sp() const noexcept
 {
   return m_sp;
 }
@@ -162,7 +155,7 @@ inline void Mos6502::set_sp(Byte v) noexcept
   m_sp = v;
 }
 
-inline Mos6502::Address Mos6502::pc() const noexcept
+inline Address Mos6502::pc() const noexcept
 {
   return m_pc;
 }
@@ -172,7 +165,7 @@ inline void Mos6502::set_pc(Address addr) noexcept
   m_pc = addr;
 }
 
-inline Mos6502::Byte Mos6502::status() const noexcept
+inline Byte Mos6502::status() const noexcept
 {
   return m_status;
 }
