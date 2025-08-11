@@ -65,7 +65,7 @@ void Mos6502::decodeNextInstruction(Byte opcode) noexcept
   }
 }
 
-Mos6502::Action Mos6502::FinishOperation() noexcept
+Mos6502::State Mos6502::FinishOperation() noexcept
 {
   // Operation complete, log the instruction
   // PC, Opcode, Byte1, Byte2, mnemonic, Address/Value, A, X, Y, SP, Status
@@ -83,7 +83,7 @@ Mos6502::Action Mos6502::FinishOperation() noexcept
 ////////////////////////////////////////////////////////////////////////////////
 // Addressing modes and operations
 ////////////////////////////////////////////////////////////////////////////////
-Mos6502::Action Mos6502::immediate(Mos6502& cpu, Bus& bus, size_t step)
+Mos6502::State Mos6502::immediate(Mos6502& cpu, Bus& bus, size_t step)
 {
   // Handle immediate addressing mode
   assert(step == 0);
@@ -92,7 +92,7 @@ Mos6502::Action Mos6502::immediate(Mos6502& cpu, Bus& bus, size_t step)
   return cpu.StartOperation();  // Start the operation
 }
 
-std::string Mos6502::FormatOperands(ActionFunc& addressingMode, Byte byte1, Byte byte2) noexcept
+std::string Mos6502::FormatOperands(StateFunc& addressingMode, Byte byte1, Byte byte2) noexcept
 {
   if (addressingMode == &Mos6502::immediate)
     return std::format("#${:02X}", byte1);
@@ -122,7 +122,7 @@ std::string Mos6502::FormatOperands(ActionFunc& addressingMode, Byte byte1, Byte
 // and setting the PC to the appropriate vector address. This function handles that logic.
 // It returns true when the operation is complete. If forceRead is true, it force the bus to READ rather than WRITE mode
 // and the writes to the stack will be ignored.
-Mos6502::Action Mos6502::doReset(Mos6502& cpu, Bus& bus, size_t step, bool forceRead, Address vector)
+Mos6502::State Mos6502::doReset(Mos6502& cpu, Bus& bus, size_t step, bool forceRead, Address vector)
 {
   Control control = forceRead ? Control::Read : Control{};
 
@@ -167,12 +167,12 @@ Mos6502::Action Mos6502::doReset(Mos6502& cpu, Bus& bus, size_t step, bool force
   }
 }
 
-Mos6502::Action Mos6502::brk(Mos6502& cpu, Bus& bus, size_t step)
+Mos6502::State Mos6502::brk(Mos6502& cpu, Bus& bus, size_t step)
 {
   return doReset(cpu, bus, step, false, c_brkVector);
 }
 
-Mos6502::Action Mos6502::adc(Mos6502& cpu, Bus& bus, size_t step)
+Mos6502::State Mos6502::adc(Mos6502& cpu, Bus& bus, size_t step)
 {
   // Handle ADC operation
   assert(step == 0);

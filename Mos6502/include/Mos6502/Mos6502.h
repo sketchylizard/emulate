@@ -43,14 +43,14 @@ public:
   Bus Tick(Bus bus) noexcept;
 
 private:
-  struct Action;
+  struct State;
 
-  //! Action should the new state if the instruction is complete
-  using ActionFunc = Action (*)(Mos6502&, Bus& bus, size_t step);
+  //! State should the new state if the instruction is complete
+  using StateFunc = State (*)(Mos6502&, Bus& bus, size_t step);
 
-  struct Action
+  struct State
   {
-    ActionFunc func = nullptr;
+    StateFunc func = nullptr;
   };
 
   struct Instruction
@@ -58,8 +58,8 @@ private:
     std::string_view name;
     Byte opcode;
     uint8_t bytes;
-    ActionFunc addressMode;
-    ActionFunc operation;
+    StateFunc addressMode;
+    StateFunc operation;
   };
 
   enum class Index
@@ -69,29 +69,29 @@ private:
     Y
   };
 
-  static Action doReset(Mos6502& cpu, Bus& bus, size_t step, bool forceRead, Address vector);
+  static State doReset(Mos6502& cpu, Bus& bus, size_t step, bool forceRead, Address vector);
 
   //! Addressing modes
-  static constexpr ActionFunc c_implied = nullptr;
-  static Action immediate(Mos6502& cpu, Bus& bus, size_t step);
+  static constexpr StateFunc c_implied = nullptr;
+  static State immediate(Mos6502& cpu, Bus& bus, size_t step);
 
   template<Index index = Index::None>
-  static Action zero_page(Mos6502& cpu, Bus& bus, size_t step);
+  static State zero_page(Mos6502& cpu, Bus& bus, size_t step);
 
   template<Index index = Index::None>
-  static Action absolute(Mos6502& cpu, Bus& bus, size_t step);
+  static State absolute(Mos6502& cpu, Bus& bus, size_t step);
 
   template<Index index = Index::None>
-  static Action indirect(Mos6502& cpu, Bus& bus, size_t step);
+  static State indirect(Mos6502& cpu, Bus& bus, size_t step);
 
-  std::string FormatOperands(ActionFunc& addressingMode, Byte byte1, Byte byte2) noexcept;
+  std::string FormatOperands(StateFunc& addressingMode, Byte byte1, Byte byte2) noexcept;
 
   //! Operations
   // Note: These operations will be called by the instruction execution loop and should either CurrentState() if they
   // are still executing or FinishOperation() if they have completed.
 
-  static Action brk(Mos6502& cpu, Bus& bus, size_t step);
-  static Action adc(Mos6502& cpu, Bus& bus, size_t step);
+  static State brk(Mos6502& cpu, Bus& bus, size_t step);
+  static State adc(Mos6502& cpu, Bus& bus, size_t step);
 
   static constexpr Instruction c_instructions[] = {
       {"BRK", 0x00, 1, c_implied, &Mos6502::brk},  //
@@ -103,12 +103,12 @@ private:
   void decodeNextInstruction(Byte opcode) noexcept;
 
   // State transition functions
-  Action CurrentState() const noexcept;
-  Action StartOperation() noexcept;
-  Action FinishOperation() noexcept;
+  State CurrentState() const noexcept;
+  State StartOperation() noexcept;
+  State FinishOperation() noexcept;
 
   const Instruction* m_instruction = nullptr;
-  ActionFunc m_action = nullptr;
+  StateFunc m_action = nullptr;
 
   uint32_t m_tickCount = 0;  // Number of ticks since the last reset
 
@@ -189,7 +189,7 @@ inline void Mos6502::set_status(Byte flags) noexcept
 }
 
 template<Mos6502::Index index>
-Mos6502::Action Mos6502::zero_page(Mos6502& cpu, Bus& bus, size_t step)
+Mos6502::State Mos6502::zero_page(Mos6502& cpu, Bus& bus, size_t step)
 {
   // Handle zero-page X addressing mode
   switch (step)
@@ -221,7 +221,7 @@ Mos6502::Action Mos6502::zero_page(Mos6502& cpu, Bus& bus, size_t step)
 }
 
 template<Mos6502::Index index>
-Mos6502::Action Mos6502::absolute(Mos6502& cpu, Bus& bus, size_t step)
+Mos6502::State Mos6502::absolute(Mos6502& cpu, Bus& bus, size_t step)
 {
   switch (step)
   {
@@ -256,7 +256,7 @@ Mos6502::Action Mos6502::absolute(Mos6502& cpu, Bus& bus, size_t step)
 }
 
 template<Mos6502::Index index>
-Mos6502::Action Mos6502::indirect(Mos6502& cpu, Bus& bus, size_t step)
+Mos6502::State Mos6502::indirect(Mos6502& cpu, Bus& bus, size_t step)
 {
   // suppress unused variable warning
   static_cast<void>(cpu);
@@ -265,13 +265,14 @@ Mos6502::Action Mos6502::indirect(Mos6502& cpu, Bus& bus, size_t step)
   return cpu.StartOperation();  // Start the operation
 }
 
-inline Mos6502::Action Mos6502::CurrentState() const noexcept
+inline Mos6502::State Mos6502::CurrentState() const noexcept
 {
   return {m_action};
 }
 
-inline Mos6502::Action Mos6502::StartOperation() noexcept
+inline Mos6502::State Mos6502::StartOperation() noexcept
 {
+  assert(m_instruction != nullptr);
   m_step = 0;
   return {m_instruction->operation};
 }
