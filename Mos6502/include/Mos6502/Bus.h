@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <cstdint>
+#include <format>
 #include <utility>
 
 using Byte = uint8_t;
@@ -26,6 +27,25 @@ struct Bus
   Address address;
   Byte data;
   Control control;
+};
+
+// Specialize formatter for Address and Control
+template<>
+struct std::formatter<Address> : std::formatter<uint16_t>
+{
+  auto format(const Address& addr, auto& ctx) const
+  {
+    return std::formatter<uint16_t>::format(static_cast<uint16_t>(addr), ctx);
+  }
+};
+
+template<>
+struct std::formatter<Control> : std::formatter<uint8_t>
+{
+  auto format(const Control& ctrl, auto& ctx) const
+  {
+    return std::formatter<uint8_t>::format(static_cast<uint8_t>(ctrl), ctx);
+  }
 };
 
 constexpr Control& operator|=(Control& lhs, Control rhs) noexcept
@@ -74,6 +94,21 @@ constexpr Address& operator+=(Address& lhs, int8_t rhs) noexcept
 constexpr Address operator+(Address lhs, int8_t rhs) noexcept
 {
   auto tmp = static_cast<int32_t>(lhs) + rhs;
+  assert(tmp >= 0 && tmp <= 0xFFFF);
+  return Address{static_cast<uint16_t>(tmp)};
+}
+
+constexpr Address& operator-=(Address& lhs, int8_t rhs) noexcept
+{
+  auto tmp = static_cast<int32_t>(lhs) - rhs;
+  assert(tmp >= 0 && tmp <= 0xFFFF);
+  lhs = Address{static_cast<uint16_t>(tmp)};
+  return lhs;
+}
+
+constexpr Address operator-(Address lhs, int8_t rhs) noexcept
+{
+  auto tmp = static_cast<int32_t>(lhs) - rhs;
   assert(tmp >= 0 && tmp <= 0xFFFF);
   return Address{static_cast<uint16_t>(tmp)};
 }

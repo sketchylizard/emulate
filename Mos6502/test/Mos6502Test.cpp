@@ -12,7 +12,8 @@
 TEST_CASE("Mos6502: ADC Immediate", "[cpu][adc]")
 {
   // Setup
-  Memory memory;
+  Memory<Byte, Address{0x0000}, Address{0xFFFF}> memory;  // 64KB memory
+
   // Write instruction to memory
   memory.Load(Address{0x1000}, R"(
     69 22  ; ADC #$22
@@ -21,7 +22,6 @@ TEST_CASE("Mos6502: ADC Immediate", "[cpu][adc]")
   Bus bus = {};
 
   Mos6502 cpu;
-  cpu.reset();
   cpu.set_a(0x10);  // A = 0x10
   cpu.set_status(0);  // Make sure Carry is cleared (C = 0)
 
@@ -39,7 +39,6 @@ TEST_CASE("Mos6502: ADC Immediate", "[cpu][adc]")
   memory[Mos6502::c_brkVector + 1] = HiByte(programStart);
 
   // Execute (it takes 7 cycles for the reset + 2 for ADC immediate)
-  bus.control = Control::Read | Control::Sync;
   bus = tick(bus);
   bus = tick(bus);
   bus = tick(bus);
