@@ -43,49 +43,57 @@ public:
   Bus Tick(Bus bus) noexcept;
 
 private:
-  //! Action should return true if the instruction is complete
-  using Action = bool (*)(Mos6502&, Bus& bus, size_t step);
+  struct Action;
+
+  //! Action should the new state if the instruction is complete
+  using ActionFunc = Action (*)(Mos6502&, Bus& bus, size_t step);
+
+  struct Action
+  {
+    ActionFunc func = nullptr;
+  };
 
   struct Instruction
   {
     std::string_view name;
     Byte opcode;
     uint8_t bytes;
-    Action addressMode;
-    Action operation;
+    ActionFunc addressMode;
+    ActionFunc operation;
   };
 
-  static bool zero_page_indexed(Mos6502& cpu, Bus& bus, size_t step, Byte index);
-  static bool absolute_indexed(Mos6502& cpu, Bus& bus, size_t step, Byte index);
+  enum class Index
+  {
+    None,
+    X,
+    Y
+  };
 
-  static bool doReset(Mos6502& cpu, Bus& bus, size_t step, bool forceRead, Address vector);
+  static Action doReset(Mos6502& cpu, Bus& bus, size_t step, bool forceRead, Address vector);
 
   //! Addressing modes
-  static constexpr Action c_implied = nullptr;
-  static bool immediate(Mos6502& cpu, Bus& bus, size_t step);
+  static constexpr ActionFunc c_implied = nullptr;
+  static Action immediate(Mos6502& cpu, Bus& bus, size_t step);
 
-  static bool zero_page(Mos6502& cpu, Bus& bus, size_t step);
-  static bool zero_page_x(Mos6502& cpu, Bus& bus, size_t step);
-  static bool zero_page_y(Mos6502& cpu, Bus& bus, size_t step);
+  template<Index index = Index::None>
+  static Action zero_page(Mos6502& cpu, Bus& bus, size_t step);
 
-  static bool absolute(Mos6502& cpu, Bus& bus, size_t step);
-  static bool absolute_x(Mos6502& cpu, Bus& bus, size_t step);
-  static bool absolute_y(Mos6502& cpu, Bus& bus, size_t step);
+  template<Index index = Index::None>
+  static Action absolute(Mos6502& cpu, Bus& bus, size_t step);
 
-  static bool indirect(Mos6502& cpu, Bus& bus, size_t step);
-  static bool indirect_x(Mos6502& cpu, Bus& bus, size_t step);
-  static bool indirect_y(Mos6502& cpu, Bus& bus, size_t step);
+  template<Index index = Index::None>
+  static Action indirect(Mos6502& cpu, Bus& bus, size_t step);
 
-  std::string FormatOperands(Action& addressingMode, Byte byte1, Byte byte2) noexcept;
+  std::string FormatOperands(ActionFunc& addressingMode, Byte byte1, Byte byte2) noexcept;
 
   //! Operations
-  // Note: These operations will be called by the instruction execution loop and should return true when the operation
-  // is complete.
+  // Note: These operations will be called by the instruction execution loop and should either CurrentState() if they
+  // are still executing or FinishOperation() if they have completed.
 
-  static bool brk(Mos6502& cpu, Bus& bus, size_t step);
-  static bool adc(Mos6502& cpu, Bus& bus, size_t step);
+  static Action brk(Mos6502& cpu, Bus& bus, size_t step);
+  static Action adc(Mos6502& cpu, Bus& bus, size_t step);
 
-  static constexpr Instruction instructions[] = {
+  static constexpr Instruction c_instructions[] = {
       {"BRK", 0x00, 1, c_implied, &Mos6502::brk},  //
       {"NOP", 0xEA, 1, c_implied, nullptr},  //
       {"ADC", 0x69, 2, &Mos6502::immediate, &Mos6502::adc},
@@ -94,87 +102,176 @@ private:
 
   void decodeNextInstruction(Byte opcode) noexcept;
 
-  struct CurrentState
-  {
-    const Instruction* instruction = &instructions[0];  // default to BRK;
-    Action action = instructions[0].addressMode;
+  // State transition functions
+  Action CurrentState() const noexcept;
+  Action StartOperation() noexcept;
+  Action FinishOperation() noexcept;
 
-    uint32_t tickCount = 0;  // Number of ticks since the last reset
+  const Instruction* m_instruction = nullptr;
+  ActionFunc m_action = nullptr;
 
-    // Registers
-    Address pc{0};
-    Byte a{0};
-    Byte x{0};
-    Byte y{0};
-    Byte sp{0};
-    Byte status{0};
+  uint32_t m_tickCount = 0;  // Number of ticks since the last reset
 
-    // Which step of the current instruction we are in
-    Byte step{0};
-    Byte byte1{0};
-    Byte byte2{0};
-  };
+  // Registers
+  Address m_pc{0};
+  Byte m_a{0};
+  Byte m_x{0};
+  Byte m_y{0};
+  Byte m_sp{0};
+  Byte m_status{0};
 
-  CurrentState m_current;
-  CurrentState m_previous;
+  // Which step of the current instruction we are in
+  Byte m_step{0};
+
+  // Scratch data for operations
+  Byte m_byte1{0};
+  Byte m_byte2{0};
 };
 
 inline Byte Mos6502::a() const noexcept
 {
-  return m_current.a;
+  return m_a;
 }
 
 inline void Mos6502::set_a(Byte v) noexcept
 {
-  m_current.a = v;
+  m_a = v;
 }
 
 inline Byte Mos6502::x() const noexcept
 {
-  return m_current.x;
+  return m_x;
 }
 
 inline void Mos6502::set_x(Byte v) noexcept
 {
-  m_current.x = v;
+  m_x = v;
 }
 
 inline Byte Mos6502::y() const noexcept
 {
-  return m_current.y;
+  return m_y;
 }
 
 inline void Mos6502::set_y(Byte v) noexcept
 {
-  m_current.y = v;
+  m_y = v;
 }
 
 inline Byte Mos6502::sp() const noexcept
 {
-  return m_current.sp;
+  return m_sp;
 }
 
 inline void Mos6502::set_sp(Byte v) noexcept
 {
-  m_current.sp = v;
+  m_sp = v;
 }
 
 inline Address Mos6502::pc() const noexcept
 {
-  return m_current.pc;
+  return m_pc;
 }
 
 inline void Mos6502::set_pc(Address addr) noexcept
 {
-  m_current.pc = addr;
+  m_pc = addr;
 }
 
 inline Byte Mos6502::status() const noexcept
 {
-  return m_current.status;
+  return m_status;
 }
 
 inline void Mos6502::set_status(Byte flags) noexcept
 {
-  m_current.status = flags;
+  m_status = flags;
+}
+
+template<Mos6502::Index index>
+Mos6502::Action Mos6502::zero_page(Mos6502& cpu, Bus& bus, size_t step)
+{
+  // Handle zero-page X addressing mode
+  switch (step)
+  {
+    case 0:
+      // Fetch the zero-page address
+      bus.address = cpu.m_pc++;
+      bus.control = Control::Read;
+      return cpu.CurrentState();  // Need another step to read the data
+    case 1:
+      // Read the data from zero-page address
+      cpu.m_byte1 = bus.data;
+      // Add our index register (if this overflows, it wraps around in zero-page, this is the desired behavior.)
+      if constexpr (index == Index::X)
+      {
+        cpu.m_byte1 += cpu.m_x;
+      }
+      else if constexpr (index == Index::Y)
+      {
+        cpu.m_byte1 += cpu.m_y;
+      }
+
+      // Set bus address for the next step
+      bus.address = MakeAddress(cpu.m_byte1, c_ZeroPage);
+      bus.control = Control::Read;
+      return cpu.StartOperation();  // Start the operation
+    default: assert(false && "Invalid step for zero-page index addressing mode"); return {};
+  }
+}
+
+template<Mos6502::Index index>
+Mos6502::Action Mos6502::absolute(Mos6502& cpu, Bus& bus, size_t step)
+{
+  switch (step)
+  {
+    case 0:
+      // Fetch low byte
+      bus.address = cpu.m_pc++;
+      bus.control = Control::Read;
+      return cpu.CurrentState();
+    case 1:
+      // Store low byte and fetch high byte
+      cpu.m_byte1 = bus.data;
+      bus.address = cpu.m_pc++;
+      bus.control = Control::Read;
+      return cpu.CurrentState();
+    case 2:
+      // Fetch high byte and calculate address
+      cpu.m_byte2 = bus.data;
+      // Set bus address for the next step
+      if constexpr (index == Index::X)
+      {
+        cpu.m_byte1 += cpu.m_x;
+      }
+      else if constexpr (index == Index::Y)
+      {
+        cpu.m_byte1 += cpu.m_y;
+      }
+      bus.address = MakeAddress(cpu.m_byte1, cpu.m_byte2);
+      bus.control = Control::Read;
+      return cpu.StartOperation();  // Start the operation
+    default: assert(false && "Invalid step for absolute addressing mode"); return cpu.StartOperation();
+  }
+}
+
+template<Mos6502::Index index>
+Mos6502::Action Mos6502::indirect(Mos6502& cpu, Bus& bus, size_t step)
+{
+  // suppress unused variable warning
+  static_cast<void>(cpu);
+  static_cast<void>(bus);
+  static_cast<void>(step);
+  return cpu.StartOperation();  // Start the operation
+}
+
+inline Mos6502::Action Mos6502::CurrentState() const noexcept
+{
+  return {m_action};
+}
+
+inline Mos6502::Action Mos6502::StartOperation() noexcept
+{
+  m_step = 0;
+  return {m_instruction->operation};
 }
