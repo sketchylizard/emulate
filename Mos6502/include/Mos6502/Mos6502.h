@@ -20,6 +20,14 @@ public:
   static constexpr Address c_irqVector = Address{0xFFFE};
   static constexpr Address c_brkVector = Address{0xFFFE};
 
+  static constexpr Byte Carry = 1 << 0;
+  static constexpr Byte Zero = 1 << 1;
+  static constexpr Byte Interrupt = 1 << 2;
+  static constexpr Byte Decimal = 1 << 3;
+  static constexpr Byte Break = 1 << 4;
+  static constexpr Byte Overflow = 1 << 5;
+  static constexpr Byte Negative = 1 << 6;
+
   Mos6502() noexcept;
 
   [[nodiscard]] inline Byte a() const noexcept;
@@ -86,19 +94,72 @@ private:
 
   std::string FormatOperands(StateFunc& addressingMode, Byte byte1, Byte byte2) noexcept;
 
+  //! Turns the given flag on or off depending on value.
+  Byte SetFlag(Byte flag, bool value) noexcept;
+
   //! Operations
-  // Note: These operations will be called by the instruction execution loop and should either CurrentState() if they
-  // are still executing or FinishOperation() if they have completed.
+  // Note: These operations will be called by the instruction execution loop and should either CurrentState() if
+  // they are still executing or FinishOperation() if they have completed.
 
   static State brk(Mos6502& cpu, Bus& bus, size_t step);
   static State adc(Mos6502& cpu, Bus& bus, size_t step);
 
-  static constexpr Instruction c_instructions[] = {
-      {"BRK", 0x00, 1, c_implied, &Mos6502::brk},  //
-      {"NOP", 0xEA, 1, c_implied, nullptr},  //
-      {"ADC", 0x69, 2, &Mos6502::immediate, &Mos6502::adc},
-      // Add more instructions as needed
-  };
+  template<Index index = Index::None>
+  static State load(Mos6502& cpu, Bus& bus, size_t step);
+
+  static constexpr std::array<Instruction, 256> c_instructions = []
+  {
+    std::array<Instruction, 256> table{};
+    // Fill with default NOPs or empty instructions
+    for (size_t i = 0; i < 256; ++i)
+    {
+      table[i] = {"???", static_cast<Byte>(i), 1, c_implied, nullptr};
+    }
+    // clang-format off
+
+    // Insert actual instructions by opcode
+    table[0x00] = {"BRK", 0x00, 1, c_implied, &Mos6502::brk};
+    table[0xEA] = {"NOP", 0xEA, 1, c_implied, nullptr};
+
+    // ADC instructions
+    table[0x69] = {"ADC", 0x69, 2, &Mos6502::immediate, &Mos6502::adc};                        // Immediate
+    table[0x65] = {"ADC", 0x65, 2, &Mos6502::zero_page<Mos6502::Index::None>, &Mos6502::adc};  // Zero Page
+    table[0x75] = {"ADC", 0x75, 2, &Mos6502::zero_page<Mos6502::Index::X>, &Mos6502::adc};     // Zero Page,X
+    table[0x6D] = {"ADC", 0x6D, 3, &Mos6502::absolute<Mos6502::Index::None>, &Mos6502::adc};   // Absolute
+    table[0x7D] = {"ADC", 0x7D, 3, &Mos6502::absolute<Mos6502::Index::X>, &Mos6502::adc};      // Absolute,X
+    table[0x79] = {"ADC", 0x79, 3, &Mos6502::absolute<Mos6502::Index::Y>, &Mos6502::adc};      // Absolute,Y
+    table[0x61] = {"ADC", 0x61, 2, &Mos6502::indirect<Mos6502::Index::X>, &Mos6502::adc};      // (Indirect,X)
+    table[0x71] = {"ADC", 0x71, 2, &Mos6502::indirect<Mos6502::Index::Y>, &Mos6502::adc};      // (Indirect),Y
+
+    // LDA instructions
+    table[0xA9] = {"LDA", 0xA9, 2, &Mos6502::immediate, &Mos6502::load<Mos6502::Index::None>};  // Immediate
+    table[0xA5] = {"LDA", 0xA5, 2, &Mos6502::zero_page<Mos6502::Index::None>, &Mos6502::load<Mos6502::Index::None>};  // Zero Page
+    table[0xB5] = {"LDA", 0xB5, 2, &Mos6502::zero_page<Mos6502::Index::X>, &Mos6502::load<Mos6502::Index::None>};  // Zero Page,X
+    table[0xAD] = {"LDA", 0xAD, 3, &Mos6502::absolute<Mos6502::Index::None>, &Mos6502::load<Mos6502::Index::None>};  // Absolute
+    table[0xBD] = {"LDA", 0xBD, 3, &Mos6502::absolute<Mos6502::Index::X>, &Mos6502::load<Mos6502::Index::None>};  // Absolute,X
+    table[0xB9] = {"LDA", 0xB9, 3, &Mos6502::absolute<Mos6502::Index::Y>, &Mos6502::load<Mos6502::Index::None>};  // Absolute,Y
+    table[0xA1] = {"LDA", 0xA1, 2, &Mos6502::indirect<Mos6502::Index::X>, &Mos6502::load<Mos6502::Index::None>};  // (Indirect,X)
+    table[0xB1] = {"LDA", 0xB1, 2, &Mos6502::indirect<Mos6502::Index::Y>, &Mos6502::load<Mos6502::Index::None>};  // (Indirect),Y
+
+    // LDX instructions
+    table[0xA2] = {"LDX", 0xA2, 2, &Mos6502::immediate, &Mos6502::load<Mos6502::Index::X>};  // Immediate
+    table[0xA6] = {"LDX", 0xA6, 2, &Mos6502::zero_page<Mos6502::Index::None>, &Mos6502::load<Mos6502::Index::X>};  // Zero Page
+    table[0xB6] = {"LDX", 0xB6, 2, &Mos6502::zero_page<Mos6502::Index::Y>, &Mos6502::load<Mos6502::Index::X>};  // Zero Page,Y
+    table[0xAE] = {"LDX", 0xAE, 3, &Mos6502::absolute<Mos6502::Index::None>, &Mos6502::load<Mos6502::Index::X>};  // Absolute
+    table[0xBE] = {"LDX", 0xBE, 3, &Mos6502::absolute<Mos6502::Index::Y>, &Mos6502::load<Mos6502::Index::X>};  // Absolute,Y
+
+    // LDY instructions
+    table[0xA0] = {"LDY", 0xA0, 2, &Mos6502::immediate, &Mos6502::load<Mos6502::Index::Y>};  // Immediate
+    table[0xA4] = {"LDY", 0xA4, 2, &Mos6502::zero_page<Mos6502::Index::None>, &Mos6502::load<Mos6502::Index::Y>};  // Zero Page
+    table[0xB4] = {"LDY", 0xB4, 2, &Mos6502::zero_page<Mos6502::Index::X>, &Mos6502::load<Mos6502::Index::Y>};  // Zero Page,X
+    table[0xAC] = {"LDY", 0xAC, 3, &Mos6502::absolute<Mos6502::Index::None>, &Mos6502::load<Mos6502::Index::Y>};  // Absolute
+    table[0xBC] = {"LDY", 0xBC, 3, &Mos6502::absolute<Mos6502::Index::X>, &Mos6502::load<Mos6502::Index::Y>};  // Absolute,X
+
+    // Add more instructions as needed
+
+    // clang-format off
+    return table;
+  }();
 
   void decodeNextInstruction(Byte opcode) noexcept;
 
@@ -275,4 +336,44 @@ inline Mos6502::State Mos6502::StartOperation() noexcept
   assert(m_instruction != nullptr);
   m_step = 0;
   return {m_instruction->operation};
+}
+
+template<Mos6502::Index index>
+Mos6502::State Mos6502::load(Mos6502& cpu, Bus& bus, size_t /*step*/)
+{
+  // Addressing modes have already been applied, and the resulting data is in bus.data.
+  Byte* reg = nullptr;
+  if constexpr (index == Index::None)
+  {
+    reg = &cpu.m_a;
+  }
+  else if constexpr (index == Index::X)
+  {
+    reg = &cpu.m_x;
+  }
+  else if constexpr (index == Index::Y)
+  {
+    reg = &cpu.m_y;
+  }
+  assert(reg != nullptr);
+  *reg = bus.data;
+  // Check zero flag
+  cpu.SetFlag(Mos6502::Zero, *reg == 0);
+  // Check negative flag
+  cpu.SetFlag(Mos6502::Negative, (*reg & 0x80) != 0);
+
+  return cpu.FinishOperation();
+}
+
+inline Byte Mos6502::SetFlag(Byte flag, bool value) noexcept
+{
+  if (value)
+  {
+    m_status |= flag;
+  }
+  else
+  {
+    m_status &= ~flag;
+  }
+  return m_status;
 }

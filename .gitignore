@@ -56,3 +56,5 @@ desktop.ini
 # Optional user config files
 *.user
 *.userprefs
+
+.venv

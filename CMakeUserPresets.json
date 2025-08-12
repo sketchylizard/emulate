@@ -4,6 +4,6 @@
         "conan": {}
     },
     "include": [
-        "build/clang-debug/CMakePresets.json"
+        "build/clang/debug/CMakePresets.json"
     ]
 }
