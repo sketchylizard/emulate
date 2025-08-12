@@ -4,6 +4,8 @@
 #include <cassert>
 #include <cstdint>
 #include <span>
+#include <string_view>
+#include <vector>
 
 #include "Mos6502/Bus.h"
 
@@ -78,3 +80,6 @@ private:
   size_t m_end{};
   std::array<T, static_cast<size_t>(End) - static_cast<size_t>(Start) + 1> m_bytes;
 };
+
+// Load file helper function.
+std::vector<Byte> LoadFile(const std::string_view& filename) noexcept;

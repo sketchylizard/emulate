@@ -58,3 +58,34 @@ TEST_CASE("Mos6502: ADC Immediate", "[cpu][adc]")
   // CHECK_FALSE(cpu.status() & ZeroFlag);
   // CHECK_FALSE(cpu.status() & NegativeFlag);
 }
+
+TEST_CASE("Mos6502: Functional_tests")
+{
+  auto file = LoadFile("/home/jason/projects/~/p/6502_65C02_functional_tests/bin_files/6502_functional_test.bin");
+
+  Memory<Byte, Address{0x0000}, Address{0xFFFF}> memory;  // 64KB memory
+
+  memory.Load(Address{0x0000}, file);
+
+  Bus bus = {};
+
+  Mos6502 cpu;
+
+  auto tick = [&](Bus bus)
+  {
+    bus = cpu.Tick(bus);
+    bus = memory.Tick(bus);
+    return bus;
+  };
+
+  auto programStart = Address{0x0400};
+
+  // Set the reset vector to 0x0400
+  memory[Mos6502::c_brkVector] = LoByte(programStart);
+  memory[Mos6502::c_brkVector + 1] = HiByte(programStart);
+
+  for (int i = 0; i < 20; ++i)
+  {
+    bus = tick(bus);
+  }
+}
