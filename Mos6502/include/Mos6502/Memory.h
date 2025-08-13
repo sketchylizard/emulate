@@ -56,7 +56,8 @@ public:
   {
     // Make sure the address is within bounds
     auto effectiveAddress = static_cast<size_t>(address);
-    assert(effectiveAddress >= static_cast<size_t>(Start) && effectiveAddress + bytes.size() <= static_cast<size_t>(End));
+    auto effectiveEnd = effectiveAddress + bytes.size() - 1;
+    assert(effectiveAddress >= static_cast<size_t>(Start) && effectiveEnd <= static_cast<size_t>(End));
     // Copy bytes to memory
     assert(bytes.size() <= (static_cast<size_t>(End) - static_cast<size_t>(Start) + 1));
     std::copy(bytes.begin(), bytes.end(), m_bytes.begin() + static_cast<size_t>(address) - static_cast<size_t>(Start));

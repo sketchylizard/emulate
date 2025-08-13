@@ -14,6 +14,8 @@
 
 #include "Mos6502/Bus.h"
 
+char Mos6502::trace_buffer[80];
+
 inline Address Add(Address lhs, uint16_t rhs)
 {
   return Address{static_cast<uint16_t>(static_cast<uint16_t>(lhs) + rhs)};
@@ -54,24 +56,51 @@ Bus Mos6502::Tick(Bus bus) noexcept
 void Mos6502::decodeNextInstruction(Byte opcode) noexcept
 {
   // Decode opcode
-  auto it = std::find_if(std::begin(c_instructions), std::end(c_instructions),
-      [opcode](const Instruction& instr) { return instr.opcode == opcode; });
-  if (it != std::end(c_instructions))
-  {
-    auto action = it->addressMode ? it->addressMode : it->operation;
-    m_instruction = &*it;
-    m_action = action;
-    m_step = 0;
-  }
+  m_instruction = &c_instructions[static_cast<size_t>(opcode)];
+  assert(m_instruction);
+  m_action = m_instruction->addressMode ? m_instruction->addressMode : m_instruction->operation;
+  assert(m_action);
+  m_step = 0;
 }
 
 Mos6502::State Mos6502::FinishOperation() noexcept
 {
   // Operation complete, log the instruction
   // PC, Opcode, Byte1, Byte2, mnemonic, Address/Value, A, X, Y, SP, Status
-  std::cout << std::format("{:04X}  {:02X} {:02X} {:02X}  {}     "
-                           "A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X} CYC: {}\n",
-      m_pc, m_instruction->opcode, m_byte1, m_byte2, m_instruction->name, a(), x(), y(), status(), sp(), m_tickCount);
+#ifdef MOS6502_TRACE
+  // Format the trace line
+
+  // Print PC as 4 hex digits
+  auto offset = std::snprintf(trace_buffer, sizeof(trace_buffer), "%04X  %-3s %02X ",  //
+      (static_cast<uint16_t>(m_pc) - m_instruction->bytes),  //
+      m_instruction->name.data(),  //
+      m_instruction->opcode);
+
+  // Print operand bytes or spaces for alignment
+  if (m_instruction->bytes == 1)
+  {
+    // 1 byte operand
+    offset += std::snprintf(trace_buffer + offset, sizeof(trace_buffer) - static_cast<size_t>(offset), "%02X   ", m_byte1);
+  }
+  else if (m_instruction->bytes == 2)
+  {
+    // 2 byte operand
+    offset += std::snprintf(
+        trace_buffer + offset, sizeof(trace_buffer) - static_cast<size_t>(offset), "%02X %02X", m_byte1, m_byte2);
+  }
+  else
+  {
+    // No operand bytes
+    offset += std::snprintf(trace_buffer + offset, sizeof(trace_buffer) - static_cast<size_t>(offset), "     ");
+  }
+
+  // Print registers
+  offset += std::snprintf(trace_buffer + offset, sizeof(trace_buffer) - static_cast<size_t>(offset),
+      "  A:%02X X:%02X Y:%02X P:%02X SP:%02X\n", a(), x(), y(), status(), sp());
+
+  // Output the trace line
+  std::fputs(trace_buffer, stdout);
+#endif
 
   m_step = 0;
   m_byte1 = 0;
@@ -90,32 +119,6 @@ Mos6502::State Mos6502::immediate(Mos6502& cpu, Bus& bus, size_t step)
   bus.address = cpu.m_pc++;
   bus.control = Control::Read;
   return cpu.StartOperation();  // Start the operation
-}
-
-std::string Mos6502::FormatOperands(StateFunc& addressingMode, Byte byte1, Byte byte2) noexcept
-{
-  if (addressingMode == &Mos6502::immediate)
-    return std::format("#${:02X}", byte1);
-  if (addressingMode == &Mos6502::zero_page<Index::None>)
-    return std::format("${:02X}", byte1);
-  if (addressingMode == &Mos6502::zero_page<Index::X>)
-    return std::format("${:02X},X", byte1);
-  if (addressingMode == &Mos6502::zero_page<Index::Y>)
-    return std::format("${:02X},Y", byte1);
-  if (addressingMode == &Mos6502::absolute<Index::None>)
-    return std::format("${:02X}{:02X}", byte2, byte1);
-  if (addressingMode == &Mos6502::absolute<Index::X>)
-    return std::format("${:02X}{:02X},X", byte2, byte1);
-  if (addressingMode == &Mos6502::absolute<Index::Y>)
-    return std::format("${:02X}{:02X},Y", byte2, byte1);
-  if (addressingMode == &Mos6502::indirect<Index::None>)
-    return std::format("(${:02X}{:02X})", byte2, byte1);
-  if (addressingMode == &Mos6502::indirect<Index::X>)
-    return std::format("(${:02X}{:02X},X)", byte2, byte1);
-  if (addressingMode == &Mos6502::indirect<Index::Y>)
-    return std::format("(${:02X}{:02X},Y)", byte2, byte1);
-  assert(false && "Unknown addressing mode");
-  return {};
 }
 
 // BRK, NMI, IRQ, and Reset operations all share similar logic for pushing the PC and status onto the stack
@@ -189,4 +192,37 @@ Mos6502::State Mos6502::adc(Mos6502& cpu, Bus& bus, size_t step)
 
   cpu.set_a(result);
   return cpu.FinishOperation();  // Operation complete
+}
+
+Mos6502::State Mos6502::cld(Mos6502& cpu, Bus& /*bus*/, size_t step)
+{
+  assert(step == 0);
+  cpu.SetFlag(Mos6502::Decimal, false);
+  return cpu.FinishOperation();
+}
+
+Mos6502::State Mos6502::txs(Mos6502& cpu, Bus& /*bus*/, size_t step)
+{
+  assert(step == 0);
+  cpu.set_sp(cpu.x());
+  return cpu.FinishOperation();
+}
+
+Mos6502::State Mos6502::sta(Mos6502& cpu, Bus& bus, size_t step)
+{
+  assert(step == 0);
+  bus.address = cpu.m_pc++;
+  bus.data = cpu.a();
+  bus.control = Control{} /*Write*/;
+  return cpu.FinishOperation();
+}
+
+Mos6502::State Mos6502::ora(Mos6502& cpu, Bus& bus, size_t step)
+{
+  assert(step == 0);
+  // Perform OR with accumulator
+  cpu.m_a |= bus.data;
+  cpu.SetFlag(Mos6502::Zero, cpu.m_a == 0);  // Set zero flag
+  cpu.SetFlag(Mos6502::Negative, cpu.m_a & 0x80);  // Set negative flag
+  return cpu.FinishOperation();
 }

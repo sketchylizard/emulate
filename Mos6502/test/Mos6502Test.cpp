@@ -61,7 +61,7 @@ TEST_CASE("Mos6502: ADC Immediate", "[cpu][adc]")
 
 TEST_CASE("Mos6502: Functional_tests")
 {
-  auto file = LoadFile("/home/jason/projects/~/p/6502_65C02_functional_tests/bin_files/6502_functional_test.bin");
+  auto file = LoadFile("/home/jason/projects/6502_65C02_functional_tests/bin_files/6502_functional_test.bin");
 
   Memory<Byte, Address{0x0000}, Address{0xFFFF}> memory;  // 64KB memory
 
@@ -71,10 +71,13 @@ TEST_CASE("Mos6502: Functional_tests")
 
   Mos6502 cpu;
 
-  auto tick = [&](Bus bus)
+  auto step = [&](Bus bus)
   {
-    bus = cpu.Tick(bus);
-    bus = memory.Tick(bus);
+    do
+    {
+      bus = cpu.Tick(bus);
+      bus = memory.Tick(bus);
+    } while (!(bus.control & Control::Sync));
     return bus;
   };
 
@@ -86,6 +89,6 @@ TEST_CASE("Mos6502: Functional_tests")
 
   for (int i = 0; i < 20; ++i)
   {
-    bus = tick(bus);
+    bus = step(bus);
   }
 }

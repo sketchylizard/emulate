@@ -9,6 +9,8 @@
 
 #include "Mos6502/Bus.h"
 
+#define MOS6502_TRACE 1
+
 class Mos6502
 {
 public:
@@ -92,8 +94,6 @@ private:
   template<Index index = Index::None>
   static State indirect(Mos6502& cpu, Bus& bus, size_t step);
 
-  std::string FormatOperands(StateFunc& addressingMode, Byte byte1, Byte byte2) noexcept;
-
   //! Turns the given flag on or off depending on value.
   Byte SetFlag(Byte flag, bool value) noexcept;
 
@@ -106,6 +106,12 @@ private:
 
   template<Index index = Index::None>
   static State load(Mos6502& cpu, Bus& bus, size_t step);
+
+  static State cld(Mos6502& cpu, Bus& bus, size_t step);
+  static State txs(Mos6502& cpu, Bus& bus, size_t step);
+
+  static State sta(Mos6502& cpu, Bus& bus, size_t step);
+  static State ora(Mos6502& cpu, Bus& bus, size_t step);
 
   static constexpr std::array<Instruction, 256> c_instructions = []
   {
@@ -155,6 +161,27 @@ private:
     table[0xAC] = {"LDY", 0xAC, 3, &Mos6502::absolute<Mos6502::Index::None>, &Mos6502::load<Mos6502::Index::Y>};  // Absolute
     table[0xBC] = {"LDY", 0xBC, 3, &Mos6502::absolute<Mos6502::Index::X>, &Mos6502::load<Mos6502::Index::Y>};  // Absolute,X
 
+    table[0xD8] = {"CLD", 0xD8, 1,c_implied, &Mos6502::cld};
+    table[0x9A] = {"TXS", 0x9A, 1, c_implied, &Mos6502::txs};
+
+    // STA variations
+    table[0x85] = {"STA", 0x85, 2, &Mos6502::zero_page<Index::None>, &Mos6502::sta};
+    table[0x95] = {"STA", 0x95, 2, &Mos6502::zero_page<Index::X>,    &Mos6502::sta};
+    table[0x8D] = {"STA", 0x8D, 3, &Mos6502::absolute<Index::None>,  &Mos6502::sta};
+    table[0x9D] = {"STA", 0x9D, 3, &Mos6502::absolute<Index::X>,     &Mos6502::sta};
+    table[0x99] = {"STA", 0x99, 3, &Mos6502::absolute<Index::Y>,     &Mos6502::sta};
+    table[0x81] = {"STA", 0x81, 2, &Mos6502::indirect<Index::X>,     &Mos6502::sta};
+    table[0x91] = {"STA", 0x91, 2, &Mos6502::indirect<Index::Y>,     &Mos6502::sta};
+
+    // ORA variations
+    table[0x01] = {"ORA (Indirect,X)", 0x01, 2, &Mos6502::indirect<Index::X>    , &Mos6502::ora};
+    table[0x05] = {"ORA Zero Page"   , 0x05, 2, &Mos6502::zero_page<Index::None>, &Mos6502::ora};
+    table[0x0D] = {"ORA Absolute"    , 0x0D, 3, &Mos6502::absolute<Index::None> , &Mos6502::ora};
+    table[0x11] = {"ORA (Indirect),Y", 0x11, 2, &Mos6502::indirect<Index::Y>    , &Mos6502::ora};
+    table[0x15] = {"ORA Zero Page,X" , 0x15, 2, &Mos6502::zero_page<Index::X>   , &Mos6502::ora};
+    table[0x19] = {"ORA Absolute,Y"  , 0x19, 3, &Mos6502::absolute<Index::Y>    , &Mos6502::ora};
+    table[0x1D] = {"ORA Absolute,X"  , 0x1D, 3, &Mos6502::absolute<Index::X>    , &Mos6502::ora};
+
     // Add more instructions as needed
 
     // clang-format off
@@ -187,6 +214,11 @@ private:
   // Scratch data for operations
   Byte m_byte1{0};
   Byte m_byte2{0};
+
+// Add this at the top of the file, after includes
+#ifdef MOS6502_TRACE
+static char trace_buffer[80];
+#endif  
 };
 
 inline Byte Mos6502::a() const noexcept
