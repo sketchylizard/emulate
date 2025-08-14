@@ -125,7 +125,8 @@ std::string Mos6502::FormatOperands() const
       result += "   ";
   }
 
-  result += m_instruction->name + " ";
+  result.append(m_instruction->name);
+  result.append(" ");
 
   // Now print operands (and data) based on the addressing mode.
 
