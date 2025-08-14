@@ -36,80 +36,69 @@ Bus Mos6502::Tick(Bus bus) noexcept
 
     // load new instruction
     m_bytes[m_byteCount++] = bus.data;
-    decodeNextInstruction(bus.data);
+    DecodeNextInstruction(bus.data);
   }
 
-  if (m_instruction == nullptr)
+  // Startup is a special case, we have no instruction or action
+  if (m_instruction != nullptr)
   {
-    // special case, startup
-    bus.address = m_pc++;
-    bus.control = Control::Read | Control::Sync;
-    return bus;
+    assert(m_action);
+
+    // Execute the current action until it returns a nullptr.
+    m_action = m_action(*this, bus, m_step++).func;
   }
-
-  assert(m_instruction);
-  assert(m_action);
-
-  // Execute the current action until it returns a nullptr.
-  m_action = m_action(*this, bus, m_step++).func;
 
   // If the action is nullptr, the operation is complete
   if (!m_action)
   {
+    Log();
+
     // Instruction complete, fetch the next instruction
     m_pcStart = m_pc;
+    m_byteCount = 0;
+    m_step = 0;
     bus.address = m_pc++;
     bus.control = Control::Read | Control::Sync;
   }
   return bus;
 }
 
-void Mos6502::decodeNextInstruction(Byte opcode) noexcept
+void Mos6502::DecodeNextInstruction(Byte opcode) noexcept
 {
   // Decode opcode
   m_instruction = &c_instructions[static_cast<size_t>(opcode)];
   assert(m_instruction);
-  m_action = m_instruction->addressMode ? m_instruction->addressMode : &Mos6502::StartOperation;
+  m_action = m_instruction->addressMode;
   assert(m_action);
   m_step = 0;
 }
 
-Mos6502::State Mos6502::FinishOperation() noexcept
+Mos6502::State Mos6502::StartOperation()
 {
   m_step = 0;
-  m_byteCount = 0;
-
-  return {nullptr};
+  return {m_instruction->operation};
 }
 
-Mos6502::State Mos6502::StartOperation(Mos6502& cpu, Bus& bus, size_t step)
+void Mos6502::Log() const
 {
-  cpu.m_step = step = 0;
-
-  if (cpu.m_instruction->addressMode != c_implied)
-  {
-    cpu.m_bytes[cpu.m_byteCount++] = bus.data;
-  }
-
 #ifdef MOS6502_TRACE
+  // Don't log if we don't have an instruction.
+  if (!m_instruction)
+    return;
+
   // PC at start of instruction
-  std::string pcStr = std::format("{:04X}", cpu.m_pcStart);
+  std::string pcStr = std::format("{:04X}", m_pcStart);
 
   // Get formatted instruction text (opcode, operands, mnemonic, data)
-  std::string instrStr = cpu.FormatOperands();
+  std::string instrStr = FormatOperands();
 
   // Registers
-  std::string regStr = std::format(
-      "A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}", cpu.m_a, cpu.m_x, cpu.m_y, cpu.m_status, cpu.m_sp);
+  std::string regStr = std::format("A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}", m_a, m_x, m_y, m_status, m_sp);
 
   // Output the full line
   std::cout << std::format("{}  {}  {}\n", pcStr, instrStr, regStr);
 
 #endif
-
-  cpu.m_step = 0;
-  cpu.m_action = cpu.m_instruction->operation;
-  return cpu.m_action(cpu, bus, step);
 }
 
 std::string Mos6502::FormatOperands() const
@@ -131,16 +120,14 @@ std::string Mos6502::FormatOperands() const
   // Now print operands (and data) based on the addressing mode.
 
   // Implied / accumulator instructions
-  if (m_instruction->addressMode == c_implied)
+  if (m_instruction->addressMode == &Mos6502::implied)
   {
     // nothing to do
   }
-#if 0
   else if (m_instruction->addressMode == &Mos6502::accumulator)
   {
-    // nothing to do
+    result.append("A");
   }
-#endif
   // Immediate
   else if (m_instruction->addressMode == &Mos6502::immediate)
   {
@@ -166,8 +153,8 @@ std::string Mos6502::FormatOperands() const
   // Absolute
   else if (m_instruction->addressMode == &Mos6502::absolute<>)
   {
-    assert(m_byteCount == 4);  // opcode + lo byte + hi byte + data
-    result += std::format("${:02X}{:02X} = {:02X}", m_bytes[2], m_bytes[1], m_bytes[3]);
+    assert(m_byteCount == 3);  // opcode + lo byte + hi byte + data
+    result += std::format("${:02X}{:02X}", m_bytes[2], m_bytes[1]);
   }
   else if (m_instruction->addressMode == &Mos6502::absolute<Index::X>)
   {
@@ -190,6 +177,23 @@ std::string Mos6502::FormatOperands() const
 ////////////////////////////////////////////////////////////////////////////////
 // Addressing modes and operations
 ////////////////////////////////////////////////////////////////////////////////
+
+Mos6502::State Mos6502::accumulator(Mos6502& cpu, Bus& bus, size_t step)
+{
+  // Handle accumulator addressing mode
+  assert(step == 0);
+  // Since there are no operands, we should go straight into processing the operation.
+  return cpu.m_instruction->operation(cpu, bus, step);
+}
+
+Mos6502::State Mos6502::implied(Mos6502& cpu, Bus& bus, size_t step)
+{
+  // Handle implied addressing mode
+  assert(step == 0);
+  // Since there are no operands, we should go straight into processing the operation.
+  return cpu.m_instruction->operation(cpu, bus, step);
+}
+
 Mos6502::State Mos6502::immediate(Mos6502& cpu, Bus& bus, size_t step)
 {
   // Handle immediate addressing mode
@@ -197,7 +201,7 @@ Mos6502::State Mos6502::immediate(Mos6502& cpu, Bus& bus, size_t step)
   bus.address = cpu.m_pc++;
   bus.control = Control::Read;
 
-  return {&Mos6502::StartOperation};
+  return cpu.StartOperation();
 }
 
 // BRK, NMI, IRQ, and Reset operations all share similar logic for pushing the PC and status onto the stack
@@ -215,37 +219,37 @@ Mos6502::State Mos6502::doReset(Mos6502& cpu, Bus& bus, size_t step, bool forceR
       bus.address = MakeAddress(cpu.m_sp--, c_StackPage);
       bus.data = HiByte(cpu.pc());
       bus.control = control;
-      return cpu.CurrentState();
+      return {cpu.m_action};
     case 1:
       // Push PC low byte
       bus.address = MakeAddress(cpu.m_sp--, c_StackPage);
       bus.data = LoByte(cpu.pc());
       bus.control = control;
-      return cpu.CurrentState();
+      return {cpu.m_action};
     case 2:
       // Push status register
       bus.address = MakeAddress(cpu.m_sp--, c_StackPage);
       bus.data = cpu.status();
       bus.control = control;
-      return cpu.CurrentState();
+      return {cpu.m_action};
     case 3:
       // Fetch the low byte of the interrupt/reset vector
       bus.address = vector;
       bus.control = Control::Read;
-      return cpu.CurrentState();
+      return {cpu.m_action};
     case 4:
       cpu.m_bytes[cpu.m_byteCount++] = bus.data;
       // Store the lo byte and fetch the high byte of the interrupt/reset vector
       bus.address = vector + 1;
       bus.control = Control::Read;
-      return cpu.CurrentState();
+      return {cpu.m_action};
     case 5:
       // Set PC to the interrupt/reset vector address
       cpu.m_bytes[cpu.m_byteCount++] = bus.data;
       cpu.m_pc = (MakeAddress(cpu.m_bytes[1], cpu.m_bytes[2]));
-      return cpu.FinishOperation();  // Operation complete
+      return {nullptr};  // Operation complete
 
-    default: assert(false && "Invalid step for BRK instruction"); return cpu.FinishOperation();
+    default: assert(false && "Invalid step for BRK instruction"); return {nullptr};
   }
 }
 
@@ -270,30 +274,33 @@ Mos6502::State Mos6502::adc(Mos6502& cpu, Bus& bus, size_t step)
     cpu.set_status(cpu.status() & ~0x01);  // Clear carry flag
 
   cpu.set_a(result);
-  return cpu.FinishOperation();  // Operation complete
+  return {nullptr};  // Operation complete
 }
 
 Mos6502::State Mos6502::cld(Mos6502& cpu, Bus& /*bus*/, size_t step)
 {
   assert(step == 0);
   cpu.SetFlag(Mos6502::Decimal, false);
-  return cpu.FinishOperation();
+  return {nullptr};
 }
 
 Mos6502::State Mos6502::txs(Mos6502& cpu, Bus& /*bus*/, size_t step)
 {
   assert(step == 0);
   cpu.set_sp(cpu.x());
-  return cpu.FinishOperation();
+  return {nullptr};
 }
 
 Mos6502::State Mos6502::sta(Mos6502& cpu, Bus& bus, size_t step)
 {
-  assert(step == 0);
-  bus.address = cpu.m_pc++;
-  bus.data = cpu.a();
-  bus.control = Control{} /*Write*/;
-  return cpu.FinishOperation();
+  if (step == 0)
+  {
+    bus.address = cpu.m_effectiveAddress;
+    bus.data = cpu.a();
+    bus.control = Control{} /*Write*/;
+    return {&Mos6502::sta};
+  }
+  return {nullptr};
 }
 
 Mos6502::State Mos6502::ora(Mos6502& cpu, Bus& bus, size_t step)
@@ -303,5 +310,5 @@ Mos6502::State Mos6502::ora(Mos6502& cpu, Bus& bus, size_t step)
   cpu.m_a |= bus.data;
   cpu.SetFlag(Mos6502::Zero, cpu.m_a == 0);  // Set zero flag
   cpu.SetFlag(Mos6502::Negative, cpu.m_a & 0x80);  // Set negative flag
-  return cpu.FinishOperation();
+  return {nullptr};
 }

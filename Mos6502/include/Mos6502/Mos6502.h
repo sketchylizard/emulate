@@ -84,7 +84,10 @@ private:
   static State doReset(Mos6502& cpu, Bus& bus, size_t step, bool forceRead, Address vector);
 
   //! Addressing modes
-  static constexpr StateFunc c_implied = nullptr;
+  static State implied(Mos6502& cpu, Bus& bus, size_t step);
+
+  static State accumulator(Mos6502& cpu, Bus& bus, size_t step);
+
   static State immediate(Mos6502& cpu, Bus& bus, size_t step);
 
   template<Index index = Index::None>
@@ -100,7 +103,7 @@ private:
   Byte SetFlag(Byte flag, bool value) noexcept;
 
   //! Operations
-  // Note: These operations will be called by the instruction execution loop and should either CurrentState() if
+  // Note: These operations will be called by the instruction execution loop and should either m_action if
   // they are still executing or FinishOperation() if they have completed.
 
   static State brk(Mos6502& cpu, Bus& bus, size_t step);
@@ -121,13 +124,13 @@ private:
     // Fill with default NOPs or empty instructions
     for (size_t i = 0; i < 256; ++i)
     {
-      table[i] = {"???", static_cast<Byte>(i), 1, c_implied, nullptr};
+      table[i] = {"???", static_cast<Byte>(i), 1, nullptr, nullptr};
     }
     // clang-format off
 
     // Insert actual instructions by opcode
-    table[0x00] = {"BRK", 0x00, 1, c_implied, &Mos6502::brk};
-    table[0xEA] = {"NOP", 0xEA, 1, c_implied, nullptr};
+    table[0x00] = {"BRK", 0x00, 1, &Mos6502::implied, &Mos6502::brk};
+    table[0xEA] = {"NOP", 0xEA, 1, &Mos6502::implied, nullptr};
 
     // ADC instructions
     table[0x69] = {"ADC", 0x69, 2, &Mos6502::immediate, &Mos6502::adc};                        // Immediate
@@ -163,8 +166,8 @@ private:
     table[0xAC] = {"LDY", 0xAC, 3, &Mos6502::absolute<Mos6502::Index::None>, &Mos6502::load<Mos6502::Index::Y>};  // Absolute
     table[0xBC] = {"LDY", 0xBC, 3, &Mos6502::absolute<Mos6502::Index::X>, &Mos6502::load<Mos6502::Index::Y>};  // Absolute,X
 
-    table[0xD8] = {"CLD", 0xD8, 1,c_implied, &Mos6502::cld};
-    table[0x9A] = {"TXS", 0x9A, 1, c_implied, &Mos6502::txs};
+    table[0xD8] = {"CLD", 0xD8, 1,&Mos6502::implied, &Mos6502::cld};
+    table[0x9A] = {"TXS", 0x9A, 1, &Mos6502::implied, &Mos6502::txs};
 
     // STA variations
     table[0x85] = {"STA", 0x85, 2, &Mos6502::zero_page<Index::None>, &Mos6502::sta};
@@ -190,16 +193,19 @@ private:
     return table;
   }();
 
-  void decodeNextInstruction(Byte opcode) noexcept;
-
   // State transition functions
-  State CurrentState() const noexcept;
+
+  // Start the addressing mode (if applicable) or the operation if addressing mode is implied.
+  void DecodeNextInstruction(Byte opcode) noexcept;
+
+  // Transition from addressing mode to operation.
+  State StartOperation();
+
+  // Complete the operation state and prefetch the next opcode.
   State FinishOperation() noexcept;
 
+  void Log() const;
   std::string FormatOperands() const;
-
-  // This pseudostate will handle common operations, like logging.
-  static State StartOperation(Mos6502& cpu, Bus& bus, size_t step);
 
   const Instruction* m_instruction = nullptr;
   StateFunc m_action = nullptr;
@@ -222,6 +228,7 @@ private:
 
   // Scratch data for operations and logging
   Address m_pcStart{0};
+  Address m_effectiveAddress{0};
   Byte m_bytes[c_maxBytes];
   Byte m_byteCount = 0;
 };
@@ -298,7 +305,7 @@ Mos6502::State Mos6502::zero_page(Mos6502& cpu, Bus& bus, size_t step)
       // Fetch the zero-page address
       bus.address = cpu.m_pc++;
       bus.control = Control::Read;
-      return cpu.CurrentState();  // Need another step to read the data
+      return {cpu.m_action};  // Need another step to read the data
     case 1:
       // Read the data from zero-page address
       modifiedOffset = cpu.m_bytes[cpu.m_byteCount++] = bus.data;
@@ -316,7 +323,7 @@ Mos6502::State Mos6502::zero_page(Mos6502& cpu, Bus& bus, size_t step)
       // Set bus address for the next step
       bus.address = MakeAddress(modifiedOffset, c_ZeroPage);
       bus.control = Control::Read;
-      return {&Mos6502::StartOperation};
+      return cpu.StartOperation();
     default: assert(false && "Invalid step for zero-page index addressing mode"); return {};
   }
 }
@@ -324,38 +331,39 @@ Mos6502::State Mos6502::zero_page(Mos6502& cpu, Bus& bus, size_t step)
 template<Mos6502::Index index>
 Mos6502::State Mos6502::absolute(Mos6502& cpu, Bus& bus, size_t step)
 {
-  Address address{0};
-
   switch (step)
   {
     case 0:
       // Fetch low byte
       bus.address = cpu.m_pc++;
       bus.control = Control::Read;
-      return cpu.CurrentState();
+      return {cpu.m_action};
     case 1:
       // Store low byte and fetch high byte
       cpu.m_bytes[cpu.m_byteCount++] = bus.data;
       bus.address = cpu.m_pc++;
       bus.control = Control::Read;
-      return cpu.CurrentState();
+      return {cpu.m_action};
     case 2:
       // Fetch high byte and calculate address
       cpu.m_bytes[cpu.m_byteCount++] = bus.data;
-      address = MakeAddress(cpu.m_bytes[1], cpu.m_bytes[2]);
+      cpu.m_effectiveAddress = MakeAddress(cpu.m_bytes[1], cpu.m_bytes[2]);
       // Set bus address for the next step
       if constexpr (index == Index::X)
       {
-        address += static_cast<int8_t>(cpu.m_x);
+        cpu.m_effectiveAddress += static_cast<int8_t>(cpu.m_x);
       }
       else if constexpr (index == Index::Y)
       {
-        address += static_cast<int8_t>(cpu.m_y);
+        cpu.m_effectiveAddress += static_cast<int8_t>(cpu.m_y);
       }
-      bus.address = address;
-      bus.control = Control::Read;
-      return {&Mos6502::StartOperation};
-    default: assert(false && "Invalid step for absolute addressing mode"); return {&Mos6502::StartOperation};
+      
+      // Now that we've fetched the address, we need to start executing immediately
+      {
+        auto newState = cpu.StartOperation();
+        return newState.func(cpu, bus, 0);
+      }
+    default: assert(false && "Invalid step for absolute addressing mode"); return cpu.StartOperation();
   }
 }
 
@@ -366,39 +374,49 @@ Mos6502::State Mos6502::indirect(Mos6502& cpu, Bus& bus, size_t step)
   static_cast<void>(cpu);
   static_cast<void>(bus);
   static_cast<void>(step);
-  return {&Mos6502::StartOperation};
-}
-
-inline Mos6502::State Mos6502::CurrentState() const noexcept
-{
-  return {m_action};
+  return cpu.StartOperation();
 }
 
 template<Mos6502::Index index>
-Mos6502::State Mos6502::load(Mos6502& cpu, Bus& bus, size_t /*step*/)
+Mos6502::State Mos6502::load(Mos6502& cpu, Bus& bus, size_t step)
 {
-  // Addressing modes have already been applied, and the resulting data is in bus.data.
-  Byte* reg = nullptr;
-  if constexpr (index == Index::None)
-  {
-    reg = &cpu.m_a;
-  }
-  else if constexpr (index == Index::X)
-  {
-    reg = &cpu.m_x;
-  }
-  else if constexpr (index == Index::Y)
-  {
-    reg = &cpu.m_y;
-  }
-  assert(reg != nullptr);
-  *reg = bus.data;
-  // Check zero flag
-  cpu.SetFlag(Mos6502::Zero, *reg == 0);
-  // Check negative flag
-  cpu.SetFlag(Mos6502::Negative, (*reg & 0x80) != 0);
+  // This is a generic load operation for A, X, or Y registers.
 
-  return cpu.FinishOperation();
+  // We are in one of two states, if the addressing mode not immediate, then we need to read from the
+  // address that is located in m_bytes[1] and m_bytes[2]. If it is immediate, then that data has already
+  // been read, and is waiting on the bus.
+  if (step > 0 || cpu.m_instruction->addressMode == &Mos6502::immediate)
+  {
+    cpu.m_bytes[cpu.m_byteCount++] = bus.data;
+
+    Byte* reg = nullptr;
+    if constexpr (index == Index::None)
+    {
+      reg = &cpu.m_a;
+    }
+    else if constexpr (index == Index::X)
+    {
+      reg = &cpu.m_x;
+    }
+    else if constexpr (index == Index::Y)
+    {
+      reg = &cpu.m_y;
+    }
+    assert(reg != nullptr);
+    *reg = bus.data;
+    // Check zero flag
+    cpu.SetFlag(Mos6502::Zero, *reg == 0);
+    // Check negative flag
+    cpu.SetFlag(Mos6502::Negative, (*reg & 0x80) != 0);
+
+    return {nullptr};
+  }
+
+  // If we are not in the immediate mode, we need to read from the address
+  bus.address = MakeAddress(cpu.m_bytes[1], cpu.m_bytes[2]);
+  bus.control = Control::Read;
+
+  return {cpu.m_action};  // Need another step to read the data
 }
 
 inline Byte Mos6502::SetFlag(Byte flag, bool value) noexcept
