@@ -14,8 +14,6 @@
 
 #include "Mos6502/Bus.h"
 
-char Mos6502::trace_buffer[80];
-
 inline Address Add(Address lhs, uint16_t rhs)
 {
   return Address{static_cast<uint16_t>(static_cast<uint16_t>(lhs) + rhs)};
@@ -23,7 +21,8 @@ inline Address Add(Address lhs, uint16_t rhs)
 
 Mos6502::Mos6502() noexcept
 {
-  decodeNextInstruction(0x00);  // BRK/RST
+  m_instruction = nullptr;
+  m_action = nullptr;
 }
 
 Bus Mos6502::Tick(Bus bus) noexcept
@@ -33,8 +32,19 @@ Bus Mos6502::Tick(Bus bus) noexcept
   // If Sync is set, we are fetching a new instruction
   if ((bus.control & Control::Sync) != Control::None)
   {
+    assert(m_byteCount == 0);
+
     // load new instruction
+    m_bytes[m_byteCount++] = bus.data;
     decodeNextInstruction(bus.data);
+  }
+
+  if (m_instruction == nullptr)
+  {
+    // special case, startup
+    bus.address = m_pc++;
+    bus.control = Control::Read | Control::Sync;
+    return bus;
   }
 
   assert(m_instruction);
@@ -47,6 +57,7 @@ Bus Mos6502::Tick(Bus bus) noexcept
   if (!m_action)
   {
     // Instruction complete, fetch the next instruction
+    m_pcStart = m_pc;
     bus.address = m_pc++;
     bus.control = Control::Read | Control::Sync;
   }
@@ -58,55 +69,121 @@ void Mos6502::decodeNextInstruction(Byte opcode) noexcept
   // Decode opcode
   m_instruction = &c_instructions[static_cast<size_t>(opcode)];
   assert(m_instruction);
-  m_action = m_instruction->addressMode ? m_instruction->addressMode : m_instruction->operation;
+  m_action = m_instruction->addressMode ? m_instruction->addressMode : &Mos6502::StartOperation;
   assert(m_action);
   m_step = 0;
 }
 
 Mos6502::State Mos6502::FinishOperation() noexcept
 {
-  // Operation complete, log the instruction
-  // PC, Opcode, Byte1, Byte2, mnemonic, Address/Value, A, X, Y, SP, Status
-#ifdef MOS6502_TRACE
-  // Format the trace line
-
-  // Print PC as 4 hex digits
-  auto offset = std::snprintf(trace_buffer, sizeof(trace_buffer), "%04X  %-3s %02X ",  //
-      (static_cast<uint16_t>(m_pc) - m_instruction->bytes),  //
-      m_instruction->name.data(),  //
-      m_instruction->opcode);
-
-  // Print operand bytes or spaces for alignment
-  if (m_instruction->bytes == 1)
-  {
-    // 1 byte operand
-    offset += std::snprintf(trace_buffer + offset, sizeof(trace_buffer) - static_cast<size_t>(offset), "%02X   ", m_byte1);
-  }
-  else if (m_instruction->bytes == 2)
-  {
-    // 2 byte operand
-    offset += std::snprintf(
-        trace_buffer + offset, sizeof(trace_buffer) - static_cast<size_t>(offset), "%02X %02X", m_byte1, m_byte2);
-  }
-  else
-  {
-    // No operand bytes
-    offset += std::snprintf(trace_buffer + offset, sizeof(trace_buffer) - static_cast<size_t>(offset), "     ");
-  }
-
-  // Print registers
-  offset += std::snprintf(trace_buffer + offset, sizeof(trace_buffer) - static_cast<size_t>(offset),
-      "  A:%02X X:%02X Y:%02X P:%02X SP:%02X\n", a(), x(), y(), status(), sp());
-
-  // Output the trace line
-  std::fputs(trace_buffer, stdout);
-#endif
-
   m_step = 0;
-  m_byte1 = 0;
-  m_byte2 = 0;
+  m_byteCount = 0;
 
   return {nullptr};
+}
+
+Mos6502::State Mos6502::StartOperation(Mos6502& cpu, Bus& bus, size_t step)
+{
+  cpu.m_step = step = 0;
+
+  if (cpu.m_instruction->addressMode != c_implied)
+  {
+    cpu.m_bytes[cpu.m_byteCount++] = bus.data;
+  }
+
+#ifdef MOS6502_TRACE
+  // PC at start of instruction
+  std::string pcStr = std::format("{:04X}", cpu.m_pcStart);
+
+  // Get formatted instruction text (opcode, operands, mnemonic, data)
+  std::string instrStr = cpu.FormatOperands();
+
+  // Registers
+  std::string regStr = std::format(
+      "A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}", cpu.m_a, cpu.m_x, cpu.m_y, cpu.m_status, cpu.m_sp);
+
+  // Output the full line
+  std::cout << std::format("{}  {}  {}\n", pcStr, instrStr, regStr);
+
+#endif
+
+  cpu.m_step = 0;
+  cpu.m_action = cpu.m_instruction->operation;
+  return cpu.m_action(cpu, bus, step);
+}
+
+std::string Mos6502::FormatOperands() const
+{
+  std::string result;
+
+  // print raw bytes first (there could be as many as 4 bytes, fill space if less)
+  for (size_t i = 0; i != c_maxBytes; ++i)
+  {
+    if (i < m_byteCount)
+      result += std::format("{:02X} ", m_bytes[i]);
+    else
+      result += "   ";
+  }
+
+  result += m_instruction->name + " ";
+
+  // Now print operands (and data) based on the addressing mode.
+
+  // Implied / accumulator instructions
+  if (m_instruction->addressMode == c_implied)
+  {
+    // nothing to do
+  }
+#if 0
+  else if (m_instruction->addressMode == &Mos6502::accumulator)
+  {
+    // nothing to do
+  }
+#endif
+  // Immediate
+  else if (m_instruction->addressMode == &Mos6502::immediate)
+  {
+    assert(m_byteCount == 2);  // opcode + operand
+    result += std::format("#${:02X}", m_bytes[1]);
+  }
+  // Zero Page
+  else if (m_instruction->addressMode == &Mos6502::zero_page<>)
+  {
+    assert(m_byteCount == 3);  // opcode + operand + data
+    result += std::format("${:02X}   = {:02X}", m_bytes[1], m_bytes[2]);
+  }
+  else if (m_instruction->addressMode == &Mos6502::zero_page<Index::X>)
+  {
+    assert(m_byteCount == 3);  // opcode + operand + data
+    result += std::format("${:02X},X = {:02X}", m_bytes[1], m_bytes[2]);
+  }
+  else if (m_instruction->addressMode == &Mos6502::zero_page<Index::Y>)
+  {
+    assert(m_byteCount == 3);  // opcode + operand + data
+    result += std::format("${:02X},Y = {:02X}", m_bytes[1], m_bytes[2]);
+  }
+  // Absolute
+  else if (m_instruction->addressMode == &Mos6502::absolute<>)
+  {
+    assert(m_byteCount == 4);  // opcode + lo byte + hi byte + data
+    result += std::format("${:02X}{:02X} = {:02X}", m_bytes[2], m_bytes[1], m_bytes[3]);
+  }
+  else if (m_instruction->addressMode == &Mos6502::absolute<Index::X>)
+  {
+    assert(m_byteCount == 4);  // opcode + lo byte + hi byte + data
+    result += std::format("${:02X}{:02X},X = {:02X}", m_bytes[2], m_bytes[1], m_bytes[3]);
+  }
+  else if (m_instruction->addressMode == &Mos6502::absolute<Index::Y>)
+  {
+    assert(m_byteCount == 4);  // opcode + lo byte + hi byte + data
+    result += std::format("${:02X}{:02X},Y = {:02X}", m_bytes[2], m_bytes[1], m_bytes[3]);
+  }
+
+  // Pad to ~36 chars for nestest alignment
+  if (result.size() < 36)
+    result.resize(36, ' ');
+
+  return result;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -118,7 +195,8 @@ Mos6502::State Mos6502::immediate(Mos6502& cpu, Bus& bus, size_t step)
   assert(step == 0);
   bus.address = cpu.m_pc++;
   bus.control = Control::Read;
-  return cpu.StartOperation();  // Start the operation
+
+  return {&Mos6502::StartOperation};
 }
 
 // BRK, NMI, IRQ, and Reset operations all share similar logic for pushing the PC and status onto the stack
@@ -155,15 +233,15 @@ Mos6502::State Mos6502::doReset(Mos6502& cpu, Bus& bus, size_t step, bool forceR
       bus.control = Control::Read;
       return cpu.CurrentState();
     case 4:
-      cpu.m_byte1 = bus.data;
+      cpu.m_bytes[cpu.m_byteCount++] = bus.data;
       // Store the lo byte and fetch the high byte of the interrupt/reset vector
       bus.address = vector + 1;
       bus.control = Control::Read;
       return cpu.CurrentState();
     case 5:
       // Set PC to the interrupt/reset vector address
-      cpu.m_byte2 = bus.data;
-      cpu.m_pc = (MakeAddress(cpu.m_byte1, cpu.m_byte2));
+      cpu.m_bytes[cpu.m_byteCount++] = bus.data;
+      cpu.m_pc = (MakeAddress(cpu.m_bytes[1], cpu.m_bytes[2]));
       return cpu.FinishOperation();  // Operation complete
 
     default: assert(false && "Invalid step for BRK instruction"); return cpu.FinishOperation();

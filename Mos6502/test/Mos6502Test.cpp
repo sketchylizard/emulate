@@ -84,8 +84,7 @@ TEST_CASE("Mos6502: Functional_tests")
   auto programStart = Address{0x0400};
 
   // Set the reset vector to 0x0400
-  memory[Mos6502::c_brkVector] = LoByte(programStart);
-  memory[Mos6502::c_brkVector + 1] = HiByte(programStart);
+  cpu.set_pc(programStart);
 
   for (int i = 0; i < 20; ++i)
   {

@@ -4,6 +4,8 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <format>
+#include <iostream>
 #include <string_view>
 #include <tuple>
 
@@ -174,13 +176,13 @@ private:
     table[0x91] = {"STA", 0x91, 2, &Mos6502::indirect<Index::Y>,     &Mos6502::sta};
 
     // ORA variations
-    table[0x01] = {"ORA (Indirect,X)", 0x01, 2, &Mos6502::indirect<Index::X>    , &Mos6502::ora};
-    table[0x05] = {"ORA Zero Page"   , 0x05, 2, &Mos6502::zero_page<Index::None>, &Mos6502::ora};
-    table[0x0D] = {"ORA Absolute"    , 0x0D, 3, &Mos6502::absolute<Index::None> , &Mos6502::ora};
-    table[0x11] = {"ORA (Indirect),Y", 0x11, 2, &Mos6502::indirect<Index::Y>    , &Mos6502::ora};
-    table[0x15] = {"ORA Zero Page,X" , 0x15, 2, &Mos6502::zero_page<Index::X>   , &Mos6502::ora};
-    table[0x19] = {"ORA Absolute,Y"  , 0x19, 3, &Mos6502::absolute<Index::Y>    , &Mos6502::ora};
-    table[0x1D] = {"ORA Absolute,X"  , 0x1D, 3, &Mos6502::absolute<Index::X>    , &Mos6502::ora};
+    table[0x01] = {"ORA", 0x01, 2, &Mos6502::indirect<Index::X>    , &Mos6502::ora};
+    table[0x05] = {"ORA", 0x05, 2, &Mos6502::zero_page<Index::None>, &Mos6502::ora};
+    table[0x0D] = {"ORA", 0x0D, 3, &Mos6502::absolute<Index::None> , &Mos6502::ora};
+    table[0x11] = {"ORA", 0x11, 2, &Mos6502::indirect<Index::Y>    , &Mos6502::ora};
+    table[0x15] = {"ORA", 0x15, 2, &Mos6502::zero_page<Index::X>   , &Mos6502::ora};
+    table[0x19] = {"ORA", 0x19, 3, &Mos6502::absolute<Index::Y>    , &Mos6502::ora};
+    table[0x1D] = {"ORA", 0x1D, 3, &Mos6502::absolute<Index::X>    , &Mos6502::ora};
 
     // Add more instructions as needed
 
@@ -192,8 +194,12 @@ private:
 
   // State transition functions
   State CurrentState() const noexcept;
-  State StartOperation() noexcept;
   State FinishOperation() noexcept;
+
+  std::string FormatOperands() const;
+
+  // This pseudostate will handle common operations, like logging.
+  static State StartOperation(Mos6502& cpu, Bus& bus, size_t step);
 
   const Instruction* m_instruction = nullptr;
   StateFunc m_action = nullptr;
@@ -211,14 +217,13 @@ private:
   // Which step of the current instruction we are in
   Byte m_step{0};
 
-  // Scratch data for operations
-  Byte m_byte1{0};
-  Byte m_byte2{0};
+  // Maximum number of bytes for an instruction (opcode + up to 2 operands + data)
+  static constexpr size_t c_maxBytes = 4;
 
-// Add this at the top of the file, after includes
-#ifdef MOS6502_TRACE
-static char trace_buffer[80];
-#endif  
+  // Scratch data for operations and logging
+  Address m_pcStart{0};
+  Byte m_bytes[c_maxBytes];
+  Byte m_byteCount = 0;
 };
 
 inline Byte Mos6502::a() const noexcept
@@ -284,6 +289,8 @@ inline void Mos6502::set_status(Byte flags) noexcept
 template<Mos6502::Index index>
 Mos6502::State Mos6502::zero_page(Mos6502& cpu, Bus& bus, size_t step)
 {
+  Byte modifiedOffset = 0;
+
   // Handle zero-page X addressing mode
   switch (step)
   {
@@ -294,21 +301,22 @@ Mos6502::State Mos6502::zero_page(Mos6502& cpu, Bus& bus, size_t step)
       return cpu.CurrentState();  // Need another step to read the data
     case 1:
       // Read the data from zero-page address
-      cpu.m_byte1 = bus.data;
+      modifiedOffset = cpu.m_bytes[cpu.m_byteCount++] = bus.data;
+          
       // Add our index register (if this overflows, it wraps around in zero-page, this is the desired behavior.)
       if constexpr (index == Index::X)
       {
-        cpu.m_byte1 += cpu.m_x;
+        modifiedOffset += cpu.m_x;
       }
       else if constexpr (index == Index::Y)
       {
-        cpu.m_byte1 += cpu.m_y;
+        modifiedOffset += cpu.m_y;
       }
 
       // Set bus address for the next step
-      bus.address = MakeAddress(cpu.m_byte1, c_ZeroPage);
+      bus.address = MakeAddress(modifiedOffset, c_ZeroPage);
       bus.control = Control::Read;
-      return cpu.StartOperation();  // Start the operation
+      return {&Mos6502::StartOperation};
     default: assert(false && "Invalid step for zero-page index addressing mode"); return {};
   }
 }
@@ -316,6 +324,8 @@ Mos6502::State Mos6502::zero_page(Mos6502& cpu, Bus& bus, size_t step)
 template<Mos6502::Index index>
 Mos6502::State Mos6502::absolute(Mos6502& cpu, Bus& bus, size_t step)
 {
+  Address address{0};
+
   switch (step)
   {
     case 0:
@@ -325,26 +335,27 @@ Mos6502::State Mos6502::absolute(Mos6502& cpu, Bus& bus, size_t step)
       return cpu.CurrentState();
     case 1:
       // Store low byte and fetch high byte
-      cpu.m_byte1 = bus.data;
+      cpu.m_bytes[cpu.m_byteCount++] = bus.data;
       bus.address = cpu.m_pc++;
       bus.control = Control::Read;
       return cpu.CurrentState();
     case 2:
       // Fetch high byte and calculate address
-      cpu.m_byte2 = bus.data;
+      cpu.m_bytes[cpu.m_byteCount++] = bus.data;
+      address = MakeAddress(cpu.m_bytes[1], cpu.m_bytes[2]);
       // Set bus address for the next step
       if constexpr (index == Index::X)
       {
-        cpu.m_byte1 += cpu.m_x;
+        address += static_cast<int8_t>(cpu.m_x);
       }
       else if constexpr (index == Index::Y)
       {
-        cpu.m_byte1 += cpu.m_y;
+        address += static_cast<int8_t>(cpu.m_y);
       }
-      bus.address = MakeAddress(cpu.m_byte1, cpu.m_byte2);
+      bus.address = address;
       bus.control = Control::Read;
-      return cpu.StartOperation();  // Start the operation
-    default: assert(false && "Invalid step for absolute addressing mode"); return cpu.StartOperation();
+      return {&Mos6502::StartOperation};
+    default: assert(false && "Invalid step for absolute addressing mode"); return {&Mos6502::StartOperation};
   }
 }
 
@@ -355,19 +366,12 @@ Mos6502::State Mos6502::indirect(Mos6502& cpu, Bus& bus, size_t step)
   static_cast<void>(cpu);
   static_cast<void>(bus);
   static_cast<void>(step);
-  return cpu.StartOperation();  // Start the operation
+  return {&Mos6502::StartOperation};
 }
 
 inline Mos6502::State Mos6502::CurrentState() const noexcept
 {
   return {m_action};
-}
-
-inline Mos6502::State Mos6502::StartOperation() noexcept
-{
-  assert(m_instruction != nullptr);
-  m_step = 0;
-  return {m_instruction->operation};
 }
 
 template<Mos6502::Index index>
