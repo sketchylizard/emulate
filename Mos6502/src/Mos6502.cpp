@@ -82,96 +82,110 @@ Mos6502::State Mos6502::StartOperation()
 void Mos6502::Log() const
 {
 #ifdef MOS6502_TRACE
-  // Don't log if we don't have an instruction.
   if (!m_instruction)
     return;
 
+  char buffer[256];
+  auto it = std::begin(buffer);
+
   // PC at start of instruction
-  std::string pcStr = std::format("{:04X}", m_pcStart);
+  it = std::format_to(it, "{:04X}  ", m_pcStart);
 
-  // Get formatted instruction text (opcode, operands, mnemonic, data)
-  std::string instrStr = FormatOperands();
-
-  // Registers
-  std::string regStr = std::format("A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}", m_a, m_x, m_y, m_status, m_sp);
-
-  // Output the full line
-  std::cout << std::format("{}  {}  {}\n", pcStr, instrStr, regStr);
-
-#endif
-}
-
-std::string Mos6502::FormatOperands() const
-{
-  std::string result;
-
-  // print raw bytes first (there could be as many as 4 bytes, fill space if less)
+  // Raw bytes (up to 4)
   for (size_t i = 0; i != c_maxBytes; ++i)
   {
     if (i < m_byteCount)
-      result += std::format("{:02X} ", m_bytes[i]);
+      it = std::format_to(it, "{:02X} ", m_bytes[i]);
     else
-      result += "   ";
+      it = std::format_to(it, "   ");
   }
 
-  result.append(m_instruction->name);
-  result.append(" ");
+  // Mnemonic
+  it = std::format_to(it, "{} ", m_instruction->name);
 
-  // Now print operands (and data) based on the addressing mode.
-
-  // Implied / accumulator instructions
+  // Operand formatting by addressing mode
   if (m_instruction->addressMode == &Mos6502::implied)
   {
-    // nothing to do
+    // nothing
   }
   else if (m_instruction->addressMode == &Mos6502::accumulator)
   {
-    result.append("A");
+    it = std::format_to(it, "A");
   }
-  // Immediate
   else if (m_instruction->addressMode == &Mos6502::immediate)
   {
-    assert(m_byteCount == 2);  // opcode + operand
-    result += std::format("#${:02X}", m_bytes[1]);
+    assert(m_byteCount >= 2);
+    it = std::format_to(it, "#${:02X}", m_bytes[1]);
   }
-  // Zero Page
   else if (m_instruction->addressMode == &Mos6502::zero_page<>)
   {
-    assert(m_byteCount == 3);  // opcode + operand + data
-    result += std::format("${:02X}   = {:02X}", m_bytes[1], m_bytes[2]);
+    assert(m_byteCount >= 3);
+    it = std::format_to(it, "${:02X}   = {:02X}", m_bytes[1], m_bytes[2]);
   }
   else if (m_instruction->addressMode == &Mos6502::zero_page<Index::X>)
   {
-    assert(m_byteCount == 3);  // opcode + operand + data
-    result += std::format("${:02X},X = {:02X}", m_bytes[1], m_bytes[2]);
+    assert(m_byteCount >= 3);
+    it = std::format_to(it, "${:02X},X = {:02X}", m_bytes[1], m_bytes[2]);
   }
   else if (m_instruction->addressMode == &Mos6502::zero_page<Index::Y>)
   {
-    assert(m_byteCount == 3);  // opcode + operand + data
-    result += std::format("${:02X},Y = {:02X}", m_bytes[1], m_bytes[2]);
+    assert(m_byteCount >= 3);
+    it = std::format_to(it, "${:02X},Y = {:02X}", m_bytes[1], m_bytes[2]);
   }
-  // Absolute
   else if (m_instruction->addressMode == &Mos6502::absolute<>)
   {
-    assert(m_byteCount == 3);  // opcode + lo byte + hi byte + data
-    result += std::format("${:02X}{:02X}", m_bytes[2], m_bytes[1]);
+    assert(m_byteCount >= 3);
+    it = std::format_to(it, "${:02X}{:02X} = {:02X}", m_bytes[2], m_bytes[1], m_bytes[3]);
   }
   else if (m_instruction->addressMode == &Mos6502::absolute<Index::X>)
   {
-    assert(m_byteCount == 4);  // opcode + lo byte + hi byte + data
-    result += std::format("${:02X}{:02X},X = {:02X}", m_bytes[2], m_bytes[1], m_bytes[3]);
+    assert(m_byteCount >= 4);
+    it = std::format_to(it, "${:02X}{:02X},X = {:02X}", m_bytes[2], m_bytes[1], m_bytes[3]);
   }
   else if (m_instruction->addressMode == &Mos6502::absolute<Index::Y>)
   {
-    assert(m_byteCount == 4);  // opcode + lo byte + hi byte + data
-    result += std::format("${:02X}{:02X},Y = {:02X}", m_bytes[2], m_bytes[1], m_bytes[3]);
+    assert(m_byteCount >= 4);
+    it = std::format_to(it, "${:02X}{:02X},Y = {:02X}", m_bytes[2], m_bytes[1], m_bytes[3]);
+  }
+  // Indirect
+  else if (m_instruction->addressMode == &Mos6502::indirect<>)
+  {
+    assert(m_byteCount >= 3);
+    it = std::format_to(it, "(${:02X}{:02X})", m_bytes[2], m_bytes[1]);
+  }
+  // Indexed Indirect (Indirect,X)
+  else if (m_instruction->addressMode == &Mos6502::indirect<Index::X>)
+  {
+    assert(m_byteCount >= 3);
+    it = std::format_to(it, "(${:02X},X) = {:02X}", m_bytes[1], m_bytes[2]);
+  }
+  // Indirect Indexed (Indirect),Y
+  else if (m_instruction->addressMode == &Mos6502::indirect<Index::Y>)
+  {
+    assert(m_byteCount >= 3);
+    it = std::format_to(it, "(${:02X}),Y = {:02X}", m_bytes[1], m_bytes[2]);
+  }
+  // Relative (for branches)
+  else if (m_instruction->addressMode == &Mos6502::relative)
+  {
+    assert(m_byteCount >= 2);
+    Byte offset = static_cast<Byte>(m_bytes[1]);
+    Address target = m_pcStart + 2 + static_cast<int8_t>(offset);
+    it = std::format_to(it, "${:04X}", target);
   }
 
-  // Pad to ~36 chars for nestest alignment
-  if (result.size() < 36)
-    result.resize(36, ' ');
+  // Pad to ~36 chars for alignment
+  size_t pad = 36 - static_cast<size_t>(it - buffer);
+  if (pad > 0)
+    it = std::format_to(it, "{:{}}", "", pad);
 
-  return result;
+  // Registers
+  it = std::format_to(it, "A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}", m_a, m_x, m_y, m_status, m_sp);
+
+  // Null-terminate and print
+  *it = '\0';
+  std::cout << buffer << '\n';
+#endif
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -337,6 +351,7 @@ Mos6502::State Mos6502::bne(Mos6502& cpu, Bus& bus, size_t step)
   static_cast<void>(step);
   assert(step == 0);
 
+  cpu.m_bytes[cpu.m_byteCount++] = bus.data;
   if (!(cpu.m_status & Mos6502::Zero))
   {
     // If the zero flag is set, we do not branch
@@ -351,6 +366,7 @@ Mos6502::State Mos6502::beq(Mos6502& cpu, Bus& bus, size_t step)
   static_cast<void>(step);
   assert(step == 0);
 
+  cpu.m_bytes[cpu.m_byteCount++] = bus.data;
   if (cpu.m_status & Mos6502::Zero)
   {
     // If the zero flag is set, we do not branch

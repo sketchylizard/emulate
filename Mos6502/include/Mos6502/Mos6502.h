@@ -233,7 +233,6 @@ private:
   State FinishOperation() noexcept;
 
   void Log() const;
-  std::string FormatOperands() const;
 
   const Instruction* m_instruction = nullptr;
   StateFunc m_action = nullptr;
