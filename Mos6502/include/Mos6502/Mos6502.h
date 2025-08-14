@@ -90,6 +90,8 @@ private:
 
   static State immediate(Mos6502& cpu, Bus& bus, size_t step);
 
+  static State relative(Mos6502& cpu, Bus& bus, size_t step);
+
   template<Index index = Index::None>
   static State zero_page(Mos6502& cpu, Bus& bus, size_t step);
 
@@ -117,6 +119,18 @@ private:
 
   static State sta(Mos6502& cpu, Bus& bus, size_t step);
   static State ora(Mos6502& cpu, Bus& bus, size_t step);
+
+  static State jmp(Mos6502& cpu, Bus& bus, size_t step);
+  static State bne(Mos6502& cpu, Bus& bus, size_t step);
+  static State beq(Mos6502& cpu, Bus& bus, size_t step);
+
+  template<Index index>
+    requires(index != Index::None)
+  static State increment(Mos6502& cpu, Bus& bus, size_t step);
+
+  template<Index index>
+    requires(index != Index::None)
+  static State decrement(Mos6502& cpu, Bus& bus, size_t step);
 
   static constexpr std::array<Instruction, 256> c_instructions = []
   {
@@ -186,6 +200,20 @@ private:
     table[0x15] = {"ORA", 0x15, 2, &Mos6502::zero_page<Index::X>   , &Mos6502::ora};
     table[0x19] = {"ORA", 0x19, 3, &Mos6502::absolute<Index::Y>    , &Mos6502::ora};
     table[0x1D] = {"ORA", 0x1D, 3, &Mos6502::absolute<Index::X>    , &Mos6502::ora};
+
+    // JMP Absolute and JMP Indirect
+    table[0x4C] = {"JMP", 0x4C, 3, &Mos6502::absolute<>, &Mos6502::jmp};
+    table[0x6C] = {"JMP", 0x6C, 3, &Mos6502::indirect  , &Mos6502::jmp};
+
+    // Branch instructions
+    table[0xD0] = {"BNE", 0xD0, 2, &Mos6502::relative  , &Mos6502::bne};
+    table[0xF0] = {"BEQ", 0xF0, 2, &Mos6502::relative  , &Mos6502::beq};
+
+    // Increment and Decrement instructions
+    table[0xE8] = {"INX", 0xE8, 2, &Mos6502::implied  , &Mos6502::increment<Index::X>};
+    table[0xC8] = {"INY", 0xC8, 2, &Mos6502::implied  , &Mos6502::increment<Index::Y>};
+    table[0xCA] = {"DEX", 0xCA, 2, &Mos6502::implied  , &Mos6502::decrement<Index::X>};
+    table[0x88] = {"DEY", 0x88, 2, &Mos6502::implied  , &Mos6502::decrement<Index::Y>};
 
     // Add more instructions as needed
 
@@ -417,6 +445,50 @@ Mos6502::State Mos6502::load(Mos6502& cpu, Bus& bus, size_t step)
   bus.control = Control::Read;
 
   return {cpu.m_action};  // Need another step to read the data
+}
+
+template <Mos6502::Index index>
+requires (index != Mos6502::Index::None)
+Mos6502::State Mos6502::increment(Mos6502& cpu, Bus& /*bus*/, size_t step)
+{
+  // Handle increment operation for X or Y registers
+  assert(step == 0);
+  static_cast<void>(step);
+  if constexpr (index == Index::X)
+  {
+    cpu.m_x++;
+    cpu.SetFlag(Mos6502::Zero, cpu.m_x == 0);
+    cpu.SetFlag(Mos6502::Negative, (cpu.m_x & 0x80) != 0);
+  }
+  else if constexpr (index == Index::Y)
+  {
+    cpu.m_y++;
+    cpu.SetFlag(Mos6502::Zero, cpu.m_y == 0);
+    cpu.SetFlag(Mos6502::Negative, (cpu.m_y & 0x80) != 0);
+  }
+  return {nullptr};
+}
+
+template <Mos6502::Index index>
+requires (index != Mos6502::Index::None)
+Mos6502::State Mos6502::decrement(Mos6502& cpu, Bus& /*bus*/, size_t step)
+{
+  // Handle increment operation for X or Y registers
+  assert(step == 0);
+  static_cast<void>(step);
+  if constexpr (index == Index::X)
+  {
+    cpu.m_x++;
+    cpu.SetFlag(Mos6502::Zero, cpu.m_x == 0);
+    cpu.SetFlag(Mos6502::Negative, (cpu.m_x & 0x80) != 0);
+  }
+  else if constexpr (index == Index::Y)
+  {
+    cpu.m_y++;
+    cpu.SetFlag(Mos6502::Zero, cpu.m_y == 0);
+    cpu.SetFlag(Mos6502::Negative, (cpu.m_y & 0x80) != 0);
+  }
+  return {nullptr};
 }
 
 inline Byte Mos6502::SetFlag(Byte flag, bool value) noexcept

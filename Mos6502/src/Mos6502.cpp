@@ -204,6 +204,16 @@ Mos6502::State Mos6502::immediate(Mos6502& cpu, Bus& bus, size_t step)
   return cpu.StartOperation();
 }
 
+Mos6502::State Mos6502::relative(Mos6502& cpu, Bus& bus, size_t step)
+{
+  // Handle relative addressing mode
+  assert(step == 0);
+  bus.address = cpu.m_pc++;
+  bus.control = Control::Read;
+
+  return cpu.StartOperation();
+}
+
 // BRK, NMI, IRQ, and Reset operations all share similar logic for pushing the PC and status onto the stack
 // and setting the PC to the appropriate vector address. This function handles that logic.
 // It returns true when the operation is complete. If forceRead is true, it force the bus to READ rather than WRITE mode
@@ -310,5 +320,42 @@ Mos6502::State Mos6502::ora(Mos6502& cpu, Bus& bus, size_t step)
   cpu.m_a |= bus.data;
   cpu.SetFlag(Mos6502::Zero, cpu.m_a == 0);  // Set zero flag
   cpu.SetFlag(Mos6502::Negative, cpu.m_a & 0x80);  // Set negative flag
+  return {nullptr};
+}
+
+Mos6502::State Mos6502::jmp(Mos6502& cpu, Bus& /*bus*/, size_t step)
+{
+  static_cast<void>(step);
+  assert(step == 0);
+
+  cpu.m_pc = cpu.m_effectiveAddress;
+  return {nullptr};
+}
+
+Mos6502::State Mos6502::bne(Mos6502& cpu, Bus& bus, size_t step)
+{
+  static_cast<void>(step);
+  assert(step == 0);
+
+  if (!(cpu.m_status & Mos6502::Zero))
+  {
+    // If the zero flag is set, we do not branch
+    cpu.m_bytes[cpu.m_byteCount++] = bus.data;
+    cpu.m_pc += static_cast<int8_t>(bus.data);
+  }
+  return {nullptr};
+}
+
+Mos6502::State Mos6502::beq(Mos6502& cpu, Bus& bus, size_t step)
+{
+  static_cast<void>(step);
+  assert(step == 0);
+
+  if (cpu.m_status & Mos6502::Zero)
+  {
+    // If the zero flag is set, we do not branch
+    cpu.m_bytes[cpu.m_byteCount++] = bus.data;
+    cpu.m_pc += static_cast<int8_t>(bus.data);
+  }
   return {nullptr};
 }
