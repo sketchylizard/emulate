@@ -10,15 +10,13 @@
 #include <tuple>
 
 #include "Mos6502/Bus.h"
+#include "Mos6502/Log.h"
 
 #define MOS6502_TRACE 1
 
 class Mos6502
 {
 public:
-  static constexpr Byte c_ZeroPage{0x00};
-  static constexpr Byte c_StackPage{0x01};
-
   static constexpr Address c_nmiVector = Address{0xFFFA};
   static constexpr Address c_resetVector = Address{0xFFFC};
   static constexpr Address c_irqVector = Address{0xFFFE};
@@ -31,6 +29,18 @@ public:
   static constexpr Byte Break = 1 << 4;
   static constexpr Byte Overflow = 1 << 5;
   static constexpr Byte Negative = 1 << 6;
+
+  //! Bus should be a new bus state.
+  using StateFunc = Bus (*)(Mos6502&, Bus bus, size_t step);
+
+  struct Instruction
+  {
+    std::string_view name;
+    Byte opcode;
+    uint8_t bytes;
+    StateFunc addressMode;
+    StateFunc operation;
+  };
 
   Mos6502() noexcept;
 
@@ -55,171 +65,8 @@ public:
   Bus Tick(Bus bus) noexcept;
 
 private:
-  struct State;
-
-  //! State should the new state if the instruction is complete
-  using StateFunc = State (*)(Mos6502&, Bus& bus, size_t step);
-
-  struct State
-  {
-    StateFunc func = nullptr;
-  };
-
-  struct Instruction
-  {
-    std::string_view name;
-    Byte opcode;
-    uint8_t bytes;
-    StateFunc addressMode;
-    StateFunc operation;
-  };
-
-  enum class Index
-  {
-    None,
-    X,
-    Y
-  };
-
-  static State doReset(Mos6502& cpu, Bus& bus, size_t step, bool forceRead, Address vector);
-
-  //! Addressing modes
-  static State implied(Mos6502& cpu, Bus& bus, size_t step);
-
-  static State accumulator(Mos6502& cpu, Bus& bus, size_t step);
-
-  static State immediate(Mos6502& cpu, Bus& bus, size_t step);
-
-  static State relative(Mos6502& cpu, Bus& bus, size_t step);
-
-  template<Index index = Index::None>
-  static State zero_page(Mos6502& cpu, Bus& bus, size_t step);
-
-  template<Index index = Index::None>
-  static State absolute(Mos6502& cpu, Bus& bus, size_t step);
-
-  template<Index index = Index::None>
-  static State indirect(Mos6502& cpu, Bus& bus, size_t step);
-
   //! Turns the given flag on or off depending on value.
   Byte SetFlag(Byte flag, bool value) noexcept;
-
-  //! Operations
-  // Note: These operations will be called by the instruction execution loop and should either m_action if
-  // they are still executing or FinishOperation() if they have completed.
-
-  static State brk(Mos6502& cpu, Bus& bus, size_t step);
-  static State adc(Mos6502& cpu, Bus& bus, size_t step);
-
-  template<Index index = Index::None>
-  static State load(Mos6502& cpu, Bus& bus, size_t step);
-
-  static State cld(Mos6502& cpu, Bus& bus, size_t step);
-  static State txs(Mos6502& cpu, Bus& bus, size_t step);
-
-  static State sta(Mos6502& cpu, Bus& bus, size_t step);
-  static State ora(Mos6502& cpu, Bus& bus, size_t step);
-
-  static State jmp(Mos6502& cpu, Bus& bus, size_t step);
-  static State bne(Mos6502& cpu, Bus& bus, size_t step);
-  static State beq(Mos6502& cpu, Bus& bus, size_t step);
-
-  template<Index index>
-    requires(index != Index::None)
-  static State increment(Mos6502& cpu, Bus& bus, size_t step);
-
-  template<Index index>
-    requires(index != Index::None)
-  static State decrement(Mos6502& cpu, Bus& bus, size_t step);
-
-  static constexpr std::array<Instruction, 256> c_instructions = []
-  {
-    std::array<Instruction, 256> table{};
-    // Fill with default NOPs or empty instructions
-    for (size_t i = 0; i < 256; ++i)
-    {
-      table[i] = {"???", static_cast<Byte>(i), 1, nullptr, nullptr};
-    }
-    // clang-format off
-
-    // Insert actual instructions by opcode
-    table[0x00] = {"BRK", 0x00, 1, &Mos6502::implied, &Mos6502::brk};
-    table[0xEA] = {"NOP", 0xEA, 1, &Mos6502::implied, nullptr};
-
-    // ADC instructions
-    table[0x69] = {"ADC", 0x69, 2, &Mos6502::immediate, &Mos6502::adc};                        // Immediate
-    table[0x65] = {"ADC", 0x65, 2, &Mos6502::zero_page<Mos6502::Index::None>, &Mos6502::adc};  // Zero Page
-    table[0x75] = {"ADC", 0x75, 2, &Mos6502::zero_page<Mos6502::Index::X>, &Mos6502::adc};     // Zero Page,X
-    table[0x6D] = {"ADC", 0x6D, 3, &Mos6502::absolute<Mos6502::Index::None>, &Mos6502::adc};   // Absolute
-    table[0x7D] = {"ADC", 0x7D, 3, &Mos6502::absolute<Mos6502::Index::X>, &Mos6502::adc};      // Absolute,X
-    table[0x79] = {"ADC", 0x79, 3, &Mos6502::absolute<Mos6502::Index::Y>, &Mos6502::adc};      // Absolute,Y
-    table[0x61] = {"ADC", 0x61, 2, &Mos6502::indirect<Mos6502::Index::X>, &Mos6502::adc};      // (Indirect,X)
-    table[0x71] = {"ADC", 0x71, 2, &Mos6502::indirect<Mos6502::Index::Y>, &Mos6502::adc};      // (Indirect),Y
-
-    // LDA instructions
-    table[0xA9] = {"LDA", 0xA9, 2, &Mos6502::immediate, &Mos6502::load<Mos6502::Index::None>};  // Immediate
-    table[0xA5] = {"LDA", 0xA5, 2, &Mos6502::zero_page<Mos6502::Index::None>, &Mos6502::load<Mos6502::Index::None>};  // Zero Page
-    table[0xB5] = {"LDA", 0xB5, 2, &Mos6502::zero_page<Mos6502::Index::X>, &Mos6502::load<Mos6502::Index::None>};  // Zero Page,X
-    table[0xAD] = {"LDA", 0xAD, 3, &Mos6502::absolute<Mos6502::Index::None>, &Mos6502::load<Mos6502::Index::None>};  // Absolute
-    table[0xBD] = {"LDA", 0xBD, 3, &Mos6502::absolute<Mos6502::Index::X>, &Mos6502::load<Mos6502::Index::None>};  // Absolute,X
-    table[0xB9] = {"LDA", 0xB9, 3, &Mos6502::absolute<Mos6502::Index::Y>, &Mos6502::load<Mos6502::Index::None>};  // Absolute,Y
-    table[0xA1] = {"LDA", 0xA1, 2, &Mos6502::indirect<Mos6502::Index::X>, &Mos6502::load<Mos6502::Index::None>};  // (Indirect,X)
-    table[0xB1] = {"LDA", 0xB1, 2, &Mos6502::indirect<Mos6502::Index::Y>, &Mos6502::load<Mos6502::Index::None>};  // (Indirect),Y
-
-    // LDX instructions
-    table[0xA2] = {"LDX", 0xA2, 2, &Mos6502::immediate, &Mos6502::load<Mos6502::Index::X>};  // Immediate
-    table[0xA6] = {"LDX", 0xA6, 2, &Mos6502::zero_page<Mos6502::Index::None>, &Mos6502::load<Mos6502::Index::X>};  // Zero Page
-    table[0xB6] = {"LDX", 0xB6, 2, &Mos6502::zero_page<Mos6502::Index::Y>, &Mos6502::load<Mos6502::Index::X>};  // Zero Page,Y
-    table[0xAE] = {"LDX", 0xAE, 3, &Mos6502::absolute<Mos6502::Index::None>, &Mos6502::load<Mos6502::Index::X>};  // Absolute
-    table[0xBE] = {"LDX", 0xBE, 3, &Mos6502::absolute<Mos6502::Index::Y>, &Mos6502::load<Mos6502::Index::X>};  // Absolute,Y
-
-    // LDY instructions
-    table[0xA0] = {"LDY", 0xA0, 2, &Mos6502::immediate, &Mos6502::load<Mos6502::Index::Y>};  // Immediate
-    table[0xA4] = {"LDY", 0xA4, 2, &Mos6502::zero_page<Mos6502::Index::None>, &Mos6502::load<Mos6502::Index::Y>};  // Zero Page
-    table[0xB4] = {"LDY", 0xB4, 2, &Mos6502::zero_page<Mos6502::Index::X>, &Mos6502::load<Mos6502::Index::Y>};  // Zero Page,X
-    table[0xAC] = {"LDY", 0xAC, 3, &Mos6502::absolute<Mos6502::Index::None>, &Mos6502::load<Mos6502::Index::Y>};  // Absolute
-    table[0xBC] = {"LDY", 0xBC, 3, &Mos6502::absolute<Mos6502::Index::X>, &Mos6502::load<Mos6502::Index::Y>};  // Absolute,X
-
-    table[0xD8] = {"CLD", 0xD8, 1,&Mos6502::implied, &Mos6502::cld};
-    table[0x9A] = {"TXS", 0x9A, 1, &Mos6502::implied, &Mos6502::txs};
-
-    // STA variations
-    table[0x85] = {"STA", 0x85, 2, &Mos6502::zero_page<Index::None>, &Mos6502::sta};
-    table[0x95] = {"STA", 0x95, 2, &Mos6502::zero_page<Index::X>,    &Mos6502::sta};
-    table[0x8D] = {"STA", 0x8D, 3, &Mos6502::absolute<Index::None>,  &Mos6502::sta};
-    table[0x9D] = {"STA", 0x9D, 3, &Mos6502::absolute<Index::X>,     &Mos6502::sta};
-    table[0x99] = {"STA", 0x99, 3, &Mos6502::absolute<Index::Y>,     &Mos6502::sta};
-    table[0x81] = {"STA", 0x81, 2, &Mos6502::indirect<Index::X>,     &Mos6502::sta};
-    table[0x91] = {"STA", 0x91, 2, &Mos6502::indirect<Index::Y>,     &Mos6502::sta};
-
-    // ORA variations
-    table[0x01] = {"ORA", 0x01, 2, &Mos6502::indirect<Index::X>    , &Mos6502::ora};
-    table[0x05] = {"ORA", 0x05, 2, &Mos6502::zero_page<Index::None>, &Mos6502::ora};
-    table[0x0D] = {"ORA", 0x0D, 3, &Mos6502::absolute<Index::None> , &Mos6502::ora};
-    table[0x11] = {"ORA", 0x11, 2, &Mos6502::indirect<Index::Y>    , &Mos6502::ora};
-    table[0x15] = {"ORA", 0x15, 2, &Mos6502::zero_page<Index::X>   , &Mos6502::ora};
-    table[0x19] = {"ORA", 0x19, 3, &Mos6502::absolute<Index::Y>    , &Mos6502::ora};
-    table[0x1D] = {"ORA", 0x1D, 3, &Mos6502::absolute<Index::X>    , &Mos6502::ora};
-
-    // JMP Absolute and JMP Indirect
-    table[0x4C] = {"JMP", 0x4C, 3, &Mos6502::absolute<>, &Mos6502::jmp};
-    table[0x6C] = {"JMP", 0x6C, 3, &Mos6502::indirect  , &Mos6502::jmp};
-
-    // Branch instructions
-    table[0xD0] = {"BNE", 0xD0, 2, &Mos6502::relative  , &Mos6502::bne};
-    table[0xF0] = {"BEQ", 0xF0, 2, &Mos6502::relative  , &Mos6502::beq};
-
-    // Increment and Decrement instructions
-    table[0xE8] = {"INX", 0xE8, 2, &Mos6502::implied  , &Mos6502::increment<Index::X>};
-    table[0xC8] = {"INY", 0xC8, 2, &Mos6502::implied  , &Mos6502::increment<Index::Y>};
-    table[0xCA] = {"DEX", 0xCA, 2, &Mos6502::implied  , &Mos6502::decrement<Index::X>};
-    table[0x88] = {"DEY", 0x88, 2, &Mos6502::implied  , &Mos6502::decrement<Index::Y>};
-
-    // Add more instructions as needed
-
-    // clang-format off
-    return table;
-  }();
 
   // State transition functions
 
@@ -227,12 +74,22 @@ private:
   void DecodeNextInstruction(Byte opcode) noexcept;
 
   // Transition from addressing mode to operation.
-  State StartOperation();
+  Bus StartOperation(Bus bus);
 
-  // Complete the operation state and prefetch the next opcode.
-  State FinishOperation() noexcept;
+  // Transition from operation to next instruction.
+  Bus FinishOperation();
 
   void Log() const;
+
+  friend struct AddressModes;
+  friend struct Operations;
+
+  struct Operand
+  {
+    bool isAddress = false;
+    Byte byte{0};
+    Address address{0};
+  };
 
   const Instruction* m_instruction = nullptr;
   StateFunc m_action = nullptr;
@@ -250,14 +107,14 @@ private:
   // Which step of the current instruction we are in
   Byte m_step{0};
 
-  // Maximum number of bytes for an instruction (opcode + up to 2 operands + data)
-  static constexpr size_t c_maxBytes = 4;
-
   // Scratch data for operations and logging
   Address m_pcStart{0};
-  Address m_effectiveAddress{0};
-  Byte m_bytes[c_maxBytes];
-  Byte m_byteCount = 0;
+  Address m_target{0};
+  Byte m_operand;
+  Byte m_bytes[3] = {};
+  Byte m_byteCount{0};
+
+  LogBuffer m_log;
 };
 
 inline Byte Mos6502::a() const noexcept
@@ -318,176 +175,6 @@ inline Byte Mos6502::status() const noexcept
 inline void Mos6502::set_status(Byte flags) noexcept
 {
   m_status = flags;
-}
-
-template<Mos6502::Index index>
-Mos6502::State Mos6502::zero_page(Mos6502& cpu, Bus& bus, size_t step)
-{
-  Byte modifiedOffset = 0;
-
-  // Handle zero-page X addressing mode
-  switch (step)
-  {
-    case 0:
-      // Fetch the zero-page address
-      bus.address = cpu.m_pc++;
-      bus.control = Control::Read;
-      return {cpu.m_action};  // Need another step to read the data
-    case 1:
-      // Read the data from zero-page address
-      modifiedOffset = cpu.m_bytes[cpu.m_byteCount++] = bus.data;
-          
-      // Add our index register (if this overflows, it wraps around in zero-page, this is the desired behavior.)
-      if constexpr (index == Index::X)
-      {
-        modifiedOffset += cpu.m_x;
-      }
-      else if constexpr (index == Index::Y)
-      {
-        modifiedOffset += cpu.m_y;
-      }
-
-      // Set bus address for the next step
-      bus.address = MakeAddress(modifiedOffset, c_ZeroPage);
-      bus.control = Control::Read;
-      return cpu.StartOperation();
-    default: assert(false && "Invalid step for zero-page index addressing mode"); return {};
-  }
-}
-
-template<Mos6502::Index index>
-Mos6502::State Mos6502::absolute(Mos6502& cpu, Bus& bus, size_t step)
-{
-  switch (step)
-  {
-    case 0:
-      // Fetch low byte
-      bus.address = cpu.m_pc++;
-      bus.control = Control::Read;
-      return {cpu.m_action};
-    case 1:
-      // Store low byte and fetch high byte
-      cpu.m_bytes[cpu.m_byteCount++] = bus.data;
-      bus.address = cpu.m_pc++;
-      bus.control = Control::Read;
-      return {cpu.m_action};
-    case 2:
-      // Fetch high byte and calculate address
-      cpu.m_bytes[cpu.m_byteCount++] = bus.data;
-      cpu.m_effectiveAddress = MakeAddress(cpu.m_bytes[1], cpu.m_bytes[2]);
-      // Set bus address for the next step
-      if constexpr (index == Index::X)
-      {
-        cpu.m_effectiveAddress += static_cast<int8_t>(cpu.m_x);
-      }
-      else if constexpr (index == Index::Y)
-      {
-        cpu.m_effectiveAddress += static_cast<int8_t>(cpu.m_y);
-      }
-      
-      // Now that we've fetched the address, we need to start executing immediately
-      {
-        auto newState = cpu.StartOperation();
-        return newState.func(cpu, bus, 0);
-      }
-    default: assert(false && "Invalid step for absolute addressing mode"); return cpu.StartOperation();
-  }
-}
-
-template<Mos6502::Index index>
-Mos6502::State Mos6502::indirect(Mos6502& cpu, Bus& bus, size_t step)
-{
-  // suppress unused variable warning
-  static_cast<void>(cpu);
-  static_cast<void>(bus);
-  static_cast<void>(step);
-  return cpu.StartOperation();
-}
-
-template<Mos6502::Index index>
-Mos6502::State Mos6502::load(Mos6502& cpu, Bus& bus, size_t step)
-{
-  // This is a generic load operation for A, X, or Y registers.
-
-  // We are in one of two states, if the addressing mode not immediate, then we need to read from the
-  // address that is located in m_bytes[1] and m_bytes[2]. If it is immediate, then that data has already
-  // been read, and is waiting on the bus.
-  if (step > 0 || cpu.m_instruction->addressMode == &Mos6502::immediate)
-  {
-    cpu.m_bytes[cpu.m_byteCount++] = bus.data;
-
-    Byte* reg = nullptr;
-    if constexpr (index == Index::None)
-    {
-      reg = &cpu.m_a;
-    }
-    else if constexpr (index == Index::X)
-    {
-      reg = &cpu.m_x;
-    }
-    else if constexpr (index == Index::Y)
-    {
-      reg = &cpu.m_y;
-    }
-    assert(reg != nullptr);
-    *reg = bus.data;
-    // Check zero flag
-    cpu.SetFlag(Mos6502::Zero, *reg == 0);
-    // Check negative flag
-    cpu.SetFlag(Mos6502::Negative, (*reg & 0x80) != 0);
-
-    return {nullptr};
-  }
-
-  // If we are not in the immediate mode, we need to read from the address
-  bus.address = MakeAddress(cpu.m_bytes[1], cpu.m_bytes[2]);
-  bus.control = Control::Read;
-
-  return {cpu.m_action};  // Need another step to read the data
-}
-
-template <Mos6502::Index index>
-requires (index != Mos6502::Index::None)
-Mos6502::State Mos6502::increment(Mos6502& cpu, Bus& /*bus*/, size_t step)
-{
-  // Handle increment operation for X or Y registers
-  assert(step == 0);
-  static_cast<void>(step);
-  if constexpr (index == Index::X)
-  {
-    cpu.m_x++;
-    cpu.SetFlag(Mos6502::Zero, cpu.m_x == 0);
-    cpu.SetFlag(Mos6502::Negative, (cpu.m_x & 0x80) != 0);
-  }
-  else if constexpr (index == Index::Y)
-  {
-    cpu.m_y++;
-    cpu.SetFlag(Mos6502::Zero, cpu.m_y == 0);
-    cpu.SetFlag(Mos6502::Negative, (cpu.m_y & 0x80) != 0);
-  }
-  return {nullptr};
-}
-
-template <Mos6502::Index index>
-requires (index != Mos6502::Index::None)
-Mos6502::State Mos6502::decrement(Mos6502& cpu, Bus& /*bus*/, size_t step)
-{
-  // Handle increment operation for X or Y registers
-  assert(step == 0);
-  static_cast<void>(step);
-  if constexpr (index == Index::X)
-  {
-    cpu.m_x++;
-    cpu.SetFlag(Mos6502::Zero, cpu.m_x == 0);
-    cpu.SetFlag(Mos6502::Negative, (cpu.m_x & 0x80) != 0);
-  }
-  else if constexpr (index == Index::Y)
-  {
-    cpu.m_y++;
-    cpu.SetFlag(Mos6502::Zero, cpu.m_y == 0);
-    cpu.SetFlag(Mos6502::Negative, (cpu.m_y & 0x80) != 0);
-  }
-  return {nullptr};
 }
 
 inline Byte Mos6502::SetFlag(Byte flag, bool value) noexcept

@@ -22,32 +22,6 @@ enum class Control : uint8_t
   Sync = 1 << 5,
 };
 
-struct Bus
-{
-  Address address;
-  Byte data;
-  Control control;
-};
-
-// Specialize formatter for Address and Control
-template<>
-struct std::formatter<Address> : std::formatter<uint16_t>
-{
-  auto format(const Address& addr, auto& ctx) const
-  {
-    return std::formatter<uint16_t>::format(static_cast<uint16_t>(addr), ctx);
-  }
-};
-
-template<>
-struct std::formatter<Control> : std::formatter<uint8_t>
-{
-  auto format(const Control& ctrl, auto& ctx) const
-  {
-    return std::formatter<uint8_t>::format(static_cast<uint8_t>(ctrl), ctx);
-  }
-};
-
 constexpr Control& operator|=(Control& lhs, Control rhs) noexcept
 {
   return lhs = static_cast<Control>(static_cast<uint8_t>(lhs) | static_cast<uint8_t>(rhs));
@@ -78,12 +52,85 @@ constexpr bool operator!(Control value) noexcept
   return static_cast<uint8_t>(value) == 0;
 }
 
+struct Bus
+{
+  Address address;
+  Byte data;
+  Control control;
+
+  constexpr bool isRead() const noexcept
+  {
+    return hasControl(Control::Read);
+  }
+
+  constexpr bool isWrite() const noexcept
+  {
+    return !hasControl(Control::Read);
+  }
+
+  constexpr bool isSync() const noexcept
+  {
+    return hasControl(Control::Sync);
+  }
+
+  constexpr bool hasControl(Control flag) const noexcept
+  {
+    return (control & flag) == flag;
+  }
+
+  static constexpr Bus Read(Address addr, Control additionalFlags = Control::None) noexcept
+  {
+    return Bus{addr, 0, Control::Read | additionalFlags};
+  }
+
+  static constexpr Bus Write(Address addr, Byte data, Control additionalFlags = Control::None) noexcept
+  {
+    return Bus{addr, data, additionalFlags & ~Control::Read};
+  }
+
+  static constexpr Bus Fetch(Address addr) noexcept
+  {
+    return Bus{addr, 0, Control::Read | Control::Sync};
+  }
+};
+
+struct BusResponse
+{
+  uint8_t data;
+  bool ready = true;  // for devices that need wait states
+};
+
+constexpr Address operator""_addr(unsigned long long value) noexcept
+{
+  assert(value <= 0xFFFF);
+  return Address{static_cast<uint16_t>(value)};
+}
+
+// Specialize formatter for Address and Control
+template<>
+struct std::formatter<Address> : std::formatter<uint16_t>
+{
+  auto format(const Address& addr, auto& ctx) const
+  {
+    return std::formatter<uint16_t>::format(static_cast<uint16_t>(addr), ctx);
+  }
+};
+
+template<>
+struct std::formatter<Control> : std::formatter<uint8_t>
+{
+  auto format(const Control& ctrl, auto& ctx) const
+  {
+    return std::formatter<uint8_t>::format(static_cast<uint8_t>(ctrl), ctx);
+  }
+};
+
 constexpr Address MakeAddress(Byte lo, Byte hi) noexcept
 {
   return Address{static_cast<uint16_t>(static_cast<uint16_t>(hi) << 8 | static_cast<uint16_t>(lo))};
 }
 
-constexpr Address& operator+=(Address& lhs, int8_t rhs) noexcept
+constexpr Address& operator+=(Address& lhs, int16_t rhs) noexcept
 {
   auto tmp = static_cast<int32_t>(lhs) + rhs;
   assert(tmp >= 0 && tmp <= 0xFFFF);
@@ -91,14 +138,14 @@ constexpr Address& operator+=(Address& lhs, int8_t rhs) noexcept
   return lhs;
 }
 
-constexpr Address operator+(Address lhs, int8_t rhs) noexcept
+constexpr Address operator+(Address lhs, int16_t rhs) noexcept
 {
   auto tmp = static_cast<int32_t>(lhs) + rhs;
   assert(tmp >= 0 && tmp <= 0xFFFF);
   return Address{static_cast<uint16_t>(tmp)};
 }
 
-constexpr Address& operator-=(Address& lhs, int8_t rhs) noexcept
+constexpr Address& operator-=(Address& lhs, int16_t rhs) noexcept
 {
   auto tmp = static_cast<int32_t>(lhs) - rhs;
   assert(tmp >= 0 && tmp <= 0xFFFF);
@@ -106,7 +153,7 @@ constexpr Address& operator-=(Address& lhs, int8_t rhs) noexcept
   return lhs;
 }
 
-constexpr Address operator-(Address lhs, int8_t rhs) noexcept
+constexpr Address operator-(Address lhs, int16_t rhs) noexcept
 {
   auto tmp = static_cast<int32_t>(lhs) - rhs;
   assert(tmp >= 0 && tmp <= 0xFFFF);

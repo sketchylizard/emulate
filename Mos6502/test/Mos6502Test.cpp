@@ -86,7 +86,7 @@ TEST_CASE("Mos6502: Functional_tests")
   // Set the reset vector to 0x0400
   cpu.set_pc(programStart);
 
-  for (int i = 0; i < 20; ++i)
+  for (int i = 0; i < 40; ++i)
   {
     bus = step(bus);
   }

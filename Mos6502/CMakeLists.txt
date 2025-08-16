@@ -2,9 +2,11 @@ find_package(Catch2 REQUIRED)
 
 add_library(Mos6502 STATIC
   include/Mos6502/Bus.h
+  include/Mos6502/Log.h
   include/Mos6502/Memory.h
   include/Mos6502/Mos6502.h
   src/Bus.cpp
+  src/Log.cpp
   src/Memory.cpp
   src/Mos6502.cpp
 )
