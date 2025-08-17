@@ -31,13 +31,11 @@ public:
   static constexpr Byte Negative = 1 << 6;
 
   //! Bus should be a new bus state.
-  using StateFunc = Bus (*)(Mos6502&, Bus bus, size_t step);
+  using StateFunc = Bus (*)(Mos6502&, Bus bus, Byte step);
 
   struct Instruction
   {
     std::string_view name;
-    Byte opcode;
-    uint8_t bytes;
     StateFunc addressMode;
     StateFunc operation;
   };
@@ -62,7 +60,17 @@ public:
   [[nodiscard]] Byte status() const noexcept;
   void set_status(Byte flags) noexcept;
 
+  [[nodiscard]] Byte operand() const noexcept;
+
+  [[nodiscard]] Address target() const noexcept;
+
   Bus Tick(Bus bus) noexcept;
+
+  //! Get the number of ticks since the last reset.
+  [[nodiscard]] uint32_t tickCount() const noexcept;
+
+  // For testing purposes, set the current instruction
+  void setInstruction(const Instruction& instr) noexcept;
 
 private:
   //! Turns the given flag on or off depending on value.
@@ -81,23 +89,19 @@ private:
 
   void Log() const;
 
-  friend struct AddressModes;
+  friend struct AddressMode;
   friend struct Operations;
-
-  struct Operand
-  {
-    bool isAddress = false;
-    Byte byte{0};
-    Address address{0};
-  };
 
   const Instruction* m_instruction = nullptr;
   StateFunc m_action = nullptr;
 
   uint32_t m_tickCount = 0;  // Number of ticks since the last reset
 
+  Address m_target{0};
+
   // Registers
   Address m_pc{0};
+
   Byte m_a{0};
   Byte m_x{0};
   Byte m_y{0};
@@ -108,11 +112,7 @@ private:
   Byte m_step{0};
 
   // Scratch data for operations and logging
-  Address m_pcStart{0};
-  Address m_target{0};
   Byte m_operand;
-  Byte m_bytes[3] = {};
-  Byte m_byteCount{0};
 
   LogBuffer m_log;
 };
@@ -188,4 +188,19 @@ inline Byte Mos6502::SetFlag(Byte flag, bool value) noexcept
     m_status &= ~flag;
   }
   return m_status;
+}
+
+inline Byte Mos6502::operand() const noexcept
+{
+  return m_operand;
+}
+
+inline Address Mos6502::target() const noexcept
+{
+  return m_target;
+}
+
+inline uint32_t Mos6502::tickCount() const noexcept
+{
+  return m_tickCount;
 }

@@ -18,9 +18,13 @@ void LogBuffer::reset(Address pcStart)
   std::format_to_n(pcPos, 5, "{:04X} ", static_cast<uint16_t>(pcStart));
   it += 5;
 
-  // Raw bytes (9 chars: "A9 0A    " - up to 3 bytes)
+  opcodePos = it;
+  std::format_to_n(opcodePos, 3, "XX ");
+  it += 3;
+
+  // Raw bytes (8 chars: "        " - up to 2 bytes)
   bytesPos = it;
-  it += 9;
+  it += 8;
 
   // Mnemonic (4 chars: "LDA ")
   mnemonicPos = it;
@@ -44,7 +48,7 @@ void LogBuffer::addByte(Byte byte, size_t position)
 
 void LogBuffer::setInstruction(Byte opcode, std::string_view mnemonic)
 {
-  addByte(opcode, 0);
+  std::format_to_n(opcodePos, 3, "{:02X} ", opcode);
   std::format_to_n(mnemonicPos, 4, "{:<3} ", mnemonic);
 }
 

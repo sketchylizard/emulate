@@ -14,6 +14,7 @@ struct LogBuffer
 #ifdef MOS6502_TRACE
   char buffer[256];
   char* pcPos;  // Position for PC
+  char* opcodePos;  // Position for opcode
   char* bytesPos;  // Position for raw bytes
   char* mnemonicPos;  // Position for mnemonic
   char* operandPos;  // Position for operand

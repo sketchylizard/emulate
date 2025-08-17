@@ -188,3 +188,13 @@ constexpr Byte HiByte(Address address) noexcept
 {
   return static_cast<Byte>((static_cast<uint16_t>(address) & 0xFF00) >> 8);
 }
+
+constexpr Address SetLoByte(Address target, Byte lo) noexcept
+{
+  return MakeAddress(lo, HiByte(target));
+}
+
+constexpr Address SetHiByte(Address target, Byte hi) noexcept
+{
+  return MakeAddress(LoByte(target), hi);
+}
