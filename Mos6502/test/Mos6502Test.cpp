@@ -5,8 +5,8 @@
 #include <cstdint>  // for std::uint8_t
 #include <utility>  // for std::pair
 
-#include "Mos6502/Bus.h"
-#include "Mos6502/Memory.h"
+#include "common/Bus.h"
+#include "common/Memory.h"
 #include "util/hex.h"
 
 TEST_CASE("Mos6502: ADC Immediate", "[cpu][adc]")

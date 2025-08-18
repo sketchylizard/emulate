@@ -9,8 +9,8 @@
 #include <string_view>
 #include <tuple>
 
-#include "Mos6502/Bus.h"
 #include "Mos6502/Log.h"
+#include "common/Bus.h"
 
 #define MOS6502_TRACE 1
 

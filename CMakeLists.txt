@@ -11,4 +11,5 @@ include(cmake/Common.cmake)
 include(${CMAKE_BINARY_DIR}/conan_toolchain.cmake OPTIONAL)
 
 add_subdirectory(util)
+add_subdirectory(libs/common)
 add_subdirectory(Mos6502)

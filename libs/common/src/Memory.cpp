@@ -1,4 +1,4 @@
-#include "Mos6502/Memory.h"
+#include "common/Memory.h"
 
 #include <algorithm>
 #include <fstream>

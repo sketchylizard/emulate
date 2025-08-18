@@ -5,7 +5,7 @@
 #include <iostream>
 #include <string_view>
 
-#include "Mos6502/Bus.h"
+#include "common/Bus.h"
 
 #define MOS6502_TRACE 1
 

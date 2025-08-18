@@ -13,7 +13,7 @@
 #include <utility>
 
 #include "AddressMode.h"
-#include "Mos6502/Bus.h"
+#include "common/Bus.h"
 
 ////////////////////////////////////////////////////////////////////////////////
 // operations

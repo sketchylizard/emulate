@@ -7,7 +7,7 @@
 #include <string_view>
 #include <vector>
 
-#include "Mos6502/Bus.h"
+#include "common/Bus.h"
 
 static constexpr Address c_maxAddress{0xFFFF};  // Maximum address for 16-bit address space
 
