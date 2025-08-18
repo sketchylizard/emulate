@@ -461,8 +461,11 @@ void Mos6502::setInstruction(const Instruction& instr) noexcept
 
 Bus Mos6502::StartOperation(Bus bus)
 {
+  assert(m_instruction);
+
   m_step = 0;
   m_action = m_instruction->operation;
+  SetFlag(Mos6502::ExtraStepRequired, false);
   return m_action(*this, bus, m_step++);
 }
 
@@ -477,5 +480,6 @@ Bus Mos6502::FinishOperation()
   m_step = 0;
   m_instruction = nullptr;
   m_action = nullptr;
+  SetFlag(Mos6502::ExtraStepRequired, false);
   return Bus::Fetch(m_pc++);
 }

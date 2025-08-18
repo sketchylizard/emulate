@@ -73,8 +73,13 @@ public:
   void setInstruction(const Instruction& instr) noexcept;
 
 private:
+  static constexpr Byte ExtraStepRequired = 1 << 7;
+
   //! Turns the given flag on or off depending on value.
   Byte SetFlag(Byte flag, bool value) noexcept;
+
+  //! Return true if the given flag is set.
+  bool HasFlag(Byte flag) const noexcept;
 
   // State transition functions
 
@@ -188,6 +193,11 @@ inline Byte Mos6502::SetFlag(Byte flag, bool value) noexcept
     m_status &= ~flag;
   }
   return m_status;
+}
+
+inline bool Mos6502::HasFlag(Byte flag) const noexcept
+{
+  return (m_status & flag) != 0;
 }
 
 inline Byte Mos6502::operand() const noexcept

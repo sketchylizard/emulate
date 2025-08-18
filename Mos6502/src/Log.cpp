@@ -8,6 +8,11 @@
 #include <string_view>
 #include <utility>
 
+LogBuffer::LogBuffer() noexcept
+{
+  reset(0x0000_addr);
+}
+
 void LogBuffer::reset(Address pcStart)
 {
   std::fill(buffer, buffer + sizeof(buffer), ' ');

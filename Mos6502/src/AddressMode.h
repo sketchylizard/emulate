@@ -32,6 +32,15 @@ struct AddressMode
   template<Index index>
     requires(index != Index::None)
   static Bus indirect(Mos6502& cpu, Bus bus, Byte step);
+
+  // Add the given index to the address and returns a pair of addresses,
+  // first = correct address, second = address with just the low byte incremented.
+  // In the case of a page boundary crossing, the second address will be incorrect,
+  // but because of the way the 6502 handles memory, it will read from the wrong address
+  // first. In the case of zero page indexing, the second value is the correct value
+  // because it wraps around and continues to index the zero page.
+  template<Index index>
+  static std::pair<Address, Address> indexed(const Mos6502& cpu, Byte loByte, Byte hiByte);
 };
 
 // Template definitions must remain in the header:
@@ -51,16 +60,10 @@ Bus AddressMode::zero_page(Mos6502& cpu, Bus bus, Byte step)
     std::format_to(buffer + 1, "{:02X}{}", loByte, index == Index::None ? "  " : index == Index::X ? ",X" : ",Y");
     cpu.m_log.setOperand(buffer);
 
-    if constexpr (index == Index::X)
-    {
-      loByte += cpu.m_x;
-    }
-    else if constexpr (index == Index::Y)
-    {
-      loByte += cpu.m_y;
-    }
-
-    return Bus::Read(MakeAddress(loByte, c_ZeroPage));
+    auto [address1, address2] = AddressMode::indexed<index>(cpu, loByte, c_ZeroPage);
+    // In the case of zero page addressing, we wrap around to the start of the page,
+    // so the second value returned is the correct value.
+    return Bus::Read(address2);
   }
 
   cpu.m_operand = bus.data;
@@ -92,42 +95,25 @@ Bus AddressMode::absoluteRead(Mos6502& cpu, Bus bus, Byte step)
 
     // Combine loByte and hiByte to form the target address
     Byte loByte = LoByte(cpu.m_target);
-    cpu.m_target = MakeAddress(loByte, hiByte);
 
     // Log the target address
     char buffer[] = "$XXXX";
-    std::format_to(buffer + 2, "{:02X}", cpu.m_target);
+    std::format_to(buffer + 1, "{:02X}{:02X}", hiByte, loByte);
     cpu.m_log.setOperand(buffer);
-
-    Byte originalLoByte = loByte;
 
     // If this is an indexed addressing mode, add the index register to the lo byte.
     // Note: This can cause the address to wrap around if it exceeds 0xFF which will
     // give us the wrong address. On the 6502, this is known as "page boundary crossing"
     // and it causes an extra read cycle. We emulate it here for accuracy.
-    if constexpr (index == Index::X)
-    {
-      // Increment loByte to calculate the wrong address.
-      loByte += cpu.m_x;
-      // Calculate the correct address.
-      cpu.m_target += cpu.m_x;
-    }
-    else if constexpr (index == Index::Y)
-    {
-      // Increment loByte to calculate the wrong address.
-      loByte += cpu.m_y;
-      // Calculate the correct address.
-      cpu.m_target += cpu.m_y;
-    }
+    Address wrongAddress;
+    std::tie(cpu.m_target, wrongAddress) = indexed<index>(cpu, loByte, hiByte);
 
-    // The behavior described above only occurs with index absolute mode.
-
-    if constexpr (index != Index::None)
+    if constexpr (index != Index::None)  // overflow occurred
     {
-      if (originalLoByte > loByte)
+      if (cpu.m_target != wrongAddress)
       {
-        Address wrongAddr = MakeAddress(loByte, hiByte);
-        return Bus::Read(wrongAddr);
+        cpu.SetFlag(Mos6502::ExtraStepRequired, true);
+        return Bus::Read(wrongAddress);
       }
     }
 
@@ -135,10 +121,8 @@ Bus AddressMode::absoluteRead(Mos6502& cpu, Bus bus, Byte step)
     // Perform the normal read.
     return Bus::Read(cpu.m_target);
   }
-  if (step == 3)
+  if (step == 3 && index != Index::None && cpu.HasFlag(Mos6502::ExtraStepRequired))
   {
-    assert(index != Index::None);
-
     // If we get here we were in index mode and we crossed a page boundary.
     // Perform the correct read now.
     return Bus::Read(cpu.m_target);
@@ -173,60 +157,35 @@ Bus AddressMode::absoluteWrite(Mos6502& cpu, Bus bus, Byte step)
 
     // Combine loByte and hiByte to form the target address
     Byte loByte = LoByte(cpu.m_target);
-    cpu.m_target = MakeAddress(loByte, hiByte);
 
     // Log the target address
     char buffer[] = "$XXXX";
-    std::format_to(buffer + 2, "{:02X}", cpu.m_target);
+    std::format_to(buffer + 1, "{:02X}{:02X}", hiByte, loByte);
     cpu.m_log.setOperand(buffer);
-
-    if constexpr (index == Index::X)
-    {
-      cpu.m_target += cpu.m_x;
-    }
-    else if constexpr (index == Index::Y)
-    {
-      cpu.m_target += cpu.m_y;
-    }
-
-    Byte originalLoByte = loByte;
 
     // If this is an indexed addressing mode, add the index register to the lo byte.
     // Note: This can cause the address to wrap around if it exceeds 0xFF which will
     // give us the wrong address. On the 6502, this is known as "page boundary crossing"
     // and it causes an extra read cycle. We emulate it here for accuracy.
-    if constexpr (index == Index::X)
-    {
-      // Increment loByte to calculate the wrong address.
-      loByte += cpu.m_x;
-      // Calculate the correct address.
-      cpu.m_target += cpu.m_x;
-    }
-    else if constexpr (index == Index::Y)
-    {
-      // Increment loByte to calculate the wrong address.
-      loByte += cpu.m_y;
-      // Calculate the correct address.
-      cpu.m_target += cpu.m_y;
-    }
+    Address wrongAddress;
+    std::tie(cpu.m_target, wrongAddress) = indexed<index>(cpu, loByte, hiByte);
 
-    // The behavior described above only occurs with index absolute mode.
-
-    if constexpr (index != Index::None)
+    if constexpr (index != Index::None)  // overflow occurred
     {
-      if (originalLoByte > loByte)
+      if (cpu.m_target != wrongAddress)
       {
-        Address wrongAddr = MakeAddress(loByte, hiByte);
-        return Bus::Read(wrongAddr);
+        cpu.SetFlag(Mos6502::ExtraStepRequired, true);
+        return Bus::Read(wrongAddress);
       }
     }
 
-    // This is taken if this is not an indexed addressing mode or if we didn't cross a page boundary.
+    // We either are not in indexed mode, or we did not cross a page boundary.
     return cpu.StartOperation(bus);
   }
 
   assert(step == 3);
-  // This is taken if we crossed a page boundary in an indexed mode.
+  assert(cpu.HasFlag(Mos6502::ExtraStepRequired) == true);
+
   return cpu.StartOperation(bus);
 }
 
@@ -236,4 +195,37 @@ Bus AddressMode::indirect(Mos6502& cpu, Bus bus, Byte step)
 {
   static_cast<void>(step);
   return cpu.StartOperation(bus);
+}
+
+template<Index index>
+std::pair<Address, Address> AddressMode::indexed(const Mos6502& cpu, Byte loByte, Byte hiByte)
+{
+  if constexpr (index != Index::None)
+  {
+    // Cast it to a 16-bit value so we can observe any overflow
+    auto low = MakeAddress(loByte, c_ZeroPage);
+
+    if constexpr (index == Index::X)
+    {
+      low += cpu.m_x;
+    }
+    else
+    {
+      assert((index == Index::Y));
+      low += cpu.m_y;
+    }
+    if (low > Address{0x00FF})  // overflowed
+    {
+      loByte = LoByte(low);
+      auto wrong = MakeAddress(loByte, hiByte);
+      auto correct = MakeAddress(loByte, hiByte + 1);
+      return {correct, wrong};
+    }
+    else
+    {
+      loByte = LoByte(low);
+    }
+  }
+  auto address = MakeAddress(loByte, hiByte);
+  return {address, address};
 }

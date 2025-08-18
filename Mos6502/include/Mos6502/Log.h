@@ -13,13 +13,15 @@ struct LogBuffer
 {
 #ifdef MOS6502_TRACE
   char buffer[256];
-  char* pcPos;  // Position for PC
-  char* opcodePos;  // Position for opcode
-  char* bytesPos;  // Position for raw bytes
-  char* mnemonicPos;  // Position for mnemonic
-  char* operandPos;  // Position for operand
-  char* registersPos;  // Position for registers
+  char* pcPos = nullptr;  // Position for PC
+  char* opcodePos = nullptr;  // Position for opcode
+  char* bytesPos = nullptr;  // Position for raw bytes
+  char* mnemonicPos = nullptr;  // Position for mnemonic
+  char* operandPos = nullptr;  // Position for operand
+  char* registersPos = nullptr;  // Position for registers
 #endif
+
+  LogBuffer() noexcept;
 
   void reset(Address pcStart);
   void addByte(Byte byte, size_t position);
