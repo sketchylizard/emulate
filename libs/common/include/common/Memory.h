@@ -1,86 +1,123 @@
 #pragma once
-
-#include <array>
 #include <cassert>
 #include <cstdint>
+#include <fstream>
 #include <span>
-#include <string_view>
-#include <vector>
+#include <stdexcept>
+#include <string>
 
-#include "common/Bus.h"
-
-static constexpr Address c_maxAddress{0xFFFF};  // Maximum address for 16-bit address space
-
-// Memory class template for 6502 emulator
-// T can be Byte or const Byte, allowing for read-only or read-write memory
-// Start and End are the address range for the memory (inclusive)
-template<typename T, Address Start = Address{0x0000}, Address End = c_maxAddress>
-  requires((std::is_same_v<T, Byte> || std::is_same_v<T, const Byte>) && Start < End)
-class Memory
+namespace Common
 {
-public:
-  explicit Memory(std::span<const Byte> bytes = {})
-    : m_bytes{}
-  {
-    if (!bytes.empty())
-    {
-      std::copy(bytes.begin(), bytes.end(), m_bytes.begin());
-    }
-  }
+using Byte = uint8_t;
 
-  Bus Tick(Bus bus) noexcept
-  {
-    if (bus.address < Start || bus.address > End)
-    {
-      return bus;  // Out of bounds, return unchanged bus
-    }
-
-    if ((bus.control & Control::Read) != Control::None)
-    {
-      // Read operation
-      bus.data = m_bytes[static_cast<uint16_t>(bus.address)];
-      return bus;
-    }
-
-    if constexpr (std::is_same_v<T, Byte>)
-    {
-      // If T is Byte, we can write to memory, if Read is not set, then we assume it's a write operation.
-
-      m_bytes[static_cast<uint16_t>(bus.address)] = bus.data;
-    }
-
-    return bus;
-  }
-
-  void Load(Address address, std::span<const Byte> bytes) noexcept
-  {
-    // Make sure the address is within bounds
-    auto effectiveAddress = static_cast<size_t>(address);
-    auto effectiveEnd = effectiveAddress + bytes.size() - 1;
-    assert(effectiveAddress >= static_cast<size_t>(Start) && effectiveEnd <= static_cast<size_t>(End));
-    // Copy bytes to memory
-    assert(bytes.size() <= (static_cast<size_t>(End) - static_cast<size_t>(Start) + 1));
-    std::copy(bytes.begin(), bytes.end(), m_bytes.begin() + static_cast<size_t>(address) - static_cast<size_t>(Start));
-  }
-
-  [[nodiscard]] Byte& operator[](Address address) noexcept
-    requires(std::is_same_v<T, Byte>)
-  {
-    assert(static_cast<size_t>(address) < std::size(m_bytes));
-    return m_bytes[static_cast<size_t>(address)];
-  }
-
-  [[nodiscard]] Byte operator[](Address address) const noexcept
-  {
-    assert(static_cast<size_t>(address) < std::size(m_bytes));
-    return m_bytes[static_cast<size_t>(address)];
-  }
-
-private:
-  size_t m_start{};
-  size_t m_end{};
-  std::array<T, static_cast<size_t>(End) - static_cast<size_t>(Start) + 1> m_bytes;
+enum class Address : uint16_t
+{
 };
 
-// Load file helper function.
+using RamSpan = std::span<Byte>;
+using RomSpan = std::span<const Byte>;
+
+// Address arithmetic operators
+constexpr Address& operator++(Address& addr)
+{  // prefix
+  addr = Address(static_cast<uint16_t>(addr) + 1);
+  return addr;
+}
+
+constexpr Address operator++(Address& addr, int)
+{  // postfix
+  Address old = addr;
+  ++addr;
+  return old;
+}
+
+constexpr Address& operator--(Address& addr)
+{  // prefix
+  addr = Address(static_cast<uint16_t>(addr) - 1);
+  return addr;
+}
+
+constexpr Address operator--(Address& addr, int)
+{  // postfix
+  Address old = addr;
+  --addr;
+  return old;
+}
+
+constexpr Address& operator+=(Address& addr, int16_t offset)
+{
+  addr = Address(static_cast<uint16_t>(addr) + offset);
+  return addr;
+}
+
+constexpr Address& operator-=(Address& addr, int16_t offset)
+{
+  addr = Address(static_cast<uint16_t>(addr) - offset);
+  return addr;
+}
+
+constexpr Address operator+(Address addr, uint16_t offset)
+{
+  return Address(static_cast<uint16_t>(addr) + offset);
+}
+
+constexpr Address operator-(Address addr, uint16_t offset)
+{
+  return Address(static_cast<uint16_t>(addr) - offset);
+}
+
+constexpr uint16_t operator-(Address lhs, Address rhs)
+{
+  return static_cast<uint16_t>(lhs) - static_cast<uint16_t>(rhs);
+}
+
+// Byte extraction functions
+constexpr Byte HiByte(uint16_t value)
+{
+  return static_cast<Byte>(value >> 8);
+}
+
+constexpr Byte LoByte(uint16_t value)
+{
+  return static_cast<Byte>(value & 0xFF);
+}
+
+constexpr Byte HiByte(Address addr)
+{
+  return HiByte(static_cast<uint16_t>(addr));
+}
+
+constexpr Byte LoByte(Address addr)
+{
+  return LoByte(static_cast<uint16_t>(addr));
+}
+
+// Address construction
+constexpr Address MakeAddress(Byte low, Byte high)
+{
+  return Address((static_cast<uint16_t>(high) << 8) | low);
+}
+
+// Load file into memory
 std::vector<Byte> LoadFile(const std::string_view& filename) noexcept;
+
+// Load file into memory span
+void Load(RamSpan memory, const std::string& filename, Address start_addr = Address{0});
+
+constexpr Address operator""_addr(unsigned long long value) noexcept
+{
+  assert(value <= 0xFFFF);
+  return Address{static_cast<uint16_t>(value)};
+}
+
+}  // namespace Common
+
+// Specialize formatter for Address and Control
+template<>
+struct std::formatter<Common::Address> : std::formatter<uint16_t>
+{
+  auto format(const Common::Address& addr, auto& ctx) const
+  {
+    return std::formatter<uint16_t>::format(static_cast<uint16_t>(addr), ctx);
+  }
+};

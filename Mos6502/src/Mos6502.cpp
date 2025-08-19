@@ -15,6 +15,8 @@
 #include "AddressMode.h"
 #include "common/Bus.h"
 
+using namespace Common;
+
 ////////////////////////////////////////////////////////////////////////////////
 // operations
 ////////////////////////////////////////////////////////////////////////////////
@@ -27,7 +29,7 @@ struct Operations
   // It returns true when the operation is complete. If forceRead is true, it force the bus to READ rather than WRITE
   // mode and the writes to the stack will be ignored.
   template<bool ForceRead>
-  static Bus brk(Mos6502& cpu, Bus bus, Byte step)
+  static Common::Bus brk(Mos6502& cpu, Common::Bus bus, Common::Byte step)
   {
     Control control = ForceRead ? Control::Read : Control{};
 
@@ -35,35 +37,35 @@ struct Operations
     {
       case 0:
         // Push PC high byte
-        return Bus::Write(MakeAddress(cpu.m_sp--, c_StackPage), HiByte(cpu.pc()), control);
+        return Common::Bus::Write(Common::MakeAddress(cpu.m_sp--, c_StackPage), Common::HiByte(cpu.pc()), control);
       case 1:
         // Push PC low byte
-        return Bus::Write(MakeAddress(cpu.m_sp--, c_StackPage), LoByte(cpu.pc()), control);
+        return Common::Bus::Write(Common::MakeAddress(cpu.m_sp--, c_StackPage), Common::LoByte(cpu.pc()), control);
       case 2:
         // Push status register
-        return Bus::Write(MakeAddress(cpu.m_sp--, c_StackPage), cpu.status(), control);
+        return Common::Bus::Write(Common::MakeAddress(cpu.m_sp--, c_StackPage), cpu.status(), control);
       case 3:
         // Fetch the low byte of the interrupt/reset vector
-        return Bus::Read(Mos6502::c_brkVector);
+        return Common::Bus::Read(Mos6502::c_brkVector);
       case 4:
         // Store the lo byte of the vector
         cpu.m_operand = bus.data;
         // Fetch the high byte of the interrupt/reset vector
-        return Bus::Read(Mos6502::c_brkVector + 1);
+        return Common::Bus::Read(Mos6502::c_brkVector + 1);
       default:
       case 5:
         // Set PC to the interrupt/reset vector address
-        cpu.m_pc = MakeAddress(cpu.m_operand, bus.data);
+        cpu.m_pc = Common::MakeAddress(cpu.m_operand, bus.data);
         return cpu.FinishOperation();  // Operation complete
     }
   }
 
-  static Bus adc(Mos6502& cpu, Bus bus, Byte step)
+  static Common::Bus adc(Mos6502& cpu, Common::Bus bus, Common::Byte step)
   {
     // Handle ADC operation
     assert(step == 0);
-    Byte operand = bus.data;
-    Byte result = cpu.a() + operand + (cpu.status() & 0x01);  // Carry flag
+    Common::Byte operand = bus.data;
+    Common::Byte result = cpu.a() + operand + (cpu.status() & 0x01);  // Carry flag
 
     // Set flags
     cpu.set_status((result == 0) ? 0x02 : 0);  // Zero flag
@@ -77,25 +79,25 @@ struct Operations
     return cpu.FinishOperation();  // Operation complete
   }
 
-  static Bus cld(Mos6502& cpu, Bus /*bus*/, Byte step)
+  static Common::Bus cld(Mos6502& cpu, Common::Bus /*bus*/, Common::Byte step)
   {
     assert(step == 0);
     cpu.SetFlag(Mos6502::Decimal, false);
     return cpu.FinishOperation();
   }
 
-  static Bus txs(Mos6502& cpu, Bus /*bus*/, Byte step)
+  static Common::Bus txs(Mos6502& cpu, Common::Bus /*bus*/, Common::Byte step)
   {
     assert(step == 0);
     cpu.set_sp(cpu.x());
     return cpu.FinishOperation();
   }
 
-  static Bus sta(Mos6502& cpu, Bus /*bus*/, Byte step)
+  static Common::Bus sta(Mos6502& cpu, Common::Bus /*bus*/, Common::Byte step)
   {
     if (step == 0)
     {
-      return Bus::Write(cpu.m_target, cpu.a());
+      return Common::Bus::Write(cpu.m_target, cpu.a());
     }
     // This step allows the data to be written to memory. Without it, we put the
     // value to write on the bus and it would be overwritten by fetching the next
@@ -103,7 +105,7 @@ struct Operations
     return cpu.FinishOperation();
   }
 
-  static Bus ora(Mos6502& cpu, Bus bus, Byte step)
+  static Common::Bus ora(Mos6502& cpu, Common::Bus bus, Common::Byte step)
   {
     assert(step == 0);
     // Perform OR with accumulator
@@ -113,26 +115,26 @@ struct Operations
     return cpu.FinishOperation();
   }
 
-  static Bus jmpAbsolute(Mos6502& cpu, Bus bus, Byte step)
+  static Common::Bus jmpAbsolute(Mos6502& cpu, Common::Bus bus, Common::Byte step)
   {
     if (step == 0)
     {
-      return Bus::Read(cpu.m_pc++);  // Fetch low byte
+      return Common::Bus::Read(cpu.m_pc++);  // Fetch low byte
     }
     if (step == 1)
     {
-      Byte loByte = bus.data;
-      cpu.m_target = MakeAddress(loByte, c_ZeroPage);
+      Common::Byte loByte = bus.data;
+      cpu.m_target = Common::MakeAddress(loByte, c_ZeroPage);
       cpu.m_log.addByte(loByte, 0);
-      return Bus::Read(cpu.m_pc++);  // Fetch high byte
+      return Common::Bus::Read(cpu.m_pc++);  // Fetch high byte
     }
     // Step 2
-    Byte hiByte = bus.data;
+    Common::Byte hiByte = bus.data;
 
     cpu.m_log.addByte(hiByte, 1);
 
-    Byte loByte = LoByte(cpu.m_target);
-    cpu.m_pc = MakeAddress(loByte, hiByte);
+    Common::Byte loByte = Common::LoByte(cpu.m_target);
+    cpu.m_pc = Common::MakeAddress(loByte, hiByte);
 
     char buffer[] = "$XXXX";
     std::format_to(buffer + 1, "{:04X}", cpu.m_pc);
@@ -141,26 +143,26 @@ struct Operations
     return cpu.FinishOperation();
   }
 
-  static Bus jmpIndirect(Mos6502& cpu, Bus bus, Byte step)
+  static Common::Bus jmpIndirect(Mos6502& cpu, Common::Bus bus, Common::Byte step)
   {
     if (step == 0)
     {
       // Fetch indirect address low byte
-      return Bus::Read(cpu.m_pc++);
+      return Common::Bus::Read(cpu.m_pc++);
     }
     if (step == 1)
     {
-      Byte loByte = bus.data;
+      Common::Byte loByte = bus.data;
       cpu.m_log.addByte(loByte, 0);
 
       // Fetch indirect address high byte
-      return Bus::Read(cpu.m_pc++);
+      return Common::Bus::Read(cpu.m_pc++);
     }
     if (step == 2)
     {
-      Byte hiByte = bus.data;
+      Common::Byte hiByte = bus.data;
       cpu.m_log.addByte(hiByte, 1);
-      cpu.m_target = MakeAddress(LoByte(cpu.m_target), hiByte);
+      cpu.m_target = Common::MakeAddress(LoByte(cpu.m_target), hiByte);
 
       char buffer[] = "($XXXX)";
       std::format_to(buffer + 2, "{:04X}", cpu.m_target);
@@ -170,18 +172,18 @@ struct Operations
     }
     if (step == 3)
     {
-      Byte hiByte = bus.data;  // Store target hi byte
+      Common::Byte hiByte = bus.data;  // Store target hi byte
 
       // Page boundary bug: increment only low byte, don't carry to high byte
-      Address hiByteAddr = MakeAddress(LoByte(cpu.m_target) + 1, hiByte);
-      return Bus::Read(hiByteAddr);  // Read target high byte (with bug)
+      Common::Address hiByteAddr = Common::MakeAddress(Common::LoByte(cpu.m_target) + 1, hiByte);
+      return Common::Bus::Read(hiByteAddr);  // Read target high byte (with bug)
     }
     // Step 4
-    cpu.m_pc = MakeAddress(LoByte(cpu.m_target), bus.data);
+    cpu.m_pc = Common::MakeAddress(Common::LoByte(cpu.m_target), bus.data);
     return cpu.FinishOperation();
   }
 
-  static Bus bne(Mos6502& cpu, Bus /*bus*/, Byte step)
+  static Common::Bus bne(Mos6502& cpu, Common::Bus /*bus*/, Common::Byte step)
   {
     static_cast<void>(step);
     assert(step == 0);
@@ -195,7 +197,7 @@ struct Operations
     return cpu.FinishOperation();
   }
 
-  static Bus beq(Mos6502& cpu, Bus /*bus*/, Byte step)
+  static Common::Bus beq(Mos6502& cpu, Common::Bus /*bus*/, Common::Byte step)
   {
     static_cast<void>(step);
     assert(step == 0);
@@ -210,13 +212,13 @@ struct Operations
   }
 
   template<Index index>
-  static Bus load(Mos6502& cpu, Bus bus, Byte step)
+  static Common::Bus load(Mos6502& cpu, Common::Bus bus, Common::Byte step)
   {
     // This is a generic load operation for A, X, or Y registers.
 
     assert(step == 0);
 
-    Byte* reg = nullptr;
+    Common::Byte* reg = nullptr;
     if constexpr (index == Index::None)
     {
       reg = &cpu.m_a;
@@ -242,7 +244,7 @@ struct Operations
 
   template<Index index>
     requires(index != Index::None)
-  static Bus increment(Mos6502& cpu, Bus /*bus*/, Byte step)
+  static Common::Bus increment(Mos6502& cpu, Common::Bus /*bus*/, Common::Byte step)
   {
     // Handle increment operation for X or Y registers
 
@@ -265,7 +267,7 @@ struct Operations
 
   template<Index index>
     requires(index != Index::None)
-  static Bus decrement(Mos6502& cpu, Bus /*bus*/, Byte step)
+  static Common::Bus decrement(Mos6502& cpu, Common::Bus /*bus*/, Common::Byte step)
   {
     // Handle increment operation for X or Y registers
     assert(step == 0);
@@ -409,25 +411,25 @@ Mos6502::Mos6502() noexcept
   m_action = nullptr;
 }
 
-Bus Mos6502::Tick(Bus bus) noexcept
+Common::Bus Mos6502::Tick(Common::Bus bus) noexcept
 {
   ++m_tickCount;
 
   // If Sync is set, we are fetching a new instruction
-  if ((bus.control & Control::Sync) != Control::None)
+  if ((bus.control & Common::Control::Sync) != Common::Control::None)
   {
     // load new instruction
     DecodeNextInstruction(bus.data);
   }
 
   // Default the bus to read
-  bus.control = Control::Read;
+  bus.control = Common::Control::Read;
 
   // Startup is a special case, we have no instruction or action
   if (!m_instruction)
   {
     m_log.reset(m_pc);
-    return Bus::Fetch(m_pc++);
+    return Common::Bus::Fetch(m_pc++);
   }
   if (m_instruction != nullptr)
   {
@@ -440,7 +442,7 @@ Bus Mos6502::Tick(Bus bus) noexcept
   return bus;
 }
 
-void Mos6502::DecodeNextInstruction(Byte opcode) noexcept
+void Mos6502::DecodeNextInstruction(Common::Byte opcode) noexcept
 {
   // Decode opcode
   setInstruction(c_instructions[static_cast<size_t>(opcode)]);
@@ -459,7 +461,7 @@ void Mos6502::setInstruction(const Instruction& instr) noexcept
   m_step = 0;
 }
 
-Bus Mos6502::StartOperation(Bus bus)
+Common::Bus Mos6502::StartOperation(Common::Bus bus)
 {
   assert(m_instruction);
 
@@ -469,7 +471,7 @@ Bus Mos6502::StartOperation(Bus bus)
   return m_action(*this, bus, m_step++);
 }
 
-Bus Mos6502::FinishOperation()
+Common::Bus Mos6502::FinishOperation()
 {
   // Instruction complete, log the last instruction.
   m_log.print();
@@ -481,5 +483,5 @@ Bus Mos6502::FinishOperation()
   m_instruction = nullptr;
   m_action = nullptr;
   SetFlag(Mos6502::ExtraStepRequired, false);
-  return Bus::Fetch(m_pc++);
+  return Common::Bus::Fetch(m_pc++);
 }

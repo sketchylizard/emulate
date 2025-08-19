@@ -6,20 +6,11 @@
 #include <span>
 
 #include "Mos6502/Mos6502.h"
+#include "common/Memory.h"
+
+using namespace Common;
 
 static bool wasStartOperationCalled = false;
-
-static std::ostream& operator<<(std::ostream& os, Address addr)
-{
-  os << std::format("0x{:04X}", static_cast<uint16_t>(addr));
-  return os;
-}
-
-[[maybe_unused]] static std::ostream& operator<<(std::ostream& os, Byte byte)
-{
-  os << std::format("0x{:02X}", static_cast<uint16_t>(byte));
-  return os;
-}
 
 static Bus TestReadOperation(Mos6502& cpu, Bus /*bus*/, Byte /*step*/)
 {

@@ -5,11 +5,10 @@
 #include <format>
 #include <utility>
 
-using Byte = uint8_t;
+#include "common/Memory.h"
 
-enum class Address : uint16_t
+namespace Common
 {
-};
 
 enum class Control : uint8_t
 {
@@ -100,101 +99,18 @@ struct BusResponse
   bool ready = true;  // for devices that need wait states
 };
 
-constexpr Address operator""_addr(unsigned long long value) noexcept
-{
-  assert(value <= 0xFFFF);
-  return Address{static_cast<uint16_t>(value)};
-}
-
-// Specialize formatter for Address and Control
-template<>
-struct std::formatter<Address> : std::formatter<uint16_t>
-{
-  auto format(const Address& addr, auto& ctx) const
-  {
-    return std::formatter<uint16_t>::format(static_cast<uint16_t>(addr), ctx);
-  }
-};
-
-template<>
-struct std::formatter<Control> : std::formatter<uint8_t>
-{
-  auto format(const Control& ctrl, auto& ctx) const
-  {
-    return std::formatter<uint8_t>::format(static_cast<uint8_t>(ctrl), ctx);
-  }
-};
-
-constexpr Address MakeAddress(Byte lo, Byte hi) noexcept
-{
-  return Address{static_cast<uint16_t>(static_cast<uint16_t>(hi) << 8 | static_cast<uint16_t>(lo))};
-}
-
-constexpr Address& operator+=(Address& lhs, int16_t rhs) noexcept
-{
-  auto tmp = static_cast<int32_t>(lhs) + rhs;
-  assert(tmp >= 0 && tmp <= 0xFFFF);
-  lhs = Address{static_cast<uint16_t>(tmp)};
-  return lhs;
-}
-
-constexpr Address operator+(Address lhs, int16_t rhs) noexcept
-{
-  auto tmp = static_cast<int32_t>(lhs) + rhs;
-  assert(tmp >= 0 && tmp <= 0xFFFF);
-  return Address{static_cast<uint16_t>(tmp)};
-}
-
-constexpr Address& operator-=(Address& lhs, int16_t rhs) noexcept
-{
-  auto tmp = static_cast<int32_t>(lhs) - rhs;
-  assert(tmp >= 0 && tmp <= 0xFFFF);
-  lhs = Address{static_cast<uint16_t>(tmp)};
-  return lhs;
-}
-
-constexpr Address operator-(Address lhs, int16_t rhs) noexcept
-{
-  auto tmp = static_cast<int32_t>(lhs) - rhs;
-  assert(tmp >= 0 && tmp <= 0xFFFF);
-  return Address{static_cast<uint16_t>(tmp)};
-}
-
-constexpr Address& operator++(Address& lhs) noexcept
-{
-  auto tmp = static_cast<uint16_t>(lhs);
-  lhs = Address{++tmp};
-  return lhs;
-}
-
-constexpr Address operator++(Address& lhs, int) noexcept
-{
-  auto tmp = lhs;
-  ++lhs;
-  return tmp;
-}
-
 constexpr bool IsSamePage(Address lhs, Address rhs) noexcept
 {
   return (static_cast<uint16_t>(lhs) & 0xFF00) == (static_cast<uint16_t>(rhs) & 0xFF00);
 }
 
-constexpr Byte LoByte(Address address) noexcept
-{
-  return static_cast<Byte>(static_cast<uint16_t>(address) & 0x00FF);
-}
+}  // namespace Common
 
-constexpr Byte HiByte(Address address) noexcept
+template<>
+struct std::formatter<Common::Control> : std::formatter<uint8_t>
 {
-  return static_cast<Byte>((static_cast<uint16_t>(address) & 0xFF00) >> 8);
-}
-
-constexpr Address SetLoByte(Address target, Byte lo) noexcept
-{
-  return MakeAddress(lo, HiByte(target));
-}
-
-constexpr Address SetHiByte(Address target, Byte hi) noexcept
-{
-  return MakeAddress(LoByte(target), hi);
-}
+  auto format(const Common::Control& ctrl, auto& ctx) const
+  {
+    return std::formatter<uint8_t>::format(static_cast<uint8_t>(ctrl), ctx);
+  }
+};

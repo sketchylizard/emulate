@@ -23,14 +23,14 @@ struct LogBuffer
 
   LogBuffer() noexcept;
 
-  void reset(Address pcStart);
-  void addByte(Byte byte, size_t position);
+  void reset(Common::Address pcStart);
+  void addByte(Common::Byte byte, size_t position);
 
-  void setInstruction(Byte opcode, std::string_view mnemonic);
+  void setInstruction(Common::Byte opcode, std::string_view mnemonic);
 
   void setOperand(std::string_view operandStr);
 
-  void setRegisters(Byte a, Byte x, Byte y, Byte p, Byte sp);
+  void setRegisters(Common::Byte a, Common::Byte x, Common::Byte y, Common::Byte p, Common::Byte sp);
 
   void print();
 };

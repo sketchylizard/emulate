@@ -17,6 +17,10 @@
 class Mos6502
 {
 public:
+  using Address = Common::Address;
+  using Byte = Common::Byte;
+  using Bus = Common::Bus;
+
   static constexpr Address c_nmiVector = Address{0xFFFA};
   static constexpr Address c_resetVector = Address{0xFFFC};
   static constexpr Address c_irqVector = Address{0xFFFE};
@@ -122,67 +126,67 @@ private:
   LogBuffer m_log;
 };
 
-inline Byte Mos6502::a() const noexcept
+inline Common::Byte Mos6502::a() const noexcept
 {
   return m_a;
 }
 
-inline void Mos6502::set_a(Byte v) noexcept
+inline void Mos6502::set_a(Common::Byte v) noexcept
 {
   m_a = v;
 }
 
-inline Byte Mos6502::x() const noexcept
+inline Common::Byte Mos6502::x() const noexcept
 {
   return m_x;
 }
 
-inline void Mos6502::set_x(Byte v) noexcept
+inline void Mos6502::set_x(Common::Byte v) noexcept
 {
   m_x = v;
 }
 
-inline Byte Mos6502::y() const noexcept
+inline Common::Byte Mos6502::y() const noexcept
 {
   return m_y;
 }
 
-inline void Mos6502::set_y(Byte v) noexcept
+inline void Mos6502::set_y(Common::Byte v) noexcept
 {
   m_y = v;
 }
 
-inline Byte Mos6502::sp() const noexcept
+inline Common::Byte Mos6502::sp() const noexcept
 {
   return m_sp;
 }
 
-inline void Mos6502::set_sp(Byte v) noexcept
+inline void Mos6502::set_sp(Common::Byte v) noexcept
 {
   m_sp = v;
 }
 
-inline Address Mos6502::pc() const noexcept
+inline Common::Address Mos6502::pc() const noexcept
 {
   return m_pc;
 }
 
-inline void Mos6502::set_pc(Address addr) noexcept
+inline void Mos6502::set_pc(Common::Address addr) noexcept
 {
   m_pc = addr;
 }
 
-inline Byte Mos6502::status() const noexcept
+inline Common::Byte Mos6502::status() const noexcept
 {
   return m_status;
 }
 
-inline void Mos6502::set_status(Byte flags) noexcept
+inline void Mos6502::set_status(Common::Byte flags) noexcept
 {
   m_status = flags;
 }
 
-inline Byte Mos6502::SetFlag(Byte flag, bool value) noexcept
+inline Common::Byte Mos6502::SetFlag(Common::Byte flag, bool value) noexcept
 {
   if (value)
   {
@@ -200,12 +204,12 @@ inline bool Mos6502::HasFlag(Byte flag) const noexcept
   return (m_status & flag) != 0;
 }
 
-inline Byte Mos6502::operand() const noexcept
+inline Common::Byte Mos6502::operand() const noexcept
 {
   return m_operand;
 }
 
-inline Address Mos6502::target() const noexcept
+inline Common::Address Mos6502::target() const noexcept
 {
   return m_target;
 }

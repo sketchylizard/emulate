@@ -8,12 +8,16 @@
 #include <string_view>
 #include <utility>
 
+#include "common/Memory.h"
+
 LogBuffer::LogBuffer() noexcept
 {
+  using namespace Common;
+
   reset(0x0000_addr);
 }
 
-void LogBuffer::reset(Address pcStart)
+void LogBuffer::reset(Common::Address pcStart)
 {
   std::fill(buffer, buffer + sizeof(buffer), ' ');
   auto it = buffer;
@@ -43,7 +47,7 @@ void LogBuffer::reset(Address pcStart)
   registersPos = it;
 }
 
-void LogBuffer::addByte(Byte byte, size_t position)
+void LogBuffer::addByte(Common::Byte byte, size_t position)
 {
   if (position < 3)
   {  // Max 3 bytes
@@ -51,7 +55,7 @@ void LogBuffer::addByte(Byte byte, size_t position)
   }
 }
 
-void LogBuffer::setInstruction(Byte opcode, std::string_view mnemonic)
+void LogBuffer::setInstruction(Common::Byte opcode, std::string_view mnemonic)
 {
   std::format_to_n(opcodePos, 3, "{:02X} ", opcode);
   std::format_to_n(mnemonicPos, 4, "{:<3} ", mnemonic);
@@ -63,7 +67,7 @@ void LogBuffer::setOperand(std::string_view operandStr)
   std::copy_n(operandStr.data(), len, operandPos);
 }
 
-void LogBuffer::setRegisters(Byte a, Byte x, Byte y, Byte p, Byte sp)
+void LogBuffer::setRegisters(Common::Byte a, Common::Byte x, Common::Byte y, Common::Byte p, Common::Byte sp)
 {
   std::format_to_n(registersPos, 30, "A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}", a, x, y, p, sp);
 }

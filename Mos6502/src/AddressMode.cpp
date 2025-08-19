@@ -1,23 +1,23 @@
 #include "AddressMode.h"
 
-Bus AddressMode::accumulator(Mos6502& cpu, Bus bus, Byte step)
+Common::Bus AddressMode::accumulator(Mos6502& cpu, Common::Bus bus, Common::Byte step)
 {
   assert(step == 0);
   cpu.m_log.setOperand("A");
   return cpu.StartOperation(bus);
 }
 
-Bus AddressMode::implied(Mos6502& cpu, Bus bus, Byte step)
+Common::Bus AddressMode::implied(Mos6502& cpu, Common::Bus bus, Common::Byte step)
 {
   assert(step == 0);
   return cpu.StartOperation(bus);
 }
 
-Bus AddressMode::immediate(Mos6502& cpu, Bus bus, Byte step)
+Common::Bus AddressMode::immediate(Mos6502& cpu, Common::Bus bus, Common::Byte step)
 {
   if (step == 0)
   {
-    return Bus::Read(cpu.m_pc++);
+    return Common::Bus::Read(cpu.m_pc++);
   }
 
   cpu.m_operand = bus.data;
@@ -28,11 +28,11 @@ Bus AddressMode::immediate(Mos6502& cpu, Bus bus, Byte step)
   return cpu.StartOperation(bus);
 }
 
-Bus AddressMode::relative(Mos6502& cpu, Bus bus, Byte step)
+Common::Bus AddressMode::relative(Mos6502& cpu, Common::Bus bus, Common::Byte step)
 {
   if (step == 0)
   {
-    return Bus::Read(cpu.m_pc++);
+    return Common::Bus::Read(cpu.m_pc++);
   }
 
   cpu.m_operand = bus.data;
