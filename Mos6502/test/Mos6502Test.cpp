@@ -324,8 +324,17 @@ TEST_CASE("Mos6502: Functional_tests")
   // Set the reset vector to 0x0400
   cpu.set_pc(programStart);
 
-  for (int i = 0; i < 40; ++i)
+  Address lastProgramCounter = programStart;
+
+  for (int i = 0; i < 0xffff; ++i)
   {
     bus = step(bus);
+    if (cpu.pc() == lastProgramCounter)
+    {
+      // If the PC hasn't changed, the program might be stuck; break to avoid infinite loop
+      std::cout << "Program counter stuck at: " << std::hex << static_cast<uint16_t>(cpu.pc()) << "\n";
+      break;
+    }
+    lastProgramCounter = cpu.pc();
   }
 }
