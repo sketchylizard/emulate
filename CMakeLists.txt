@@ -18,8 +18,6 @@ CPMAddPackage(NAME Klaus6502
  DOWNLOAD_ONLY
  )
 
-message(STATUS "Downloaded 6502 functional tests: ${Klaus6502_SOURCE_DIR}")
-
 add_subdirectory(util)
 add_subdirectory(libs/common)
 add_subdirectory(Mos6502)

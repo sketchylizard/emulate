@@ -297,7 +297,7 @@ TEST_CASE("Mos6502: ADC Immediate", "[cpu][adc]")
 
 TEST_CASE("Mos6502: Functional_tests")
 {
-  auto file = LoadFile("/home/jason/projects/6502_65C02_functional_tests/bin_files/6502_functional_test.bin");
+  auto file = LoadFile(std::string(KLAUS6502_TESTS_DIR) + "/bin_files/6502_functional_test.bin");
 
   Mapping memory{Address{0x0000}, Address{0xFFFF}, RamSpan{file}};
 
@@ -309,6 +309,9 @@ TEST_CASE("Mos6502: Functional_tests")
   {
     do
     {
+      if (cpu.pc() == Address{0x040B})
+        std::cout << "Reached 0x040B, PC: " << std::hex << static_cast<uint16_t>(cpu.pc()) << "\n";
+
       bus = cpu.Tick(bus);
       auto response = memory.Tick(bus);
       if (response)

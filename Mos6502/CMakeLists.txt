@@ -19,3 +19,8 @@ add_executable(Mos6502Test
 
 target_link_libraries(Mos6502Test PRIVATE Mos6502 Catch2::Catch2WithMain util)
 target_include_directories(Mos6502Test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+if(Klaus6502_ADDED)
+    message(STATUS "Downloaded 6502 functional tests: ${Klaus6502_SOURCE_DIR}")
+    target_compile_definitions(Mos6502Test PRIVATE KLAUS6502_TESTS_DIR="${Klaus6502_SOURCE_DIR}")
+endif()

@@ -274,13 +274,13 @@ struct Operations
     static_cast<void>(step);
     if constexpr (index == Index::X)
     {
-      cpu.m_x++;
+      --cpu.m_x;
       cpu.SetFlag(Mos6502::Zero, cpu.m_x == 0);
       cpu.SetFlag(Mos6502::Negative, (cpu.m_x & 0x80) != 0);
     }
     else if constexpr (index == Index::Y)
     {
-      cpu.m_y++;
+      --cpu.m_y;
       cpu.SetFlag(Mos6502::Zero, cpu.m_y == 0);
       cpu.SetFlag(Mos6502::Negative, (cpu.m_y & 0x80) != 0);
     }
