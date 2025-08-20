@@ -21,7 +21,10 @@ struct AddressMode
   static Common::Bus relative(Mos6502& cpu, Common::Bus bus, Common::Byte step);
 
   template<Index index>
-  static Common::Bus zero_page(Mos6502& cpu, Common::Bus bus, Common::Byte step);
+  static Common::Bus zeroPageRead(Mos6502& cpu, Common::Bus bus, Common::Byte step);
+
+  template<Index index>
+  static Common::Bus zeroPageWrite(Mos6502& cpu, Common::Bus bus, Common::Byte step);
 
   template<Index index>
   static Common::Bus absoluteRead(Mos6502& cpu, Common::Bus bus, Common::Byte step);
@@ -45,7 +48,7 @@ struct AddressMode
 
 // Template definitions must remain in the header:
 template<Index index>
-Common::Bus AddressMode::zero_page(Mos6502& cpu, Common::Bus bus, Common::Byte step)
+Common::Bus AddressMode::zeroPageRead(Mos6502& cpu, Common::Bus bus, Common::Byte step)
 {
   if (step == 0)
   {
@@ -67,6 +70,28 @@ Common::Bus AddressMode::zero_page(Mos6502& cpu, Common::Bus bus, Common::Byte s
   }
 
   cpu.m_operand = bus.data;
+  return cpu.StartOperation(bus);
+}
+
+template<Index index>
+Common::Bus AddressMode::zeroPageWrite(Mos6502& cpu, Common::Bus bus, Common::Byte step)
+{
+  if (step == 0)
+  {
+    return Common::Bus::Read(cpu.m_pc++);
+  }
+
+  Common::Byte loByte = bus.data;
+  cpu.m_log.addByte(loByte, 0);
+
+  char buffer[] = "$XX  ";
+  std::format_to(buffer + 1, "{:02X}{}", loByte, index == Index::None ? "  " : index == Index::X ? ",X" : ",Y");
+  cpu.m_log.setOperand(buffer);
+
+  auto [address1, address2] = AddressMode::indexed<index>(cpu, loByte, c_ZeroPage);
+  // In the case of zero page addressing, we wrap around to the start of the page,
+  // so the second value returned is the correct value.
+  cpu.m_target = address2;
   return cpu.StartOperation(bus);
 }
 

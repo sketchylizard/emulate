@@ -260,25 +260,29 @@ TEST_CASE("Absolute addressing edge cases", "[addressing][absolute][edge]")
   }
 }
 
+struct TestStep
+{
+  Byte input_data;  // Data provided TO the addressing mode
+  Address expected_address;  // Address the addressing mode should REQUEST
+};
+
 // Helper function for multi-step execution
-// Memory is a span of (Byte, Address) pairs, the data to push on the bus as input to the
-// cpu for that step, and the expected address as a result.
-void executeAddressingMode(Mos6502::StateFunc addressingMode, Mos6502& cpu, std::span<std::pair<Byte, Address>> memory,
-    const Mos6502::Instruction& instruction = TestReadInstruction)
+// Memory is a span of TestStep structures, each containing the data to push on the bus as input to the
+// CPU for that step, and the expected address the addressing mode should request.
+void executeAddressingMode(Mos6502::StateFunc addressingMode, Mos6502& cpu, std::span<TestStep> memory)
 {
   Bus bus;
 
-  cpu.setInstruction(instruction);
   wasStartOperationCalled = false;
 
   Byte step = 0;
-  for (auto [data, addr] : memory)
+  for (auto stepData : memory)
   {
     REQUIRE_FALSE(wasStartOperationCalled);
 
-    bus.data = data;
+    bus.data = stepData.input_data;
     bus = addressingMode(cpu, bus, step++);
-    REQUIRE(bus.address == addr);
+    REQUIRE(bus.address == stepData.expected_address);
   }
 
   CHECK(wasStartOperationCalled);
@@ -299,7 +303,7 @@ TEST_CASE("Complete addressing mode execution", "[addressing][integration]")
   cpu.setInstruction(TestReadInstruction);
   wasStartOperationCalled = false;
 
-  std::pair<Byte, Address> memory[] = {
+  TestStep memory[] = {
       {0x00, programCounter},  // Request for lo byte (data is ignored)
       {LoByte(baseAddress), programCounter + 1},  // Request for hi byte (data is low byte)
       {HiByte(baseAddress), expectedIndexedAddress},  // Request to read operand (data is high byte)
@@ -356,19 +360,21 @@ TEST_CASE("AddressMode::absoluteWrite<Index::X> - No page boundary crossing")
   cpu.set_pc(programCounter);
   cpu.set_x(0x05);
 
-  std::pair<Byte, Address> memory[] = {
+  cpu.setInstruction(TestWriteInstruction);
+
+  TestStep memory[] = {
       {0x00, programCounter},  // Request for lo byte (data is ignored)
       {LoByte(baseAddress), programCounter + 1},  // Request for hi byte (data is low byte)
       {HiByte(baseAddress), expectedIndexedAddress},  // Request to write (data is high byte)
   };
 
-  executeAddressingMode(AddressMode::absoluteWrite<Index::X>, cpu, memory, TestWriteInstruction);
+  executeAddressingMode(AddressMode::absoluteWrite<Index::X>, cpu, memory);
 }
 
 TEST_CASE("AddressMode::absoluteWrite<Index::X> - Page boundary crossing")
 {
   Mos6502 cpu;
-  cpu.setInstruction(TestReadInstruction);
+  cpu.setInstruction(TestWriteInstruction);
   cpu.set_pc(0x1000_addr);
   cpu.set_x(0x10);
   wasStartOperationCalled = false;
@@ -395,7 +401,7 @@ TEST_CASE("AddressMode::absoluteWrite<Index::X> - Page boundary crossing")
   bus.data = 0x00;  // Simulate reading from the incorrect address
   bus = AddressMode::absoluteWrite<Index::X>(cpu, bus, 3);
   CHECK(wasStartOperationCalled == true);
-  CHECK(bus.address == 0xffff_addr);
+  CHECK(bus.address == 0x110F_addr);
 }
 
 TEST_CASE("AddressMode::absoluteWrite<Index::Y> - No page boundary crossing")
@@ -440,14 +446,16 @@ TEST_CASE("AddressMode::absoluteWrite<Index::Y> - Page boundary crossing")
   cpu.set_y(0x20);  // Index value
   cpu.set_a(0x99);  // test value
 
-  std::pair<Byte, Address> memory[] = {
+  cpu.setInstruction(TestWriteInstruction);
+
+  TestStep memory[] = {
       {0x00, programCounter},  // Request for lo byte (data is ignored)
       {LoByte(baseAddress), programCounter + 1},  // Request for hi byte (data is low byte)
       {HiByte(baseAddress), expectedWrongAddress},  // Request to read wrong address (data is high byte)
       {0x99, expectedIndexedAddress},  // Request to read operand (data is random)
   };
 
-  executeAddressingMode(AddressMode::absoluteWrite<Index::Y>, cpu, memory, TestWriteInstruction);
+  executeAddressingMode(AddressMode::absoluteWrite<Index::Y>, cpu, memory);
 }
 
 TEST_CASE("AddressMode::absoluteWrite<Index::None> - Logging verification")
@@ -519,4 +527,176 @@ TEST_CASE("AddressMode::absoluteWrite<Index::Y> - Edge case: Y register is 0xFF"
   bus.data = 0x00;
   AddressMode::absoluteWrite<Index::Y>(cpu, bus, 3);
   CHECK(wasStartOperationCalled == true);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Zero Page Addressing Modes
+////////////////////////////////////////////////////////////////////////////////
+
+TEST_CASE("Zero Page Read addressing mode", "[addressing][zeropage]")
+{
+  Address programCounter = 0x8000_addr;
+
+  Mos6502 cpu;
+  cpu.set_pc(programCounter);
+
+  cpu.setInstruction(TestReadInstruction);
+
+  SECTION("Basic functionality")
+  {
+    Address zpAddress = 0x0042_addr;
+
+    TestStep memory[] = {
+        {0x00, programCounter},  // Fetch opcode
+        {0x42, zpAddress},  // Fetch from zero page address
+        {0xAB, 0xffff_addr},  // Target operand value
+    };
+
+    executeAddressingMode(AddressMode::zeroPageRead<Index::None>, cpu, memory);
+  }
+
+  SECTION("X Read addressing mode - no wrap")
+  {
+    Address zpBase = 0x0042_addr;
+    Address expectedAddress = zpBase + 5;
+
+    cpu.set_x(0x05);
+
+    TestStep memory[] = {
+        {0x00, programCounter},  // Fetch opcode
+        {LoByte(zpBase), expectedAddress},  // Read base address (discarded)
+        {0xAB, 0xffff_addr},  // Target operand value
+    };
+
+    executeAddressingMode(AddressMode::zeroPageRead<Index::X>, cpu, memory);
+  }
+
+  SECTION("X Read addressing mode - with wrap")
+  {
+    Address zpBase = 0x00FE_addr;
+    Address expectedAddress = 0x0003_addr;  // (0xFE + 0x05) & 0xFF = 0x03
+
+    cpu.set_x(0x05);
+
+    TestStep memory[] = {
+        {0x00, programCounter},  // Fetch opcode
+        {LoByte(zpBase), expectedAddress},  // Read from wrapped address
+        {0xCD, 0xffff_addr},  // Target operand value
+    };
+
+    executeAddressingMode(AddressMode::zeroPageRead<Index::X>, cpu, memory);
+  }
+
+  SECTION("Zero Page,Y Read addressing mode - no wrap")
+  {
+    Address zpBase = 0x0042_addr;
+    Address expectedAddress = 0x0045_addr;  // 0x42 + 0x03
+
+    cpu.set_y(0x03);
+
+    TestStep memory[] = {
+        {0x00, programCounter},  // Fetch opcode
+        {LoByte(zpBase), expectedAddress},  // Read expected address
+        {0xEF, 0xffff_addr},  // Target operand value
+    };
+
+    executeAddressingMode(AddressMode::zeroPageRead<Index::Y>, cpu, memory);
+  }
+
+  SECTION("Zero Page,Y Read addressing mode - with wrap")
+  {
+    Address zpBase = 0x00FF_addr;
+    Address expectedAddress = 0x0002_addr;  // (0xFF + 0x03) & 0xFF = 0x02
+
+    cpu.set_y(0x03);
+
+    TestStep memory[] = {
+        {0x00, programCounter},  // Fetch opcode
+        {LoByte(zpBase), expectedAddress},  // Read expected address
+        {0x12, 0xffff_addr},  // Target operand value
+    };
+
+    executeAddressingMode(AddressMode::zeroPageRead<Index::Y>, cpu, memory);
+  }
+}
+
+TEST_CASE("Zero Page Write addressing mode", "[addressing][zeropage]")
+{
+  Address programCounter = 0x8000_addr;
+
+  Mos6502 cpu;
+  cpu.set_pc(programCounter);
+
+  cpu.setInstruction(TestWriteInstruction);
+
+  SECTION("Basic functionality")
+  {
+    Address zpAddress = 0x0042_addr;
+    TestStep memory[] = {
+        {0x00, programCounter},  // Fetch opcode
+        {0x42, zpAddress},  // Write to zero page address
+    };
+
+    executeAddressingMode(AddressMode::zeroPageWrite<Index::None>, cpu, memory);
+  }
+
+  SECTION("Zero Page,X Write addressing mode - no wrap")
+  {
+    Address zpBase = 0x0042_addr;
+    Address expectedAddress = 0x0047_addr;  // 0x42 + 0x05
+
+    cpu.set_x(0x05);
+
+    TestStep memory[] = {
+        {0x00, programCounter},  // Fetch opcode
+        {LoByte(zpBase), expectedAddress},  // Read expected address
+    };
+
+    executeAddressingMode(AddressMode::zeroPageWrite<Index::X>, cpu, memory);
+  }
+
+  SECTION("Zero Page,X Write addressing mode - with wrap")
+  {
+    Address zpBase = 0x00FE_addr;
+    Address expectedAddress = 0x0003_addr;  // (0xFE + 0x05) & 0xFF = 0x03
+
+    cpu.set_x(0x05);
+
+    TestStep memory[] = {
+        {0x00, programCounter},  // Fetch opcode
+        {LoByte(zpBase), expectedAddress},  //
+    };
+
+    executeAddressingMode(AddressMode::zeroPageWrite<Index::X>, cpu, memory);
+  }
+
+  SECTION("Zero Page,Y Write addressing mode - no wrap")
+  {
+    Address zpBase = 0x0042_addr;
+    Address expectedAddress = 0x0045_addr;  // 0x42 + 0x03
+
+    cpu.set_y(0x03);
+
+    TestStep memory[] = {
+        {0x00, programCounter},  // Fetch opcode
+        {LoByte(zpBase), expectedAddress},  //
+    };
+
+    executeAddressingMode(AddressMode::zeroPageWrite<Index::Y>, cpu, memory);
+  }
+
+  SECTION("Zero Page,Y Write addressing mode - with wrap")
+  {
+    Address zpBase = 0x00FF_addr;
+    Address expectedAddress = 0x0002_addr;  // (0xFF + 0x03) & 0xFF = 0x02
+
+    cpu.set_y(0x03);
+
+    TestStep memory[] = {
+        {0x00, programCounter},  // Fetch opcode
+        {LoByte(zpBase), expectedAddress},  // Write to wrapped address
+    };
+
+    executeAddressingMode(AddressMode::zeroPageWrite<Index::Y>, cpu, memory);
+  }
 }

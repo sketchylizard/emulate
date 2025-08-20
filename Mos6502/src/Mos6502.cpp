@@ -310,8 +310,8 @@ static constexpr std::array<Mos6502::Instruction, 256> c_instructions = []
 
   // ADC instructions
   table[0x69] = {"ADC", &Mode::immediate, &Operations::adc};                        // Immediate
-  table[0x65] = {"ADC", &Mode::zero_page<Index::None>, &Operations::adc};  // Zero Page
-  table[0x75] = {"ADC", &Mode::zero_page<Index::X>, &Operations::adc};     // Zero Page,X
+  table[0x65] = {"ADC", &Mode::zeroPageRead<Index::None>, &Operations::adc};  // Zero Page
+  table[0x75] = {"ADC", &Mode::zeroPageRead<Index::X>, &Operations::adc};     // Zero Page,X
   table[0x6D] = {"ADC", &Mode::absoluteRead<Index::None>, &Operations::adc};   // Absolute
   table[0x7D] = {"ADC", &Mode::absoluteRead<Index::X>, &Operations::adc};      // Absolute,X
   table[0x79] = {"ADC", &Mode::absoluteRead<Index::Y>, &Operations::adc};      // Absolute,Y
@@ -320,8 +320,8 @@ static constexpr std::array<Mos6502::Instruction, 256> c_instructions = []
 
   // LDA instructions
   table[0xA9] = {"LDA", &Mode::immediate, &Operations::load<Index::None>};  // Immediate
-  table[0xA5] = {"LDA", &Mode::zero_page<Index::None>, &Operations::load<Index::None>};  // Zero Page
-  table[0xB5] = {"LDA", &Mode::zero_page<Index::X>, &Operations::load<Index::None>};  // Zero Page,X
+  table[0xA5] = {"LDA", &Mode::zeroPageRead<Index::None>, &Operations::load<Index::None>};  // Zero Page
+  table[0xB5] = {"LDA", &Mode::zeroPageRead<Index::X>, &Operations::load<Index::None>};  // Zero Page,X
   table[0xAD] = {"LDA", &Mode::absoluteRead<Index::None>, &Operations::load<Index::None>};  // Absolute
   table[0xBD] = {"LDA", &Mode::absoluteRead<Index::X>, &Operations::load<Index::None>};  // Absolute,X
   table[0xB9] = {"LDA", &Mode::absoluteRead<Index::Y>, &Operations::load<Index::None>};  // Absolute,Y
@@ -330,15 +330,15 @@ static constexpr std::array<Mos6502::Instruction, 256> c_instructions = []
 
   // LDX instructions
   table[0xA2] = {"LDX", &Mode::immediate, &Operations::load<Index::X>};  // Immediate
-  table[0xA6] = {"LDX", &Mode::zero_page<Index::None>, &Operations::load<Index::X>};  // Zero Page
-  table[0xB6] = {"LDX", &Mode::zero_page<Index::Y>, &Operations::load<Index::X>};  // Zero Page,Y
+  table[0xA6] = {"LDX", &Mode::zeroPageRead<Index::None>, &Operations::load<Index::X>};  // Zero Page
+  table[0xB6] = {"LDX", &Mode::zeroPageRead<Index::Y>, &Operations::load<Index::X>};  // Zero Page,Y
   table[0xAE] = {"LDX", &Mode::absoluteRead<Index::None>, &Operations::load<Index::X>};  // Absolute
   table[0xBE] = {"LDX", &Mode::absoluteRead<Index::Y>, &Operations::load<Index::X>};  // Absolute,Y
 
   // LDY instructions
   table[0xA0] = {"LDY", &Mode::immediate, &Operations::load<Index::Y>};  // Immediate
-  table[0xA4] = {"LDY", &Mode::zero_page<Index::None>, &Operations::load<Index::Y>};  // Zero Page
-  table[0xB4] = {"LDY", &Mode::zero_page<Index::X>, &Operations::load<Index::Y>};  // Zero Page,X
+  table[0xA4] = {"LDY", &Mode::zeroPageRead<Index::None>, &Operations::load<Index::Y>};  // Zero Page
+  table[0xB4] = {"LDY", &Mode::zeroPageRead<Index::X>, &Operations::load<Index::Y>};  // Zero Page,X
   table[0xAC] = {"LDY", &Mode::absoluteRead<Index::None>, &Operations::load<Index::Y>};  // Absolute
   table[0xBC] = {"LDY", &Mode::absoluteRead<Index::X>, &Operations::load<Index::Y>};  // Absolute,X
 
@@ -346,8 +346,8 @@ static constexpr std::array<Mos6502::Instruction, 256> c_instructions = []
   table[0x9A] = {"TXS", &Mode::implied, &Operations::txs};
 
   // STA variations
-  table[0x85] = {"STA", &Mode::zero_page<Index::None>, &Operations::sta};
-  table[0x95] = {"STA", &Mode::zero_page<Index::X>,    &Operations::sta};
+  table[0x85] = {"STA", &Mode::zeroPageRead<Index::None>, &Operations::sta};
+  table[0x95] = {"STA", &Mode::zeroPageRead<Index::X>,    &Operations::sta};
   table[0x8D] = {"STA", &Mode::absoluteWrite<Index::None>,  &Operations::sta};
   table[0x9D] = {"STA", &Mode::absoluteWrite<Index::X>,     &Operations::sta};
   table[0x99] = {"STA", &Mode::absoluteWrite<Index::Y>,     &Operations::sta};
@@ -356,10 +356,10 @@ static constexpr std::array<Mos6502::Instruction, 256> c_instructions = []
 
   // ORA variations
   table[0x01] = {"ORA", &Mode::indirect<Index::X>,     &Operations::ora};
-  table[0x05] = {"ORA", &Mode::zero_page<Index::None>, &Operations::ora};
+  table[0x05] = {"ORA", &Mode::zeroPageRead<Index::None>, &Operations::ora};
   table[0x0D] = {"ORA", &Mode::absoluteRead<Index::None>,  &Operations::ora};
   table[0x11] = {"ORA", &Mode::indirect<Index::Y>,    &Operations::ora};
-  table[0x15] = {"ORA", &Mode::zero_page<Index::X>,   &Operations::ora};
+  table[0x15] = {"ORA", &Mode::zeroPageRead<Index::X>,   &Operations::ora};
   table[0x19] = {"ORA", &Mode::absoluteRead<Index::Y>,    &Operations::ora};
   table[0x1D] = {"ORA", &Mode::absoluteRead<Index::X>,    &Operations::ora};
 
@@ -380,8 +380,8 @@ static constexpr std::array<Mos6502::Instruction, 256> c_instructions = []
   #if 0
   // CMP — Compare Accumulator
   table[0xC9] = {"CMP", &Mode::immediate, &Operations::compare<Index::None>};
-  table[0xC5] = {"CMP", &Mode::zero_page<Index::None>, &Operations::compare<Index::None>};
-  table[0xD5] = {"CMP", &Mode::zero_page<Index::X>, &Operations::compare<Index::X>};
+  table[0xC5] = {"CMP", &Mode::zeroPageRead<Index::None>, &Operations::compare<Index::None>};
+  table[0xD5] = {"CMP", &Mode::zeroPageRead<Index::X>, &Operations::compare<Index::X>};
   table[0xCD] = {"CMP", &Mode::absoluteRead<Index::None>, &Operations::compare<Index::None>};
   table[0xDD] = {"CMP", &Mode::absoluteRead<Index::X>, &Operations::compare<Index::X>};
   table[0xD9] = {"CMP", &Mode::absoluteRead<Index::Y>, &Operations::compare<Index::Y>};
@@ -390,12 +390,12 @@ static constexpr std::array<Mos6502::Instruction, 256> c_instructions = []
 
   // CPX — Compare X Register
   table[0xE0] = {"CPX", &Mode::immediate, &Operations::compare<Index::X>};
-  table[0xE4] = {"CPX", &Mode::zero_page<>, &Operations::compare<Index::X>};
+  table[0xE4] = {"CPX", &Mode::zeroPageRead<>, &Operations::compare<Index::X>};
   table[0xEC] = {"CPX", &Mode::absoluteRead<>, &Operations::compare<Index::X>};
 
   // CPY — Compare Y Register
   table[0xC0] = {"CPY", &Mode::immediate, &Operations::compare<Index::Y>};
-  table[0xC4] = {"CPY", &Mode::zero_page<>, &Operations::compare<Index::Y>};
+  table[0xC4] = {"CPY", &Mode::zeroPageRead<>, &Operations::compare<Index::Y>};
   table[0xCC] = {"CPY", &Mode::absoluteRead<>, &Operations::compare<Index::Y>};
 #endif
 
