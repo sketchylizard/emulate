@@ -15,26 +15,26 @@ inline constexpr Common::Byte c_StackPage{0x01};
 
 struct AddressMode
 {
-  static Common::Bus accumulator(Mos6502& cpu, Common::Bus bus, Common::Byte step);
-  static Common::Bus implied(Mos6502& cpu, Common::Bus bus, Common::Byte step);
-  static Common::Bus immediate(Mos6502& cpu, Common::Bus bus, Common::Byte step);
-  static Common::Bus relative(Mos6502& cpu, Common::Bus bus, Common::Byte step);
+  static Common::BusRequest accumulator(Mos6502& cpu, Common::BusResponse response, Common::Byte step);
+  static Common::BusRequest implied(Mos6502& cpu, Common::BusResponse response, Common::Byte step);
+  static Common::BusRequest immediate(Mos6502& cpu, Common::BusResponse response, Common::Byte step);
+  static Common::BusRequest relative(Mos6502& cpu, Common::BusResponse response, Common::Byte step);
 
   template<Index index>
-  static Common::Bus zeroPageRead(Mos6502& cpu, Common::Bus bus, Common::Byte step);
+  static Common::BusRequest zeroPageRead(Mos6502& cpu, Common::BusResponse response, Common::Byte step);
 
   template<Index index>
-  static Common::Bus zeroPageWrite(Mos6502& cpu, Common::Bus bus, Common::Byte step);
+  static Common::BusRequest zeroPageWrite(Mos6502& cpu, Common::BusResponse response, Common::Byte step);
 
   template<Index index>
-  static Common::Bus absoluteRead(Mos6502& cpu, Common::Bus bus, Common::Byte step);
+  static Common::BusRequest absoluteRead(Mos6502& cpu, Common::BusResponse response, Common::Byte step);
 
   template<Index index>
-  static Common::Bus absoluteWrite(Mos6502& cpu, Common::Bus bus, Common::Byte step);
+  static Common::BusRequest absoluteWrite(Mos6502& cpu, Common::BusResponse response, Common::Byte step);
 
   template<Index index>
     requires(index != Index::None)
-  static Common::Bus indirect(Mos6502& cpu, Common::Bus bus, Common::Byte step);
+  static Common::BusRequest indirect(Mos6502& cpu, Common::BusResponse response, Common::Byte step);
 
   // Add the given index to the address and returns a pair of addresses,
   // first = correct address, second = address with just the low byte incremented.
@@ -48,15 +48,15 @@ struct AddressMode
 
 // Template definitions must remain in the header:
 template<Index index>
-Common::Bus AddressMode::zeroPageRead(Mos6502& cpu, Common::Bus bus, Common::Byte step)
+Common::BusRequest AddressMode::zeroPageRead(Mos6502& cpu, Common::BusResponse response, Common::Byte step)
 {
   if (step == 0)
   {
-    return Common::Bus::Read(cpu.m_pc++);
+    return Common::BusRequest::Read(cpu.m_pc++);
   }
   if (step == 1)
   {
-    Common::Byte loByte = bus.data;
+    Common::Byte loByte = response.data;
     cpu.m_log.addByte(loByte, 0);
 
     char buffer[] = "$XX  ";
@@ -66,22 +66,22 @@ Common::Bus AddressMode::zeroPageRead(Mos6502& cpu, Common::Bus bus, Common::Byt
     auto [address1, address2] = AddressMode::indexed<index>(cpu, loByte, c_ZeroPage);
     // In the case of zero page addressing, we wrap around to the start of the page,
     // so the second value returned is the correct value.
-    return Common::Bus::Read(address2);
+    return Common::BusRequest::Read(address2);
   }
 
-  cpu.m_operand = bus.data;
-  return cpu.StartOperation(bus);
+  cpu.m_operand = response.data;
+  return cpu.StartOperation(response);
 }
 
 template<Index index>
-Common::Bus AddressMode::zeroPageWrite(Mos6502& cpu, Common::Bus bus, Common::Byte step)
+Common::BusRequest AddressMode::zeroPageWrite(Mos6502& cpu, Common::BusResponse response, Common::Byte step)
 {
   if (step == 0)
   {
-    return Common::Bus::Read(cpu.m_pc++);
+    return Common::BusRequest::Read(cpu.m_pc++);
   }
 
-  Common::Byte loByte = bus.data;
+  Common::Byte loByte = response.data;
   cpu.m_log.addByte(loByte, 0);
 
   char buffer[] = "$XX  ";
@@ -92,30 +92,30 @@ Common::Bus AddressMode::zeroPageWrite(Mos6502& cpu, Common::Bus bus, Common::By
   // In the case of zero page addressing, we wrap around to the start of the page,
   // so the second value returned is the correct value.
   cpu.m_target = address2;
-  return cpu.StartOperation(bus);
+  return cpu.StartOperation(response);
 }
 
 template<Index index>
-Common::Bus AddressMode::absoluteRead(Mos6502& cpu, Common::Bus bus, Common::Byte step)
+Common::BusRequest AddressMode::absoluteRead(Mos6502& cpu, Common::BusResponse response, Common::Byte step)
 {
   if (step == 0)
   {
-    // Put the address of the lo byte on the bus
-    return Common::Bus::Read(cpu.m_pc++);
+    // Put the address of the lo byte on the BusRequest
+    return Common::BusRequest::Read(cpu.m_pc++);
   }
   if (step == 1)
   {
-    // Read the lo byte from the bus
-    cpu.m_target = Common::MakeAddress(bus.data, c_ZeroPage);
-    cpu.m_log.addByte(bus.data, 0);
+    // Read the lo byte from the BusRequest
+    cpu.m_target = Common::MakeAddress(response.data, c_ZeroPage);
+    cpu.m_log.addByte(response.data, 0);
 
-    // Put the address of the hi byte on the bus.
-    return Common::Bus::Read(cpu.m_pc++);
+    // Put the address of the hi byte on the response.
+    return Common::BusRequest::Read(cpu.m_pc++);
   }
   if (step == 2)
   {
-    // Read the hi byte from the bus.
-    Common::Byte hiByte = bus.data;
+    // Read the hi byte from the response.
+    Common::Byte hiByte = response.data;
     cpu.m_log.addByte(hiByte, 1);
 
     // Combine loByte and hiByte to form the target address
@@ -138,46 +138,46 @@ Common::Bus AddressMode::absoluteRead(Mos6502& cpu, Common::Bus bus, Common::Byt
       if (cpu.m_target != wrongAddress)
       {
         cpu.SetFlag(Mos6502::ExtraStepRequired, true);
-        return Common::Bus::Read(wrongAddress);
+        return Common::BusRequest::Read(wrongAddress);
       }
     }
 
     // We either are not in indexed mode, or we did not cross a page boundary.
     // Perform the normal read.
-    return Common::Bus::Read(cpu.m_target);
+    return Common::BusRequest::Read(cpu.m_target);
   }
   if (step == 3 && index != Index::None && cpu.HasFlag(Mos6502::ExtraStepRequired))
   {
     // If we get here we were in index mode and we crossed a page boundary.
     // Perform the correct read now.
-    return Common::Bus::Read(cpu.m_target);
+    return Common::BusRequest::Read(cpu.m_target);
   }
 
-  cpu.m_operand = bus.data;
-  return cpu.StartOperation(bus);
+  cpu.m_operand = response.data;
+  return cpu.StartOperation(response);
 }
 
 template<Index index>
-Common::Bus AddressMode::absoluteWrite(Mos6502& cpu, Common::Bus bus, Common::Byte step)
+Common::BusRequest AddressMode::absoluteWrite(Mos6502& cpu, Common::BusResponse response, Common::Byte step)
 {
   if (step == 0)
   {
-    // Put the address of the lo byte on the bus
-    return Common::Bus::Read(cpu.m_pc++);
+    // Put the address of the lo byte on the BusRequest
+    return Common::BusRequest::Read(cpu.m_pc++);
   }
   if (step == 1)
   {
-    // Read the lo byte from the bus
-    cpu.m_target = Common::MakeAddress(bus.data, c_ZeroPage);
-    cpu.m_log.addByte(bus.data, 0);
+    // Read the lo byte from the BusRequest
+    cpu.m_target = Common::MakeAddress(response.data, c_ZeroPage);
+    cpu.m_log.addByte(response.data, 0);
 
-    // Put the address of the hi byte on the bus.
-    return Common::Bus::Read(cpu.m_pc++);
+    // Put the address of the hi byte on the response.
+    return Common::BusRequest::Read(cpu.m_pc++);
   }
   if (step == 2)
   {
-    // Read the hi byte from the bus.
-    Common::Byte hiByte = bus.data;
+    // Read the hi byte from the response.
+    Common::Byte hiByte = response.data;
     cpu.m_log.addByte(hiByte, 1);
 
     // Combine loByte and hiByte to form the target address
@@ -200,26 +200,26 @@ Common::Bus AddressMode::absoluteWrite(Mos6502& cpu, Common::Bus bus, Common::By
       if (cpu.m_target != wrongAddress)
       {
         cpu.SetFlag(Mos6502::ExtraStepRequired, true);
-        return Common::Bus::Read(wrongAddress);
+        return Common::BusRequest::Read(wrongAddress);
       }
     }
 
     // We either are not in indexed mode, or we did not cross a page boundary.
-    return cpu.StartOperation(bus);
+    return cpu.StartOperation(response);
   }
 
   assert(step == 3);
   assert(cpu.HasFlag(Mos6502::ExtraStepRequired) == true);
 
-  return cpu.StartOperation(bus);
+  return cpu.StartOperation(response);
 }
 
 template<Index index>
   requires(index != Index::None)
-Common::Bus AddressMode::indirect(Mos6502& cpu, Common::Bus bus, Common::Byte step)
+Common::BusRequest AddressMode::indirect(Mos6502& cpu, Common::BusResponse response, Common::Byte step)
 {
   static_cast<void>(step);
-  return cpu.StartOperation(bus);
+  return cpu.StartOperation(response);
 }
 
 template<Index index>

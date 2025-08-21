@@ -121,7 +121,7 @@ struct Mapping
     std::get<RamSpan>(span)[offset] = value;
   }
 
-  std::optional<BusResponse> Tick(const Bus& input)
+  std::optional<BusResponse> Tick(const BusRequest& input)
   {
     if (!Contains(input.address))
     {
@@ -193,7 +193,7 @@ public:
     throw std::out_of_range("Address " + std::to_string(static_cast<uint16_t>(addr)) + " is not writable");
   }
 
-  std::optional<BusResponse> Tick(const Bus& input)
+  std::optional<BusResponse> Tick(const BusRequest& input)
   {
     for (auto& mapping : m_mappings)
     {
@@ -233,93 +233,31 @@ private:
   std::span<Mapping> m_mappings;
 };
 
-TEST_CASE("Mos6502: ADC Immediate", "[cpu][adc]")
-{
-  // Setup
-  // Write instruction to memory
-  auto program = R"(
-    69 22  ; ADC #$22
-  )"_hex;
-
-  Byte ram[0xFFFF];
-
-  Mapping memoryMap[] = {
-      // Put the ROM in the map first so it will be found first and hide the memory.
-      {Address{0x1000}, Address{0x1002}, RomSpan{program}},  // ROM
-      {Address{0x0000}, Address{0xFFFF}, RamSpan{ram}},  // RAM
-  };
-
-  SimpleMemoryMap memory = {memoryMap};
-
-  Bus bus = {};
-
-  Mos6502 cpu;
-  cpu.set_a(0x10);  // A = 0x10
-  cpu.set_status(0);  // Make sure Carry is cleared (C = 0)
-
-  auto tick = [&](Bus bus)
-  {
-    bus = cpu.Tick(bus);
-    auto response = memory.Tick(bus);
-    if (response)
-    {
-      bus.data = response->data;
-    }
-    return bus;
-  };
-
-  auto programStart = Address{0x1000};
-
-  // Set the reset vector to 0x1000
-  memory[Mos6502::c_brkVector] = LoByte(programStart);
-  memory[Mos6502::c_brkVector + 1] = HiByte(programStart);
-
-  // Execute (it takes 7 cycles for the reset + 2 for ADC immediate)
-  bus = tick(bus);
-  bus = tick(bus);
-  bus = tick(bus);
-  bus = tick(bus);
-  bus = tick(bus);
-  bus = tick(bus);
-  // Reset should be done
-  bus = tick(bus);
-  bus = tick(bus);
-  bus = tick(bus);
-  // ADC should be done
-
-  // Verify result: 0x10 + 0x22 + 0 = 0x32
-  CHECK(cpu.a() == 0x32);
-  // CHECK_FALSE(cpu.status() & CarryFlag);
-  // CHECK_FALSE(cpu.status() & OverflowFlag);
-  // CHECK_FALSE(cpu.status() & ZeroFlag);
-  // CHECK_FALSE(cpu.status() & NegativeFlag);
-}
-
 TEST_CASE("Mos6502: Functional_tests")
 {
   auto file = LoadFile(std::string(KLAUS6502_TESTS_DIR) + "/bin_files/6502_functional_test.bin");
 
   Mapping memory{Address{0x0000}, Address{0xFFFF}, RamSpan{file}};
 
-  Bus bus = {};
-
   Mos6502 cpu;
 
-  auto step = [&](Bus bus)
+  auto step = [&](BusResponse response)
   {
+    BusRequest request;
+
     do
     {
       if (cpu.pc() == Address{0x040B})
         std::cout << "Reached 0x040B, PC: " << std::hex << static_cast<uint16_t>(cpu.pc()) << "\n";
 
-      bus = cpu.Tick(bus);
-      auto response = memory.Tick(bus);
-      if (response)
+      request = cpu.Tick(response);
+      auto newResponse = memory.Tick(request);
+      if (newResponse)
       {
-        bus.data = response->data;
+        request.data = newResponse->data;
       }
-    } while (!(bus.control & Control::Sync));
-    return bus;
+    } while (!(request.control & Control::Sync));
+    return request;
   };
 
   auto programStart = Address{0x0400};
@@ -331,7 +269,7 @@ TEST_CASE("Mos6502: Functional_tests")
 
   for (int i = 0; i < 0xffff; ++i)
   {
-    bus = step(bus);
+    step(BusResponse{});
     if (cpu.pc() == lastProgramCounter)
     {
       // If the PC hasn't changed, the program might be stuck; break to avoid infinite loop

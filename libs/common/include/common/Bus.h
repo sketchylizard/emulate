@@ -51,7 +51,7 @@ constexpr bool operator!(Control value) noexcept
   return static_cast<uint8_t>(value) == 0;
 }
 
-struct Bus
+struct BusRequest
 {
   Address address;
   Byte data;
@@ -77,25 +77,30 @@ struct Bus
     return (control & flag) == flag;
   }
 
-  static constexpr Bus Read(Address addr, Control additionalFlags = Control::None) noexcept
+  static constexpr BusRequest Read(Address addr, Control additionalFlags = Control::None) noexcept
   {
-    return Bus{addr, 0, Control::Read | additionalFlags};
+    return BusRequest{addr, 0, Control::Read | additionalFlags};
   }
 
-  static constexpr Bus Write(Address addr, Byte data, Control additionalFlags = Control::None) noexcept
+  static constexpr BusRequest Write(Address addr, Byte data, Control additionalFlags = Control::None) noexcept
   {
-    return Bus{addr, data, additionalFlags & ~Control::Read};
+    return BusRequest{addr, data, additionalFlags & ~Control::Read};
   }
 
-  static constexpr Bus Fetch(Address addr) noexcept
+  static constexpr BusRequest Fetch(Address addr) noexcept
   {
-    return Bus{addr, 0, Control::Read | Control::Sync};
+    return BusRequest{addr, 0, Control::Read | Control::Sync};
+  }
+
+  friend bool operator==(const BusRequest& lhs, const BusRequest& rhs) noexcept
+  {
+    return lhs.address == rhs.address && lhs.data == rhs.data && lhs.control == rhs.control;
   }
 };
 
 struct BusResponse
 {
-  uint8_t data;
+  Byte data;
   bool ready = true;  // for devices that need wait states
 };
 

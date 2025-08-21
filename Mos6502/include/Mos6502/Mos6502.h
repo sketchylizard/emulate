@@ -19,7 +19,8 @@ class Mos6502
 public:
   using Address = Common::Address;
   using Byte = Common::Byte;
-  using Bus = Common::Bus;
+  using BusRequest = Common::BusRequest;
+  using BusResponse = Common::BusResponse;
 
   static constexpr Address c_nmiVector = Address{0xFFFA};
   static constexpr Address c_resetVector = Address{0xFFFC};
@@ -34,8 +35,9 @@ public:
   static constexpr Byte Overflow = 1 << 5;
   static constexpr Byte Negative = 1 << 6;
 
-  //! Bus should be a new bus state.
-  using StateFunc = Bus (*)(Mos6502&, Bus bus, Byte step);
+  //! State functions should accept a bus response from the previous clock tick and return a new bus request for the new
+  //! state.
+  using StateFunc = BusRequest (*)(Mos6502&, BusResponse response, Byte step);
 
   struct Instruction
   {
@@ -68,7 +70,7 @@ public:
 
   [[nodiscard]] Address target() const noexcept;
 
-  Bus Tick(Bus bus) noexcept;
+  BusRequest Tick(BusResponse response) noexcept;
 
   //! Get the number of ticks since the last reset.
   [[nodiscard]] uint32_t tickCount() const noexcept;
@@ -91,10 +93,10 @@ private:
   void DecodeNextInstruction(Byte opcode) noexcept;
 
   // Transition from addressing mode to operation.
-  Bus StartOperation(Bus bus);
+  BusRequest StartOperation(BusResponse response);
 
   // Transition from operation to next instruction.
-  Bus FinishOperation();
+  BusRequest FinishOperation();
 
   void Log() const;
 
@@ -122,6 +124,9 @@ private:
 
   // Scratch data for operations and logging
   Byte m_operand;
+
+  // Last bus request
+  BusRequest m_lastBusRequest;
 
   LogBuffer m_log;
 };

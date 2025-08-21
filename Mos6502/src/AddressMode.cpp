@@ -1,45 +1,45 @@
 #include "AddressMode.h"
 
-Common::Bus AddressMode::accumulator(Mos6502& cpu, Common::Bus bus, Common::Byte step)
+Common::BusRequest AddressMode::accumulator(Mos6502& cpu, Common::BusResponse response, Common::Byte step)
 {
   assert(step == 0);
   cpu.m_log.setOperand("A");
-  return cpu.StartOperation(bus);
+  return cpu.StartOperation(response);
 }
 
-Common::Bus AddressMode::implied(Mos6502& cpu, Common::Bus bus, Common::Byte step)
+Common::BusRequest AddressMode::implied(Mos6502& cpu, Common::BusResponse response, Common::Byte step)
 {
   assert(step == 0);
-  return cpu.StartOperation(bus);
+  return cpu.StartOperation(response);
 }
 
-Common::Bus AddressMode::immediate(Mos6502& cpu, Common::Bus bus, Common::Byte step)
+Common::BusRequest AddressMode::immediate(Mos6502& cpu, Common::BusResponse response, Common::Byte step)
 {
   if (step == 0)
   {
-    return Common::Bus::Read(cpu.m_pc++);
+    return Common::BusRequest::Read(cpu.m_pc++);
   }
 
-  cpu.m_operand = bus.data;
+  cpu.m_operand = response.data;
 
   char buffer[] = "#$XX";
-  std::format_to(buffer + 2, "{:02X}", bus.data);
+  std::format_to(buffer + 2, "{:02X}", response.data);
   cpu.m_log.setOperand(buffer);
-  return cpu.StartOperation(bus);
+  return cpu.StartOperation(response);
 }
 
-Common::Bus AddressMode::relative(Mos6502& cpu, Common::Bus bus, Common::Byte step)
+Common::BusRequest AddressMode::relative(Mos6502& cpu, Common::BusResponse response, Common::Byte step)
 {
   if (step == 0)
   {
-    return Common::Bus::Read(cpu.m_pc++);
+    return Common::BusRequest::Read(cpu.m_pc++);
   }
 
-  cpu.m_operand = bus.data;
+  cpu.m_operand = response.data;
 
   char buffer[] = "$XX";
   std::format_to(buffer + 1, "{:02X}", cpu.m_operand);
   cpu.m_log.setOperand(buffer);
 
-  return cpu.StartOperation(bus);
+  return cpu.StartOperation(response);
 }
