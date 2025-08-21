@@ -287,6 +287,33 @@ struct Operations
     return cpu.FinishOperation();
   }
 
+  template<Index index>
+  static Common::BusRequest compare(Mos6502& cpu, Common::BusResponse response, Common::Byte step)
+  {
+    assert(step == 0);
+
+    Common::Byte valueToCompare = 0;
+    if constexpr (index == Index::None)
+    {
+      valueToCompare = cpu.m_a;
+    }
+    else if constexpr (index == Index::X)
+    {
+      valueToCompare = cpu.m_x;
+    }
+    else if constexpr (index == Index::Y)
+    {
+      valueToCompare = cpu.m_y;
+    }
+
+    Common::Byte result = valueToCompare - response.data;
+    cpu.SetFlag(Mos6502::Carry, valueToCompare >= response.data);
+    cpu.SetFlag(Mos6502::Zero, result == 0);
+    cpu.SetFlag(Mos6502::Negative, (result & 0x80) != 0);
+
+    return cpu.FinishOperation();
+  }
+
 };  // struct Operations
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -377,7 +404,6 @@ static constexpr std::array<Mos6502::Instruction, 256> c_instructions = []
   table[0xCA] = {"DEX", &Mode::implied  , &Operations::decrement<Index::X>};
   table[0x88] = {"DEY", &Mode::implied  , &Operations::decrement<Index::Y>};
 
-  #if 0
   // CMP — Compare Accumulator
   table[0xC9] = {"CMP", &Mode::immediate, &Operations::compare<Index::None>};
   table[0xC5] = {"CMP", &Mode::zeroPageRead<Index::None>, &Operations::compare<Index::None>};
@@ -390,14 +416,13 @@ static constexpr std::array<Mos6502::Instruction, 256> c_instructions = []
 
   // CPX — Compare X Register
   table[0xE0] = {"CPX", &Mode::immediate, &Operations::compare<Index::X>};
-  table[0xE4] = {"CPX", &Mode::zeroPageRead<>, &Operations::compare<Index::X>};
-  table[0xEC] = {"CPX", &Mode::absoluteRead<>, &Operations::compare<Index::X>};
+  table[0xE4] = {"CPX", &Mode::zeroPageRead<Index::None>, &Operations::compare<Index::X>};
+  table[0xEC] = {"CPX", &Mode::absoluteRead<Index::None>, &Operations::compare<Index::X>};
 
   // CPY — Compare Y Register
   table[0xC0] = {"CPY", &Mode::immediate, &Operations::compare<Index::Y>};
-  table[0xC4] = {"CPY", &Mode::zeroPageRead<>, &Operations::compare<Index::Y>};
-  table[0xCC] = {"CPY", &Mode::absoluteRead<>, &Operations::compare<Index::Y>};
-#endif
+  table[0xC4] = {"CPY", &Mode::zeroPageRead<Index::None>, &Operations::compare<Index::Y>};
+  table[0xCC] = {"CPY", &Mode::absoluteRead<Index::None>, &Operations::compare<Index::Y>};
 
   // Add more instructions as needed
 
@@ -426,7 +451,7 @@ Common::BusRequest Mos6502::Tick(Common::BusResponse response) noexcept
   if (!m_instruction)
   {
     m_log.reset(m_pc);
-    return Common::BusRequest::Fetch(m_pc++);
+    m_lastBusRequest = Common::BusRequest::Fetch(m_pc++);
   }
   if (m_instruction != nullptr)
   {

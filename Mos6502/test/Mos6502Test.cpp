@@ -241,25 +241,6 @@ TEST_CASE("Mos6502: Functional_tests")
 
   Mos6502 cpu;
 
-  auto step = [&](BusResponse response)
-  {
-    BusRequest request;
-
-    do
-    {
-      if (cpu.pc() == Address{0x040B})
-        std::cout << "Reached 0x040B, PC: " << std::hex << static_cast<uint16_t>(cpu.pc()) << "\n";
-
-      request = cpu.Tick(response);
-      auto newResponse = memory.Tick(request);
-      if (newResponse)
-      {
-        request.data = newResponse->data;
-      }
-    } while (!(request.control & Control::Sync));
-    return request;
-  };
-
   auto programStart = Address{0x0400};
 
   // Set the reset vector to 0x0400
@@ -267,14 +248,22 @@ TEST_CASE("Mos6502: Functional_tests")
 
   Address lastProgramCounter = programStart;
 
+  BusRequest request;
+  BusResponse response;
+
   for (int i = 0; i < 0xffff; ++i)
   {
-    step(BusResponse{});
-    if (cpu.pc() == lastProgramCounter)
+    request = cpu.Tick(response);
+    auto newResponse = memory.Tick(request);
+    if (newResponse)
+    {
+      response = *newResponse;
+    }
+    if (request.isSync() && cpu.pc() == lastProgramCounter)
     {
       // If the PC hasn't changed, the program might be stuck; break to avoid infinite loop
       std::cout << "Program counter stuck at: " << std::hex << static_cast<uint16_t>(cpu.pc()) << "\n";
-      break;
+      //      break;
     }
     lastProgramCounter = cpu.pc();
   }
