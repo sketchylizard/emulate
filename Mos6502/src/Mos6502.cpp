@@ -24,6 +24,12 @@ using namespace Common;
 struct Operations
 {
 
+  // Can be called after a write operation so that the data is actually written to memory before the next operation.
+  static BusRequest finishAfterWrite(Mos6502& cpu, BusResponse)
+  {
+    return cpu.FinishOperation();
+  }
+
   // BRK, NMI, IRQ, and Reset operations all share similar logic for pushing the PC and status onto the stack
   // and setting the PC to the appropriate vector address. This function handles that logic.
   // It returns true when the operation is complete. If forceRead is true, it force the BusRequest to READ rather than
@@ -79,25 +85,26 @@ struct Operations
 
   static Common::BusRequest adc(Mos6502& cpu, Common::BusResponse response)
   {
-    // Handle ADC operation
-    Common::Byte operand = response.data;
-    Common::Byte result = cpu.a() + operand + (cpu.status() & 0x01);  // Carry flag
+    assert(cpu.HasFlag(Mos6502::Decimal) == false);  // BCD mode not supported
 
-    // Set flags
-    cpu.set_status((result == 0) ? 0x02 : 0);  // Zero flag
-    cpu.set_status((result & 0x80) ? 0x80 : 0);  // Negative flag
-    if (result < cpu.a() || result < operand)
-      cpu.set_status(cpu.status() | 0x01);  // Set carry flag
-    else
-      cpu.set_status(cpu.status() & ~0x01);  // Clear carry flag
+    const Byte a = cpu.a();
+    const Byte m = response.data;
+    const Byte c = cpu.HasFlag(Mos6502::Carry) ? 1 : 0;
+
+    const uint16_t sum = uint16_t(a) + uint16_t(m) + uint16_t(c);
+    const Byte result = Byte(sum & 0xFF);
+
+    cpu.m_status = cpu.SetFlag(Mos6502::Carry, (sum & 0x100) != 0);
+    cpu.m_status = cpu.SetFlag(Mos6502::Overflow, ((~(a ^ m) & (a ^ result)) & 0x80) != 0);
+    cpu.SetZN(result);
 
     cpu.set_a(result);
-    return cpu.FinishOperation();  // Operation complete
+    return cpu.FinishOperation();
   }
 
   static Common::BusRequest cld(Mos6502& cpu, Common::BusResponse /*response*/)
   {
-    cpu.SetFlag(Mos6502::Decimal, false);
+    cpu.m_status = cpu.SetFlag(Mos6502::Decimal, false);
     return cpu.FinishOperation();
   }
 
@@ -109,24 +116,16 @@ struct Operations
 
   static Common::BusRequest sta(Mos6502& cpu, Common::BusResponse /*response*/)
   {
-    cpu.m_action = &Operations::sta1;
+    cpu.m_action = &finishAfterWrite;
     return Common::BusRequest::Write(cpu.m_target, cpu.a());
-  }
-
-  static Common::BusRequest sta1(Mos6502& cpu, Common::BusResponse /*response*/)
-  {
-    // This step allows the data to be written to memory. Without it, we put the
-    // value to write on the BusRequest and it would be overwritten by fetching the next
-    // opcode.
-    return cpu.FinishOperation();
   }
 
   static Common::BusRequest ora(Mos6502& cpu, Common::BusResponse response)
   {
     // Perform OR with accumulator
     cpu.m_a |= response.data;
-    cpu.SetFlag(Mos6502::Zero, cpu.m_a == 0);  // Set zero flag
-    cpu.SetFlag(Mos6502::Negative, cpu.m_a & 0x80);  // Set negative flag
+    cpu.m_status = cpu.SetFlag(Mos6502::Zero, cpu.m_a == 0);  // Set zero flag
+    cpu.m_status = cpu.SetFlag(Mos6502::Negative, cpu.m_a & 0x80);  // Set negative flag
     return cpu.FinishOperation();
   }
 
@@ -174,10 +173,9 @@ struct Operations
     Common::Byte loByte = response.data;
     cpu.m_log.addByte(loByte, 0);
 
+    cpu.m_target = MakeAddress(loByte, c_ZeroPage);  // store low into m_target temporarily
     cpu.m_action = &Operations::jmpIndirect2;
-
-    // Fetch indirect address high byte
-    return Common::BusRequest::Read(cpu.m_pc++);
+    return BusRequest::Read(cpu.m_pc++);  // fetch ptr high
   }
 
   static Common::BusRequest jmpIndirect2(Mos6502& cpu, Common::BusResponse response)
@@ -193,19 +191,23 @@ struct Operations
     cpu.m_action = &Operations::jmpIndirect3;
     return BusRequest::Read(cpu.m_target);  // Read target low byte
   }
+
   static Common::BusRequest jmpIndirect3(Mos6502& cpu, Common::BusResponse response)
   {
-    Common::Byte hiByte = response.data;  // Store target hi byte
+    const Byte targetLo = response.data;
 
-    // Page boundary bug: increment only low byte, don't carry to high byte
-    Common::Address hiByteAddr = Common::MakeAddress(Common::LoByte(cpu.m_target) + 1, hiByte);
+    // 6502 bug: high byte read wraps within the *same* page as ptr
+    const Address hiAddr = MakeAddress(Byte(LoByte(cpu.m_target) + 1), HiByte(cpu.m_target));
 
     cpu.m_action = &Operations::jmpIndirect4;
-    return Common::BusRequest::Read(hiByteAddr);  // Read target high byte (with bug)
+    cpu.m_operand = targetLo;  // stash low
+    return BusRequest::Read(hiAddr);  // read target high (buggy wrap)
   }
+
   static Common::BusRequest jmpIndirect4(Mos6502& cpu, Common::BusResponse response)
   {
-    cpu.m_pc = Common::MakeAddress(Common::LoByte(cpu.m_target), response.data);
+    const Byte targetHi = response.data;
+    cpu.m_pc = MakeAddress(cpu.m_operand, targetHi);
     return cpu.FinishOperation();
   }
 
@@ -213,7 +215,9 @@ struct Operations
   {
     if (!(cpu.m_status & Mos6502::Zero))
     {
-      // If the zero flag is set, we do not branch
+      // BNE assumes that two values were compared by subtracting one from the other, or, that a loop counter was
+      // decremented. This means that the the zero flag would be set if they were equal, or the counter reached zero.
+      // Since this is Branch if Not Equal, take the branch only if the zero flag is clear.
       int8_t signedOffset = static_cast<int8_t>(cpu.m_operand);
       cpu.m_pc += signedOffset;
     }
@@ -224,7 +228,9 @@ struct Operations
   {
     if (cpu.m_status & Mos6502::Zero)
     {
-      // If the zero flag is set, we do not branch
+      // BEQ assumes that two values were compared by subtracting one from the other, or, that a loop counter was
+      // decremented. This means that the the zero flag would be set if they were equal, or the counter reached zero.
+      // Since this is Branch if EQual, take the branch only if the zero flag is set.
       int8_t signedOffset = static_cast<int8_t>(cpu.m_operand);
       cpu.m_pc += signedOffset;
     }
@@ -253,9 +259,9 @@ struct Operations
     cpu.m_operand = response.data;
     *reg = response.data;
     // Check zero flag
-    cpu.SetFlag(Mos6502::Zero, *reg == 0);
+    cpu.m_status = cpu.SetFlag(Mos6502::Zero, *reg == 0);
     // Check negative flag
-    cpu.SetFlag(Mos6502::Negative, (*reg & 0x80) != 0);
+    cpu.m_status = cpu.SetFlag(Mos6502::Negative, (*reg & 0x80) != 0);
 
     return cpu.FinishOperation();
   }
@@ -269,14 +275,14 @@ struct Operations
     if constexpr (index == Index::X)
     {
       cpu.m_x++;
-      cpu.SetFlag(Mos6502::Zero, cpu.m_x == 0);
-      cpu.SetFlag(Mos6502::Negative, (cpu.m_x & 0x80) != 0);
+      cpu.m_status = cpu.SetFlag(Mos6502::Zero, cpu.m_x == 0);
+      cpu.m_status = cpu.SetFlag(Mos6502::Negative, (cpu.m_x & 0x80) != 0);
     }
     else if constexpr (index == Index::Y)
     {
       cpu.m_y++;
-      cpu.SetFlag(Mos6502::Zero, cpu.m_y == 0);
-      cpu.SetFlag(Mos6502::Negative, (cpu.m_y & 0x80) != 0);
+      cpu.m_status = cpu.SetFlag(Mos6502::Zero, cpu.m_y == 0);
+      cpu.m_status = cpu.SetFlag(Mos6502::Negative, (cpu.m_y & 0x80) != 0);
     }
     return cpu.FinishOperation();
   }
@@ -289,14 +295,14 @@ struct Operations
     if constexpr (index == Index::X)
     {
       --cpu.m_x;
-      cpu.SetFlag(Mos6502::Zero, cpu.m_x == 0);
-      cpu.SetFlag(Mos6502::Negative, (cpu.m_x & 0x80) != 0);
+      cpu.m_status = cpu.SetFlag(Mos6502::Zero, cpu.m_x == 0);
+      cpu.m_status = cpu.SetFlag(Mos6502::Negative, (cpu.m_x & 0x80) != 0);
     }
     else if constexpr (index == Index::Y)
     {
       --cpu.m_y;
-      cpu.SetFlag(Mos6502::Zero, cpu.m_y == 0);
-      cpu.SetFlag(Mos6502::Negative, (cpu.m_y & 0x80) != 0);
+      cpu.m_status = cpu.SetFlag(Mos6502::Zero, cpu.m_y == 0);
+      cpu.m_status = cpu.SetFlag(Mos6502::Negative, (cpu.m_y & 0x80) != 0);
     }
     return cpu.FinishOperation();
   }
@@ -319,9 +325,9 @@ struct Operations
     }
 
     Common::Byte result = valueToCompare - response.data;
-    cpu.SetFlag(Mos6502::Carry, valueToCompare >= response.data);
-    cpu.SetFlag(Mos6502::Zero, result == 0);
-    cpu.SetFlag(Mos6502::Negative, (result & 0x80) != 0);
+    cpu.m_status = cpu.SetFlag(Mos6502::Carry, valueToCompare >= response.data);
+    cpu.m_status = cpu.SetFlag(Mos6502::Zero, result == 0);
+    cpu.m_status = cpu.SetFlag(Mos6502::Negative, (result & 0x80) != 0);
 
     return cpu.FinishOperation();
   }
@@ -419,12 +425,12 @@ static constexpr std::array<Mos6502::Instruction, 256> c_instructions = []
   // CMP — Compare Accumulator
   table[0xC9] = {"CMP", {&Mode::imm, &Operations::compare<Index::None>}};
   table[0xC5] = {"CMP", {Mode::zp, &Mode::Fetch,&Operations::compare<Index::None>}};
-  table[0xD5] = {"CMP", {Mode::zpX, &Mode::Fetch,&Operations::compare<Index::X>}};
+  table[0xD5] = {"CMP", {Mode::zpX, &Mode::Fetch,&Operations::compare<Index::None>}};
   table[0xCD] = {"CMP", {Mode::abs, &Mode::Fetch, &Operations::compare<Index::None>}};
-  table[0xDD] = {"CMP", {Mode::absX, &Mode::Fetch, &Operations::compare<Index::X>}};
-  table[0xD9] = {"CMP", {Mode::absY, &Mode::Fetch, &Operations::compare<Index::Y>}};
-  table[0xC1] = {"CMP", {&Mode::indirect<Index::X>, &Operations::compare<Index::X>}};
-  table[0xD1] = {"CMP", {&Mode::indirect<Index::Y>, &Operations::compare<Index::Y>}};
+  table[0xDD] = {"CMP", {Mode::absX, &Mode::Fetch, &Operations::compare<Index::None>}};
+  table[0xD9] = {"CMP", {Mode::absY, &Mode::Fetch, &Operations::compare<Index::None>}};
+  table[0xC1] = {"CMP", {&Mode::indirect<Index::X>, &Operations::compare<Index::None>}};
+  table[0xD1] = {"CMP", {&Mode::indirect<Index::Y>, &Operations::compare<Index::None>}};
 
   // CPX — Compare X Register
   table[0xE0] = {"CPX", {&Mode::imm, &Operations::compare<Index::X>}};
@@ -490,15 +496,16 @@ Common::BusRequest Mos6502::StartOperation(Common::BusResponse response)
 
   // Find the next action in the instruction's operation sequence.
   // If there are no more actions, finish the operation.
-  auto it = std::find_if(std::begin(m_instruction->op) + m_stage + 1, std::end(m_instruction->op),
-      [](const auto& op) { return op != nullptr; });
-  if (it == std::end(m_instruction->op))
+  do
   {
-    // No more stages, finish the operation
+    ++m_stage;
+  } while (m_stage < std::size(m_instruction->op) && !m_instruction->op[m_stage]);
+  if (m_stage >= std::size(m_instruction->op))
+  {
     return FinishOperation();
   }
-  m_stage = static_cast<Byte>(std::distance(std::begin(m_instruction->op), it));
-  m_action = *it;
+
+  m_action = m_instruction->op[m_stage];
   return m_action(*this, response);
 }
 

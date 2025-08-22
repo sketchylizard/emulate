@@ -22,6 +22,8 @@ struct AddressMode
   static Common::BusRequest rel(Mos6502& cpu, Common::BusResponse response);
   static Common::BusRequest rel1(Mos6502& cpu, Common::BusResponse response);
 
+  static void logRelOperand(Mos6502& cpu, Common::Byte displacement);
+
   template<Index index>
   static Common::BusRequest zp0(Mos6502& cpu, Common::BusResponse /*response*/)
   {

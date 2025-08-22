@@ -27,13 +27,14 @@ public:
   static constexpr Address c_irqVector = Address{0xFFFE};
   static constexpr Address c_brkVector = Address{0xFFFE};
 
-  static constexpr Byte Carry = 1 << 0;
-  static constexpr Byte Zero = 1 << 1;
-  static constexpr Byte Interrupt = 1 << 2;
-  static constexpr Byte Decimal = 1 << 3;
-  static constexpr Byte Break = 1 << 4;
-  static constexpr Byte Overflow = 1 << 5;
-  static constexpr Byte Negative = 1 << 6;
+  static constexpr Byte Carry = 0x01;
+  static constexpr Byte Zero = 0x02;
+  static constexpr Byte Interrupt = 0x04;
+  static constexpr Byte Decimal = 0x08;
+  static constexpr Byte Break = 0x10;
+  static constexpr Byte Unused = 0x20;  // "U" bit, set when pushed
+  static constexpr Byte Overflow = 0x40;
+  static constexpr Byte Negative = 0x80;
 
   //! State functions should accept a bus response from the previous clock tick and return a new bus request for the new
   //! state.
@@ -63,13 +64,14 @@ public:
   void set_pc(Address addr) noexcept;
 
   [[nodiscard]] Byte status() const noexcept;
-  void set_status(Byte flags) noexcept;
+
+  constexpr void SetZN(Byte v) noexcept;
 
   [[nodiscard]] Byte operand() const noexcept;
 
   [[nodiscard]] Address target() const noexcept;
 
-  BusRequest Tick(BusResponse response) noexcept;
+  [[nodiscard]] BusRequest Tick(BusResponse response) noexcept;
 
   //! Get the number of ticks since the last reset.
   [[nodiscard]] uint32_t tickCount() const noexcept;
@@ -79,10 +81,10 @@ public:
 
 private:
   //! Turns the given flag on or off depending on value.
-  Byte SetFlag(Byte flag, bool value) noexcept;
+  [[nodiscard]] Byte SetFlag(Byte flag, bool value) noexcept;
 
   //! Return true if the given flag is set.
-  bool HasFlag(Byte flag) const noexcept;
+  [[nodiscard]] bool HasFlag(Byte flag) const noexcept;
 
   // State transition functions
 
@@ -183,9 +185,10 @@ inline Common::Byte Mos6502::status() const noexcept
   return m_status;
 }
 
-inline void Mos6502::set_status(Common::Byte flags) noexcept
+constexpr void Mos6502::SetZN(Byte v) noexcept
 {
-  m_status = flags;
+  m_status = SetFlag(Zero, v == 0);
+  m_status = SetFlag(Negative, (v & 0x80) != 0);
 }
 
 inline Common::Byte Mos6502::SetFlag(Common::Byte flag, bool value) noexcept
