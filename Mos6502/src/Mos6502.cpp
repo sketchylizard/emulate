@@ -351,9 +351,9 @@ static constexpr std::array<Mos6502::Instruction, 256> c_instructions = []
   table[0x69] = {"ADC", &Mode::imm, &Operations::adc};                        // Immediate
   table[0x65] = {"ADC", &Mode::zpr<Index::None>, &Operations::adc};  // Zero Page
   table[0x75] = {"ADC", &Mode::zpr<Index::X>, &Operations::adc};     // Zero Page,X
-  table[0x6D] = {"ADC", &Mode::absr<Index::None>, &Operations::adc};   // Absolute
-  table[0x7D] = {"ADC", &Mode::absr<Index::X>, &Operations::adc};      // Absolute,X
-  table[0x79] = {"ADC", &Mode::absr<Index::Y>, &Operations::adc};      // Absolute,Y
+  table[0x6D] = {"ADC", Mode::absr, &Operations::adc};   // Absolute
+  table[0x7D] = {"ADC", Mode::absrX, &Operations::adc};      // Absolute,X
+  table[0x79] = {"ADC", Mode::absrY, &Operations::adc};      // Absolute,Y
   table[0x61] = {"ADC", &Mode::indirect<Index::X>, &Operations::adc};      // (Indirect,X)
   table[0x71] = {"ADC", &Mode::indirect<Index::Y>, &Operations::adc};      // (Indirect),Y
 
@@ -361,9 +361,9 @@ static constexpr std::array<Mos6502::Instruction, 256> c_instructions = []
   table[0xA9] = {"LDA", &Mode::imm, &Operations::load<Index::None>};  // Immediate
   table[0xA5] = {"LDA", &Mode::zpr<Index::None>, &Operations::load<Index::None>};  // Zero Page
   table[0xB5] = {"LDA", &Mode::zpr<Index::X>, &Operations::load<Index::None>};  // Zero Page,X
-  table[0xAD] = {"LDA", &Mode::absr<Index::None>, &Operations::load<Index::None>};  // Absolute
-  table[0xBD] = {"LDA", &Mode::absr<Index::X>, &Operations::load<Index::None>};  // Absolute,X
-  table[0xB9] = {"LDA", &Mode::absr<Index::Y>, &Operations::load<Index::None>};  // Absolute,Y
+  table[0xAD] = {"LDA", Mode::absr, &Operations::load<Index::None>};  // Absolute
+  table[0xBD] = {"LDA", Mode::absrX, &Operations::load<Index::None>};  // Absolute,X
+  table[0xB9] = {"LDA", Mode::absrY, &Operations::load<Index::None>};  // Absolute,Y
   table[0xA1] = {"LDA", &Mode::indirect<Index::X>, &Operations::load<Index::None>};  // (Indirect,X)
   table[0xB1] = {"LDA", &Mode::indirect<Index::Y>, &Operations::load<Index::None>};  // (Indirect),Y
 
@@ -371,15 +371,15 @@ static constexpr std::array<Mos6502::Instruction, 256> c_instructions = []
   table[0xA2] = {"LDX", &Mode::imm, &Operations::load<Index::X>};  // Immediate
   table[0xA6] = {"LDX", &Mode::zpr<Index::None>, &Operations::load<Index::X>};  // Zero Page
   table[0xB6] = {"LDX", &Mode::zpr<Index::Y>, &Operations::load<Index::X>};  // Zero Page,Y
-  table[0xAE] = {"LDX", &Mode::absr<Index::None>, &Operations::load<Index::X>};  // Absolute
-  table[0xBE] = {"LDX", &Mode::absr<Index::Y>, &Operations::load<Index::X>};  // Absolute,Y
+  table[0xAE] = {"LDX", Mode::absr, &Operations::load<Index::X>};  // Absolute
+  table[0xBE] = {"LDX", Mode::absrY, &Operations::load<Index::X>};  // Absolute,Y
 
   // LDY instructions
   table[0xA0] = {"LDY", &Mode::imm, &Operations::load<Index::Y>};  // Immediate
   table[0xA4] = {"LDY", &Mode::zpr<Index::None>, &Operations::load<Index::Y>};  // Zero Page
   table[0xB4] = {"LDY", &Mode::zpr<Index::X>, &Operations::load<Index::Y>};  // Zero Page,X
-  table[0xAC] = {"LDY", &Mode::absr<Index::None>, &Operations::load<Index::Y>};  // Absolute
-  table[0xBC] = {"LDY", &Mode::absr<Index::X>, &Operations::load<Index::Y>};  // Absolute,X
+  table[0xAC] = {"LDY", Mode::absr, &Operations::load<Index::Y>};  // Absolute
+  table[0xBC] = {"LDY", Mode::absrX, &Operations::load<Index::Y>};  // Absolute,X
 
   table[0xD8] = {"CLD", &Mode::imp, &Operations::cld};
   table[0x9A] = {"TXS", &Mode::imp, &Operations::txs};
@@ -387,20 +387,20 @@ static constexpr std::array<Mos6502::Instruction, 256> c_instructions = []
   // STA variations
   table[0x85] = {"STA", &Mode::zpr<Index::None>, &Operations::sta};
   table[0x95] = {"STA", &Mode::zpr<Index::X>,    &Operations::sta};
-  table[0x8D] = {"STA", &Mode::absw<Index::None>,  &Operations::sta};
-  table[0x9D] = {"STA", &Mode::absw<Index::X>,     &Operations::sta};
-  table[0x99] = {"STA", &Mode::absw<Index::Y>,     &Operations::sta};
+  table[0x8D] = {"STA", Mode::absw,  &Operations::sta};
+  table[0x9D] = {"STA", Mode::abswX,     &Operations::sta};
+  table[0x99] = {"STA", Mode::abswY,     &Operations::sta};
   table[0x81] = {"STA", &Mode::indirect<Index::X>,     &Operations::sta};
   table[0x91] = {"STA", &Mode::indirect<Index::Y>,     &Operations::sta};
 
   // ORA variations
   table[0x01] = {"ORA", &Mode::indirect<Index::X>,     &Operations::ora};
   table[0x05] = {"ORA", &Mode::zpr<Index::None>, &Operations::ora};
-  table[0x0D] = {"ORA", &Mode::absr<Index::None>,  &Operations::ora};
+  table[0x0D] = {"ORA", Mode::absr,  &Operations::ora};
   table[0x11] = {"ORA", &Mode::indirect<Index::Y>,    &Operations::ora};
   table[0x15] = {"ORA", &Mode::zpr<Index::X>,   &Operations::ora};
-  table[0x19] = {"ORA", &Mode::absr<Index::Y>,    &Operations::ora};
-  table[0x1D] = {"ORA", &Mode::absr<Index::X>,    &Operations::ora};
+  table[0x19] = {"ORA", Mode::absrY,    &Operations::ora};
+  table[0x1D] = {"ORA", Mode::absrX,    &Operations::ora};
 
   // JMP Absolute and JMP Indirect
   table[0x4C] = {"JMP", nullptr, &Operations::jmpAbsolute};
@@ -420,21 +420,21 @@ static constexpr std::array<Mos6502::Instruction, 256> c_instructions = []
   table[0xC9] = {"CMP", &Mode::imm, &Operations::compare<Index::None>};
   table[0xC5] = {"CMP", &Mode::zpr<Index::None>, &Operations::compare<Index::None>};
   table[0xD5] = {"CMP", &Mode::zpr<Index::X>, &Operations::compare<Index::X>};
-  table[0xCD] = {"CMP", &Mode::absr<Index::None>, &Operations::compare<Index::None>};
-  table[0xDD] = {"CMP", &Mode::absr<Index::X>, &Operations::compare<Index::X>};
-  table[0xD9] = {"CMP", &Mode::absr<Index::Y>, &Operations::compare<Index::Y>};
+  table[0xCD] = {"CMP", Mode::absr, &Operations::compare<Index::None>};
+  table[0xDD] = {"CMP", Mode::absrX, &Operations::compare<Index::X>};
+  table[0xD9] = {"CMP", Mode::absrY, &Operations::compare<Index::Y>};
   table[0xC1] = {"CMP", &Mode::indirect<Index::X>, &Operations::compare<Index::X>};
   table[0xD1] = {"CMP", &Mode::indirect<Index::Y>, &Operations::compare<Index::Y>};
 
   // CPX — Compare X Register
   table[0xE0] = {"CPX", &Mode::imm, &Operations::compare<Index::X>};
   table[0xE4] = {"CPX", &Mode::zpr<Index::None>, &Operations::compare<Index::X>};
-  table[0xEC] = {"CPX", &Mode::absr<Index::None>, &Operations::compare<Index::X>};
+  table[0xEC] = {"CPX", Mode::absr, &Operations::compare<Index::X>};
 
   // CPY — Compare Y Register
   table[0xC0] = {"CPY", &Mode::imm, &Operations::compare<Index::Y>};
   table[0xC4] = {"CPY", &Mode::zpr<Index::None>, &Operations::compare<Index::Y>};
-  table[0xCC] = {"CPY", &Mode::absr<Index::None>, &Operations::compare<Index::Y>};
+  table[0xCC] = {"CPY", Mode::absr, &Operations::compare<Index::Y>};
 
   // Add more instructions as needed
 

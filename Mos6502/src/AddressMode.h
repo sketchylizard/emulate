@@ -18,9 +18,9 @@ struct AddressMode
   static Common::BusRequest acc(Mos6502& cpu, Common::BusResponse response);
   static Common::BusRequest imp(Mos6502& cpu, Common::BusResponse response);
   static Common::BusRequest imm(Mos6502& cpu, Common::BusResponse response);
-  static Common::BusRequest imm_StoreOperand(Mos6502& cpu, Common::BusResponse response);
+  static Common::BusRequest imm1(Mos6502& cpu, Common::BusResponse response);
   static Common::BusRequest rel(Mos6502& cpu, Common::BusResponse response);
-  static Common::BusRequest rel_StoreOperand(Mos6502& cpu, Common::BusResponse response);
+  static Common::BusRequest rel1(Mos6502& cpu, Common::BusResponse response);
 
   template<Index index>
   static Common::BusRequest zpr(Mos6502& cpu, Common::BusResponse /*response*/)
@@ -79,7 +79,7 @@ struct AddressMode
   }
 
   template<Index index>
-  static Common::BusRequest absr(Mos6502& cpu, Common::BusResponse /*response*/)
+  static Common::BusRequest absr0(Mos6502& cpu, Common::BusResponse /*response*/)
   {
     // Put the address of the lo byte on the BusRequest
     cpu.m_action = &AddressMode::absr1<index>;
@@ -145,7 +145,7 @@ struct AddressMode
   }
 
   template<Index index>
-  static Common::BusRequest absw(Mos6502& cpu, Common::BusResponse /*response*/)
+  static Common::BusRequest absw0(Mos6502& cpu, Common::BusResponse /*response*/)
   {
     cpu.m_action = &AddressMode::absw1<index>;
     // Put the address of the lo byte on the BusRequest
@@ -208,6 +208,13 @@ struct AddressMode
   {
     return cpu.StartOperation(response);
   }
+
+  static constexpr auto absr = &AddressMode::absr0<Index::None>;
+  static constexpr auto absw = &AddressMode::absw0<Index::None>;
+  static constexpr auto absrX = &AddressMode::absr0<Index::X>;
+  static constexpr auto abswX = &AddressMode::absw0<Index::X>;
+  static constexpr auto absrY = &AddressMode::absr0<Index::Y>;
+  static constexpr auto abswY = &AddressMode::absw0<Index::Y>;
 
   // Add the given index to the address and returns a pair of addresses,
   // first = correct address, second = address with just the low byte incremented.

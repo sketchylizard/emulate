@@ -13,11 +13,11 @@ Common::BusRequest AddressMode::imp(Mos6502& cpu, Common::BusResponse response)
 
 Common::BusRequest AddressMode::imm(Mos6502& cpu, Common::BusResponse /*response*/)
 {
-  cpu.m_action = &AddressMode::imm_StoreOperand;
+  cpu.m_action = &AddressMode::imm1;
   return Common::BusRequest::Read(cpu.m_pc++);
 }
 
-Common::BusRequest AddressMode::imm_StoreOperand(Mos6502& cpu, Common::BusResponse response)
+Common::BusRequest AddressMode::imm1(Mos6502& cpu, Common::BusResponse response)
 {
   cpu.m_operand = response.data;
 
@@ -29,11 +29,11 @@ Common::BusRequest AddressMode::imm_StoreOperand(Mos6502& cpu, Common::BusRespon
 
 Common::BusRequest AddressMode::rel(Mos6502& cpu, Common::BusResponse /*response*/)
 {
-  cpu.m_action = &AddressMode::imm_StoreOperand;
+  cpu.m_action = &AddressMode::imm1;
   return Common::BusRequest::Read(cpu.m_pc++);
 }
 
-Common::BusRequest AddressMode::rel_StoreOperand(Mos6502& cpu, Common::BusResponse response)
+Common::BusRequest AddressMode::rel1(Mos6502& cpu, Common::BusResponse response)
 {
   cpu.m_operand = response.data;
 
