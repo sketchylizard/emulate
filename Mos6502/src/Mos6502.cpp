@@ -349,8 +349,8 @@ static constexpr std::array<Mos6502::Instruction, 256> c_instructions = []
 
   // ADC instructions
   table[0x69] = {"ADC", {&Mode::imm, &Operations::adc}};
-  table[0x65] = {"ADC", {&Mode::zpr<Index::None>, &Operations::adc}};
-  table[0x75] = {"ADC", {&Mode::zpr<Index::X>, &Operations::adc}};
+  table[0x65] = {"ADC", {Mode::zp, &Mode::Fetch,&Operations::adc}};
+  table[0x75] = {"ADC", {Mode::zpX, &Mode::Fetch,&Operations::adc}};
   table[0x6D] = {"ADC", {Mode::abs, &Mode::Fetch, &Operations::adc}};
   table[0x7D] = {"ADC", {Mode::absX, &Mode::Fetch, &Operations::adc}};
   table[0x79] = {"ADC", {Mode::absY, &Mode::Fetch, &Operations::adc}};
@@ -359,8 +359,8 @@ static constexpr std::array<Mos6502::Instruction, 256> c_instructions = []
 
   // LDA instructions
   table[0xA9] = {"LDA", {&Mode::imm, &Operations::load<Index::None>}};
-  table[0xA5] = {"LDA", {&Mode::zpr<Index::None>, &Operations::load<Index::None>}};
-  table[0xB5] = {"LDA", {&Mode::zpr<Index::X>, &Operations::load<Index::None>}};
+  table[0xA5] = {"LDA", {Mode::zp, &Mode::Fetch,&Operations::load<Index::None>}};
+  table[0xB5] = {"LDA", {Mode::zpX, &Mode::Fetch,&Operations::load<Index::None>}};
   table[0xAD] = {"LDA", {Mode::abs, &Mode::Fetch, &Operations::load<Index::None>}};
   table[0xBD] = {"LDA", {Mode::absX, &Mode::Fetch, &Operations::load<Index::None>}};
   table[0xB9] = {"LDA", {Mode::absY, &Mode::Fetch, &Operations::load<Index::None>}};
@@ -369,15 +369,15 @@ static constexpr std::array<Mos6502::Instruction, 256> c_instructions = []
 
   // LDX instructions
   table[0xA2] = {"LDX", {&Mode::imm, &Operations::load<Index::X>}};
-  table[0xA6] = {"LDX", {&Mode::zpr<Index::None>, &Operations::load<Index::X>}};
-  table[0xB6] = {"LDX", {&Mode::zpr<Index::Y>, &Operations::load<Index::X>}};
+  table[0xA6] = {"LDX", {Mode::zp, &Mode::Fetch,&Operations::load<Index::X>}};
+  table[0xB6] = {"LDX", {Mode::zpY, &Mode::Fetch,&Operations::load<Index::X>}};
   table[0xAE] = {"LDX", {Mode::abs, &Mode::Fetch, &Operations::load<Index::X>}};
   table[0xBE] = {"LDX", {Mode::absY, &Mode::Fetch, &Operations::load<Index::X>}};
 
   // LDY instructions
   table[0xA0] = {"LDY", {&Mode::imm, &Operations::load<Index::Y>}};
-  table[0xA4] = {"LDY", {&Mode::zpr<Index::None>, &Operations::load<Index::Y>}};
-  table[0xB4] = {"LDY", {&Mode::zpr<Index::X>, &Operations::load<Index::Y>}};
+  table[0xA4] = {"LDY", {Mode::zp, &Mode::Fetch,&Operations::load<Index::Y>}};
+  table[0xB4] = {"LDY", {Mode::zpX, &Mode::Fetch,&Operations::load<Index::Y>}};
   table[0xAC] = {"LDY", {Mode::abs, &Mode::Fetch, &Operations::load<Index::Y>}};
   table[0xBC] = {"LDY", {Mode::absX, &Mode::Fetch, &Operations::load<Index::Y>}};
 
@@ -385,8 +385,8 @@ static constexpr std::array<Mos6502::Instruction, 256> c_instructions = []
   table[0x9A] = {"TXS", {&Mode::imp, &Operations::txs}};
 
   // STA variations
-  table[0x85] = {"STA", {&Mode::zpr<Index::None>, &Operations::sta}};
-  table[0x95] = {"STA", {&Mode::zpr<Index::X>,    &Operations::sta}};
+  table[0x85] = {"STA", {Mode::zp, &Mode::Fetch,&Operations::sta}};
+  table[0x95] = {"STA", {Mode::zpX, &Mode::Fetch,   &Operations::sta}};
   table[0x8D] = {"STA", {Mode::abs,  &Operations::sta}};
   table[0x9D] = {"STA", {Mode::absX,     &Operations::sta}};
   table[0x99] = {"STA", {Mode::absY,     &Operations::sta}};
@@ -395,10 +395,10 @@ static constexpr std::array<Mos6502::Instruction, 256> c_instructions = []
 
   // ORA variations
   table[0x01] = {"ORA", {&Mode::indirect<Index::X>,     &Operations::ora}};
-  table[0x05] = {"ORA", {&Mode::zpr<Index::None>, &Operations::ora}};
+  table[0x05] = {"ORA", {Mode::zp, &Mode::Fetch,&Operations::ora}};
   table[0x0D] = {"ORA", {Mode::abs, &Mode::Fetch,  &Operations::ora}};
   table[0x11] = {"ORA", {&Mode::indirect<Index::Y>,    &Operations::ora}};
-  table[0x15] = {"ORA", {&Mode::zpr<Index::X>,   &Operations::ora}};
+  table[0x15] = {"ORA", {Mode::zpX, &Mode::Fetch,  &Operations::ora}};
   table[0x19] = {"ORA", {Mode::absY, &Mode::Fetch,    &Operations::ora}};
   table[0x1D] = {"ORA", {Mode::absX, &Mode::Fetch,    &Operations::ora}};
 
@@ -418,8 +418,8 @@ static constexpr std::array<Mos6502::Instruction, 256> c_instructions = []
 
   // CMP — Compare Accumulator
   table[0xC9] = {"CMP", {&Mode::imm, &Operations::compare<Index::None>}};
-  table[0xC5] = {"CMP", {&Mode::zpr<Index::None>, &Operations::compare<Index::None>}};
-  table[0xD5] = {"CMP", {&Mode::zpr<Index::X>, &Operations::compare<Index::X>}};
+  table[0xC5] = {"CMP", {Mode::zp, &Mode::Fetch,&Operations::compare<Index::None>}};
+  table[0xD5] = {"CMP", {Mode::zpX, &Mode::Fetch,&Operations::compare<Index::X>}};
   table[0xCD] = {"CMP", {Mode::abs, &Mode::Fetch, &Operations::compare<Index::None>}};
   table[0xDD] = {"CMP", {Mode::absX, &Mode::Fetch, &Operations::compare<Index::X>}};
   table[0xD9] = {"CMP", {Mode::absY, &Mode::Fetch, &Operations::compare<Index::Y>}};
@@ -428,12 +428,12 @@ static constexpr std::array<Mos6502::Instruction, 256> c_instructions = []
 
   // CPX — Compare X Register
   table[0xE0] = {"CPX", {&Mode::imm, &Operations::compare<Index::X>}};
-  table[0xE4] = {"CPX", {&Mode::zpr<Index::None>, &Operations::compare<Index::X>}};
+  table[0xE4] = {"CPX", {Mode::zp, &Mode::Fetch,&Operations::compare<Index::X>}};
   table[0xEC] = {"CPX", {Mode::abs, &Mode::Fetch, &Operations::compare<Index::X>}};
 
   // CPY — Compare Y Register
   table[0xC0] = {"CPY", {&Mode::imm, &Operations::compare<Index::Y>}};
-  table[0xC4] = {"CPY", {&Mode::zpr<Index::None>, &Operations::compare<Index::Y>}};
+  table[0xC4] = {"CPY", {Mode::zp, &Mode::Fetch,&Operations::compare<Index::Y>}};
   table[0xCC] = {"CPY", {Mode::abs, &Mode::Fetch, &Operations::compare<Index::Y>}};
 
   // Add more instructions as needed

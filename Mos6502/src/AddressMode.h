@@ -23,44 +23,14 @@ struct AddressMode
   static Common::BusRequest rel1(Mos6502& cpu, Common::BusResponse response);
 
   template<Index index>
-  static Common::BusRequest zpr(Mos6502& cpu, Common::BusResponse /*response*/)
+  static Common::BusRequest zp0(Mos6502& cpu, Common::BusResponse /*response*/)
   {
-    cpu.m_action = &AddressMode::zpr1<index>;
-    return Common::BusRequest::Read(cpu.m_pc++);
-  }
-  template<Index index>
-  static Common::BusRequest zpr1(Mos6502& cpu, Common::BusResponse response)
-  {
-    Common::Byte loByte = response.data;
-    cpu.m_log.addByte(loByte, 0);
-
-    char buffer[] = "$XX  ";
-    std::format_to(buffer + 1, "{:02X}{}", loByte, index == Index::None ? "  " : index == Index::X ? ",X" : ",Y");
-    cpu.m_log.setOperand(buffer);
-
-    auto [address1, address2] = AddressMode::indexed<index>(cpu, loByte, c_ZeroPage);
-    // In the case of zero page addressing, we wrap around to the start of the page,
-    // so the second value returned is the correct value.
-    cpu.m_target = address2;
-    cpu.m_action = &AddressMode::zpr2<index>;
-    return Common::BusRequest::Read(address2);
-  }
-  template<Index index>
-  static Common::BusRequest zpr2(Mos6502& cpu, Common::BusResponse response)
-  {
-    cpu.m_operand = response.data;
-    return cpu.StartOperation(response);
-  }
-
-  template<Index index>
-  static Common::BusRequest zpw(Mos6502& cpu, Common::BusResponse /*response*/)
-  {
-    cpu.m_action = &AddressMode::zpw1<index>;
+    cpu.m_action = &AddressMode::zp1<index>;
     return Common::BusRequest::Read(cpu.m_pc++);
   }
 
   template<Index index>
-  static Common::BusRequest zpw1(Mos6502& cpu, Common::BusResponse response)
+  static Common::BusRequest zp1(Mos6502& cpu, Common::BusResponse response)
   {
     // Zero Page Write addressing mode
     // Fetch the low byte of the address
@@ -147,6 +117,10 @@ struct AddressMode
   static constexpr auto abs = &AddressMode::abs0<Index::None>;
   static constexpr auto absX = &AddressMode::abs0<Index::X>;
   static constexpr auto absY = &AddressMode::abs0<Index::Y>;
+
+  static constexpr auto zp = &AddressMode::zp0<Index::None>;
+  static constexpr auto zpX = &AddressMode::zp0<Index::X>;
+  static constexpr auto zpY = &AddressMode::zp0<Index::Y>;
 
   // Add the given index to the address and returns a pair of addresses,
   // first = correct address, second = address with just the low byte incremented.

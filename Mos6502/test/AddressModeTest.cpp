@@ -359,7 +359,7 @@ TEST_CASE("AddressMode::abs<Index::Y> - Edge case: Y register is 0xFF")
 
 TEST_CASE("Zero Page Read addressing mode", "[addressing][zeropage]")
 {
-  Mos6502::Instruction instruction{"WR", {&AddressMode::zpr<Index::None>, TestWriteOperation}};
+  Mos6502::Instruction instruction{"WR", {AddressMode::zp, TestWriteOperation}};
 
   Address programCounter = 0x8000_addr;
 
@@ -371,8 +371,7 @@ TEST_CASE("Zero Page Read addressing mode", "[addressing][zeropage]")
 
   Cycle memory[] = {
       {{0x00}, BusRequest::Read(programCounter)},  // Fetch opcode
-      {{0x42}, BusRequest::Read(zpAddress)},  // Fetch from zero page address
-      {{0xAB}, BusRequest::Write(0x0042_addr, 0xC5)},  // Target operand value
+      {{0x42}, BusRequest::Write(zpAddress, 0xC5)},  // Target operand value
   };
 
   executeAddressingMode(instruction, cpu, memory);
@@ -380,7 +379,7 @@ TEST_CASE("Zero Page Read addressing mode", "[addressing][zeropage]")
 
 TEST_CASE("Zero Page Read addressing mode X", "[addressing][zeropage]")
 {
-  Mos6502::Instruction instruction{"WR", {&AddressMode::zpr<Index::X>, TestWriteOperation}};
+  Mos6502::Instruction instruction{"WR", {AddressMode::zpX, TestWriteOperation}};
 
   Address programCounter = 0x8000_addr;
 
@@ -391,15 +390,13 @@ TEST_CASE("Zero Page Read addressing mode X", "[addressing][zeropage]")
   SECTION("X Read addressing mode - no wrap")
   {
     Address zpBase = 0x0042_addr;
-    Address expectedAddress = zpBase + 5;
 
     cpu.set_x(0x05);
     cpu.set_a(0xE2);
 
     Cycle memory[] = {
         {{0x00}, BusRequest::Read(programCounter)},  // Fetch opcode
-        {{LoByte(zpBase)}, BusRequest::Read(expectedAddress)},  // Read base address (discarded)
-        {{0xAB}, BusRequest::Write(0x0047_addr, 0xE2)},  // Target operand value
+        {{LoByte(zpBase)}, BusRequest::Write(0x0047_addr, 0xE2)},  // Target operand value
     };
 
     executeAddressingMode(instruction, cpu, memory);
@@ -415,8 +412,7 @@ TEST_CASE("Zero Page Read addressing mode X", "[addressing][zeropage]")
 
     Cycle memory[] = {
         {{0x00}, BusRequest::Read(programCounter)},  // Fetch opcode
-        {{LoByte(zpBase)}, BusRequest::Read(expectedAddress)},  // Read from wrapped address
-        {{0xCD}, BusRequest::Write(expectedAddress, 0xD0)},  // Target operand value
+        {{LoByte(zpBase)}, BusRequest::Write(expectedAddress, 0xD0)},  // Target operand value
     };
 
     executeAddressingMode(instruction, cpu, memory);
@@ -425,7 +421,7 @@ TEST_CASE("Zero Page Read addressing mode X", "[addressing][zeropage]")
 
 TEST_CASE("Zero Page Read addressing mode Y", "[addressing][zeropage]")
 {
-  Mos6502::Instruction instruction{"WR", {&AddressMode::zpr<Index::Y>, TestWriteOperation}};
+  Mos6502::Instruction instruction{"WR", {AddressMode::zpY, TestWriteOperation}};
 
   Address programCounter = 0x8000_addr;
 
@@ -442,8 +438,7 @@ TEST_CASE("Zero Page Read addressing mode Y", "[addressing][zeropage]")
 
     Cycle memory[] = {
         {{0x00}, BusRequest::Read(programCounter)},  // Fetch opcode
-        {{LoByte(zpBase)}, BusRequest::Read(expectedAddress)},  // Read expected address
-        {{0xEF}, BusRequest::Write(expectedAddress, 0xBB)},  // Target operand value
+        {{LoByte(zpBase)}, BusRequest::Write(expectedAddress, 0xBB)},  // Target operand value
     };
 
     executeAddressingMode(instruction, cpu, memory);
@@ -459,8 +454,7 @@ TEST_CASE("Zero Page Read addressing mode Y", "[addressing][zeropage]")
 
     Cycle memory[] = {
         {{0x00}, BusRequest::Read(programCounter)},  // Fetch opcode
-        {{LoByte(zpBase)}, BusRequest::Read(expectedAddress)},  // Read expected address
-        {{0x12}, BusRequest::Write(expectedAddress, 0xB4)},  // Target operand value
+        {{LoByte(zpBase)}, BusRequest::Write(expectedAddress, 0xB4)},  // Target operand value
     };
 
     executeAddressingMode(instruction, cpu, memory);
@@ -469,7 +463,7 @@ TEST_CASE("Zero Page Read addressing mode Y", "[addressing][zeropage]")
 
 TEST_CASE("Zero Page Write addressing mode", "[addressing][zeropage]")
 {
-  Mos6502::Instruction instruction{"WR", {&AddressMode::zpw<Index::None>, TestWriteOperation}};
+  Mos6502::Instruction instruction{"WR", {AddressMode::zp, TestWriteOperation}};
 
   Address programCounter = 0x8000_addr;
 
@@ -488,7 +482,7 @@ TEST_CASE("Zero Page Write addressing mode", "[addressing][zeropage]")
 
 TEST_CASE("Zero Page, X Write addressing mode", "[addressing][zeropage]")
 {
-  Mos6502::Instruction instruction{"WR", {&AddressMode::zpw<Index::X>, TestWriteOperation}};
+  Mos6502::Instruction instruction{"WR", {AddressMode::zpX, TestWriteOperation}};
 
   Address programCounter = 0x8000_addr;
 
@@ -533,7 +527,7 @@ TEST_CASE("Zero Page, X Write addressing mode", "[addressing][zeropage]")
 
 TEST_CASE("Zero Page, Y Write addressing mode", "[addressing][zeropage]")
 {
-  Mos6502::Instruction instruction{"WR", {&AddressMode::zpw<Index::Y>, TestWriteOperation}};
+  Mos6502::Instruction instruction{"WR", {AddressMode::zpY, TestWriteOperation}};
 
   Address programCounter = 0x8000_addr;
 
