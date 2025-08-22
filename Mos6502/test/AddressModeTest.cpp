@@ -70,7 +70,7 @@ TEST_CASE("Absolute addressing mode", "[addressing][absolute]")
         {BusResponse{0x99}, BusRequest::Read(0xffff_addr)},
     };
 
-    executeAddressingMode({"RD", AddressMode::absr, TestReadOperation}, cpu, cycles);
+    executeAddressingMode({"RD", {AddressMode::abs, &AddressMode::Fetch, TestReadOperation}}, cpu, cycles);
   }
 }
 
@@ -79,7 +79,7 @@ TEST_CASE("Absolute,X addressing mode", "[addressing][absolute][indexed]")
   Mos6502 cpu;
   cpu.set_pc(0x8000_addr);
 
-  Mos6502::Instruction TestReadInstruction{"RD", AddressMode::absrX, TestReadOperation};
+  Mos6502::Instruction TestReadInstruction{"RD", {AddressMode::absX, &AddressMode::Fetch, TestReadOperation}};
 
   SECTION("No page boundary crossing")
   {
@@ -130,7 +130,7 @@ TEST_CASE("Absolute write addressing mode", "[addressing][absolute][write]")
 {
   Mos6502 cpu;
 
-  Mos6502::Instruction instruction{"WR", AddressMode::absw, TestWriteOperation};
+  Mos6502::Instruction instruction{"WR", {AddressMode::abs, TestWriteOperation}};
 
   wasStartOperationCalled = false;
 
@@ -156,7 +156,7 @@ TEST_CASE("Absolute addressing edge cases", "[addressing][absolute][edge]")
 {
   Mos6502 cpu;
 
-  Mos6502::Instruction TestReadInstruction{"RD", AddressMode::absrX, TestReadOperation};
+  Mos6502::Instruction TestReadInstruction{"RD", {AddressMode::absX, &AddressMode::Fetch, TestReadOperation}};
 
   SECTION("Address wrapping at 16-bit boundary")
   {
@@ -202,13 +202,13 @@ TEST_CASE("Absolute addressing edge cases", "[addressing][absolute][edge]")
   }
 }
 
-// Tests for AddressMode::absw
+// Tests for AddressMode::abs
 // Add these to your AddressModeTest.cpp file
 
 // Test absolute write mode (no indexing)
-TEST_CASE("AddressMode::absw<Index::None> - Basic functionality")
+TEST_CASE("AddressMode::abs<Index::None> - Basic functionality")
 {
-  Mos6502::Instruction instruction{"WR", AddressMode::absw, TestWriteOperation};
+  Mos6502::Instruction instruction{"WR", {AddressMode::abs, TestWriteOperation}};
 
   Mos6502 cpu;
   cpu.set_pc(0x1000_addr);
@@ -225,9 +225,9 @@ TEST_CASE("AddressMode::absw<Index::None> - Basic functionality")
   executeAddressingMode(instruction, cpu, cycles);
 }
 
-TEST_CASE("AddressMode::absw<Index::X> - No page boundary crossing")
+TEST_CASE("AddressMode::abs<Index::X> - No page boundary crossing")
 {
-  Mos6502::Instruction instruction{"WR", AddressMode::abswX, TestWriteOperation};
+  Mos6502::Instruction instruction{"WR", {AddressMode::absX, TestWriteOperation}};
 
   Address programCounter = 0x1000_addr;
   Address baseAddress = 0x2010_addr;  // Base address for testing
@@ -247,9 +247,9 @@ TEST_CASE("AddressMode::absw<Index::X> - No page boundary crossing")
   executeAddressingMode(instruction, cpu, memory);
 }
 
-TEST_CASE("AddressMode::absw<Index::X> - Page boundary crossing")
+TEST_CASE("AddressMode::abs<Index::X> - Page boundary crossing")
 {
-  Mos6502::Instruction instruction{"WR", AddressMode::abswX, TestWriteOperation};
+  Mos6502::Instruction instruction{"WR", {AddressMode::absX, TestWriteOperation}};
 
   Mos6502 cpu;
   cpu.set_pc(0x1000_addr);
@@ -266,9 +266,9 @@ TEST_CASE("AddressMode::absw<Index::X> - Page boundary crossing")
   executeAddressingMode(instruction, cpu, cycles);
 }
 
-TEST_CASE("AddressMode::absw<Index::Y> - No page boundary crossing")
+TEST_CASE("AddressMode::abs<Index::Y> - No page boundary crossing")
 {
-  Mos6502::Instruction instruction{"WR", AddressMode::abswY, TestWriteOperation};
+  Mos6502::Instruction instruction{"WR", {AddressMode::absY, TestWriteOperation}};
 
   Address programCounter = 0x1000_addr;
   Address baseAddress = 0x3830_addr;
@@ -288,9 +288,9 @@ TEST_CASE("AddressMode::absw<Index::Y> - No page boundary crossing")
   executeAddressingMode(instruction, cpu, cycles);
 }
 
-TEST_CASE("AddressMode::absw<Index::Y> - Page boundary crossing")
+TEST_CASE("AddressMode::abs<Index::Y> - Page boundary crossing")
 {
-  Mos6502::Instruction instruction{"WR", AddressMode::abswY, TestWriteOperation};
+  Mos6502::Instruction instruction{"WR", {AddressMode::absY, TestWriteOperation}};
 
   Address programCounter = 0x1000_addr;
   Address baseAddress = 0x00F0_addr;
@@ -314,9 +314,9 @@ TEST_CASE("AddressMode::absw<Index::Y> - Page boundary crossing")
   executeAddressingMode(instruction, cpu, memory);
 }
 
-TEST_CASE("AddressMode::absw<Index::X> - Edge case: X register is 0")
+TEST_CASE("AddressMode::abs<Index::X> - Edge case: X register is 0")
 {
-  Mos6502::Instruction instruction{"WR", AddressMode::abswX, TestWriteOperation};
+  Mos6502::Instruction instruction{"WR", {AddressMode::absX, TestWriteOperation}};
 
   Mos6502 cpu;
   cpu.set_pc(0x2000_addr);
@@ -333,9 +333,9 @@ TEST_CASE("AddressMode::absw<Index::X> - Edge case: X register is 0")
   executeAddressingMode(instruction, cpu, cycles);
 }
 
-TEST_CASE("AddressMode::absw<Index::Y> - Edge case: Y register is 0xFF")
+TEST_CASE("AddressMode::abs<Index::Y> - Edge case: Y register is 0xFF")
 {
-  Mos6502::Instruction instruction{"WR", AddressMode::abswY, TestWriteOperation};
+  Mos6502::Instruction instruction{"WR", {AddressMode::absY, TestWriteOperation}};
 
   Mos6502 cpu;
   cpu.set_pc(0x3000_addr);
@@ -359,7 +359,7 @@ TEST_CASE("AddressMode::absw<Index::Y> - Edge case: Y register is 0xFF")
 
 TEST_CASE("Zero Page Read addressing mode", "[addressing][zeropage]")
 {
-  Mos6502::Instruction instruction{"WR", &AddressMode::zpr<Index::None>, TestWriteOperation};
+  Mos6502::Instruction instruction{"WR", {&AddressMode::zpr<Index::None>, TestWriteOperation}};
 
   Address programCounter = 0x8000_addr;
 
@@ -380,7 +380,7 @@ TEST_CASE("Zero Page Read addressing mode", "[addressing][zeropage]")
 
 TEST_CASE("Zero Page Read addressing mode X", "[addressing][zeropage]")
 {
-  Mos6502::Instruction instruction{"WR", &AddressMode::zpr<Index::X>, TestWriteOperation};
+  Mos6502::Instruction instruction{"WR", {&AddressMode::zpr<Index::X>, TestWriteOperation}};
 
   Address programCounter = 0x8000_addr;
 
@@ -425,7 +425,7 @@ TEST_CASE("Zero Page Read addressing mode X", "[addressing][zeropage]")
 
 TEST_CASE("Zero Page Read addressing mode Y", "[addressing][zeropage]")
 {
-  Mos6502::Instruction instruction{"WR", &AddressMode::zpr<Index::Y>, TestWriteOperation};
+  Mos6502::Instruction instruction{"WR", {&AddressMode::zpr<Index::Y>, TestWriteOperation}};
 
   Address programCounter = 0x8000_addr;
 
@@ -469,7 +469,7 @@ TEST_CASE("Zero Page Read addressing mode Y", "[addressing][zeropage]")
 
 TEST_CASE("Zero Page Write addressing mode", "[addressing][zeropage]")
 {
-  Mos6502::Instruction instruction{"WR", &AddressMode::zpw<Index::None>, TestWriteOperation};
+  Mos6502::Instruction instruction{"WR", {&AddressMode::zpw<Index::None>, TestWriteOperation}};
 
   Address programCounter = 0x8000_addr;
 
@@ -488,7 +488,7 @@ TEST_CASE("Zero Page Write addressing mode", "[addressing][zeropage]")
 
 TEST_CASE("Zero Page, X Write addressing mode", "[addressing][zeropage]")
 {
-  Mos6502::Instruction instruction{"WR", &AddressMode::zpw<Index::X>, TestWriteOperation};
+  Mos6502::Instruction instruction{"WR", {&AddressMode::zpw<Index::X>, TestWriteOperation}};
 
   Address programCounter = 0x8000_addr;
 
@@ -533,7 +533,7 @@ TEST_CASE("Zero Page, X Write addressing mode", "[addressing][zeropage]")
 
 TEST_CASE("Zero Page, Y Write addressing mode", "[addressing][zeropage]")
 {
-  Mos6502::Instruction instruction{"WR", &AddressMode::zpw<Index::Y>, TestWriteOperation};
+  Mos6502::Instruction instruction{"WR", {&AddressMode::zpw<Index::Y>, TestWriteOperation}};
 
   Address programCounter = 0x8000_addr;
 

@@ -233,7 +233,7 @@ private:
   std::span<Mapping> m_mappings;
 };
 
-TEST_CASE("Mos6502: Functional_tests")
+TEST_CASE("Mos6502: Functional_tests", "[.]")
 {
   auto file = LoadFile(std::string(KLAUS6502_TESTS_DIR) + "/bin_files/6502_functional_test.bin");
 

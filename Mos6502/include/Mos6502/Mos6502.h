@@ -42,8 +42,7 @@ public:
   struct Instruction
   {
     std::string_view name;
-    StateFunc addressMode;
-    StateFunc operation;
+    StateFunc op[3] = {};
   };
 
   Mos6502() noexcept;
@@ -119,6 +118,9 @@ private:
 
   // Scratch data for operations and logging
   Byte m_operand;
+
+  // Stage of the current instruction (0-2)
+  Byte m_stage = 0;
 
   // Last bus request
   BusRequest m_lastBusRequest;

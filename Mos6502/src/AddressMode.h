@@ -79,25 +79,25 @@ struct AddressMode
   }
 
   template<Index index>
-  static Common::BusRequest absr0(Mos6502& cpu, Common::BusResponse /*response*/)
+  static Common::BusRequest abs0(Mos6502& cpu, Common::BusResponse /*response*/)
   {
     // Put the address of the lo byte on the BusRequest
-    cpu.m_action = &AddressMode::absr1<index>;
+    cpu.m_action = &AddressMode::abs1<index>;
     return Common::BusRequest::Read(cpu.m_pc++);
   }
   template<Index index>
-  static Common::BusRequest absr1(Mos6502& cpu, Common::BusResponse response)
+  static Common::BusRequest abs1(Mos6502& cpu, Common::BusResponse response)
   {
     // Read the lo byte from the BusRequest
     cpu.m_target = Common::MakeAddress(response.data, c_ZeroPage);
     cpu.m_log.addByte(response.data, 0);
 
-    cpu.m_action = &AddressMode::absr2<index>;
+    cpu.m_action = &AddressMode::abs2<index>;
     // Put the address of the hi byte on the response.
     return Common::BusRequest::Read(cpu.m_pc++);
   }
   template<Index index>
-  static Common::BusRequest absr2(Mos6502& cpu, Common::BusResponse response)
+  static Common::BusRequest abs2(Mos6502& cpu, Common::BusResponse response)
   {
     // Read the hi byte from the response.
     Common::Byte hiByte = response.data;
@@ -122,83 +122,16 @@ struct AddressMode
     {
       if (cpu.m_target != wrongAddress)
       {
-        cpu.m_action = &AddressMode::absr3<index>;
+        cpu.m_action = &AddressMode::abs3<index>;
         return Common::BusRequest::Read(wrongAddress);
       }
     }
-    cpu.m_action = &AddressMode::absr4<index>;
-    return Common::BusRequest::Read(cpu.m_target);
+    return cpu.StartOperation(response);
   }
   template<Index index>
-  static Common::BusRequest absr3(Mos6502& cpu, Common::BusResponse /*response*/)
+  static Common::BusRequest abs3(Mos6502& cpu, Common::BusResponse response)
   {
     // If we get here we were in index mode and we crossed a page boundary.
-    cpu.m_action = &AddressMode::absr4<index>;
-    // Perform the correct read now.
-    return Common::BusRequest::Read(cpu.m_target);
-  }
-  template<Index index>
-  static Common::BusRequest absr4(Mos6502& cpu, Common::BusResponse response)
-  {
-    cpu.m_operand = response.data;
-    return cpu.StartOperation(response);
-  }
-
-  template<Index index>
-  static Common::BusRequest absw0(Mos6502& cpu, Common::BusResponse /*response*/)
-  {
-    cpu.m_action = &AddressMode::absw1<index>;
-    // Put the address of the lo byte on the BusRequest
-    return Common::BusRequest::Read(cpu.m_pc++);
-  }
-  template<Index index>
-  static Common::BusRequest absw1(Mos6502& cpu, Common::BusResponse response)
-  {
-    // Read the lo byte from the BusRequest
-    cpu.m_target = Common::MakeAddress(response.data, c_ZeroPage);
-    cpu.m_log.addByte(response.data, 0);
-
-    cpu.m_action = &AddressMode::absw2<index>;
-    // Put the address of the hi byte on the response.
-    return Common::BusRequest::Read(cpu.m_pc++);
-  }
-  template<Index index>
-  static Common::BusRequest absw2(Mos6502& cpu, Common::BusResponse response)
-  {
-    // Read the hi byte from the response.
-    Common::Byte hiByte = response.data;
-    cpu.m_log.addByte(hiByte, 1);
-
-    // Combine loByte and hiByte to form the target address
-    Common::Byte loByte = Common::LoByte(cpu.m_target);
-
-    // Log the target address
-    char buffer[] = "$XXXX";
-    std::format_to(buffer + 1, "{:02X}{:02X}", hiByte, loByte);
-    cpu.m_log.setOperand(buffer);
-
-    // If this is an indexed addressing mode, add the index register to the lo byte.
-    // Note: This can cause the address to wrap around if it exceeds 0xFF which will
-    // give us the wrong address. On the 6502, this is known as "page boundary crossing"
-    // and it causes an extra read cycle. We emulate it here for accuracy.
-    Common::Address wrongAddress;
-    std::tie(cpu.m_target, wrongAddress) = indexed<index>(cpu, loByte, hiByte);
-
-    if constexpr (index != Index::None)  // overflow occurred
-    {
-      if (cpu.m_target != wrongAddress)
-      {
-        cpu.m_action = &AddressMode::absw3<index>;
-        return Common::BusRequest::Read(wrongAddress);
-      }
-    }
-
-    // We either are not in indexed mode, or we did not cross a page boundary.
-    return cpu.StartOperation(response);
-  }
-  template<Index index>
-  static Common::BusRequest absw3(Mos6502& cpu, Common::BusResponse response)
-  {
     return cpu.StartOperation(response);
   }
 
@@ -209,12 +142,11 @@ struct AddressMode
     return cpu.StartOperation(response);
   }
 
-  static constexpr auto absr = &AddressMode::absr0<Index::None>;
-  static constexpr auto absw = &AddressMode::absw0<Index::None>;
-  static constexpr auto absrX = &AddressMode::absr0<Index::X>;
-  static constexpr auto abswX = &AddressMode::absw0<Index::X>;
-  static constexpr auto absrY = &AddressMode::absr0<Index::Y>;
-  static constexpr auto abswY = &AddressMode::absw0<Index::Y>;
+  static Common::BusRequest Fetch(Mos6502& cpu, Common::BusResponse response);
+
+  static constexpr auto abs = &AddressMode::abs0<Index::None>;
+  static constexpr auto absX = &AddressMode::abs0<Index::X>;
+  static constexpr auto absY = &AddressMode::abs0<Index::Y>;
 
   // Add the given index to the address and returns a pair of addresses,
   // first = correct address, second = address with just the low byte incremented.

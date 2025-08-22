@@ -43,3 +43,13 @@ Common::BusRequest AddressMode::rel1(Mos6502& cpu, Common::BusResponse response)
 
   return cpu.StartOperation(response);
 }
+
+Common::BusRequest AddressMode::Fetch(Mos6502& cpu, Common::BusResponse /*response*/)
+{
+  cpu.m_action = [](Mos6502& cpu, Common::BusResponse response)
+  {
+    cpu.m_operand = response.data;
+    return cpu.StartOperation(response);
+  };
+  return Common::BusRequest::Read(cpu.m_target);
+}
