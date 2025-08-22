@@ -63,7 +63,7 @@ struct AddressMode
     cpu.m_log.addByte(response.data, 0);
 
     cpu.m_action = &AddressMode::abs2<index>;
-    // Put the address of the hi byte on the response.
+    // Put the address of the hi byte on the bus.
     return Common::BusRequest::Read(cpu.m_pc++);
   }
   template<Index index>
