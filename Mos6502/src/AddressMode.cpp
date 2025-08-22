@@ -1,25 +1,24 @@
 #include "AddressMode.h"
 
-Common::BusRequest AddressMode::accumulator(Mos6502& cpu, Common::BusResponse response, Common::Byte step)
+Common::BusRequest AddressMode::acc(Mos6502& cpu, Common::BusResponse response)
 {
-  assert(step == 0);
   cpu.m_log.setOperand("A");
   return cpu.StartOperation(response);
 }
 
-Common::BusRequest AddressMode::implied(Mos6502& cpu, Common::BusResponse response, Common::Byte step)
+Common::BusRequest AddressMode::imp(Mos6502& cpu, Common::BusResponse response)
 {
-  assert(step == 0);
   return cpu.StartOperation(response);
 }
 
-Common::BusRequest AddressMode::immediate(Mos6502& cpu, Common::BusResponse response, Common::Byte step)
+Common::BusRequest AddressMode::imm(Mos6502& cpu, Common::BusResponse /*response*/)
 {
-  if (step == 0)
-  {
-    return Common::BusRequest::Read(cpu.m_pc++);
-  }
+  cpu.m_action = &AddressMode::imm_StoreOperand;
+  return Common::BusRequest::Read(cpu.m_pc++);
+}
 
+Common::BusRequest AddressMode::imm_StoreOperand(Mos6502& cpu, Common::BusResponse response)
+{
   cpu.m_operand = response.data;
 
   char buffer[] = "#$XX";
@@ -28,13 +27,14 @@ Common::BusRequest AddressMode::immediate(Mos6502& cpu, Common::BusResponse resp
   return cpu.StartOperation(response);
 }
 
-Common::BusRequest AddressMode::relative(Mos6502& cpu, Common::BusResponse response, Common::Byte step)
+Common::BusRequest AddressMode::rel(Mos6502& cpu, Common::BusResponse /*response*/)
 {
-  if (step == 0)
-  {
-    return Common::BusRequest::Read(cpu.m_pc++);
-  }
+  cpu.m_action = &AddressMode::imm_StoreOperand;
+  return Common::BusRequest::Read(cpu.m_pc++);
+}
 
+Common::BusRequest AddressMode::rel_StoreOperand(Mos6502& cpu, Common::BusResponse response)
+{
   cpu.m_operand = response.data;
 
   char buffer[] = "$XX";

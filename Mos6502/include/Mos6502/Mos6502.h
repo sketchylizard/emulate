@@ -37,7 +37,7 @@ public:
 
   //! State functions should accept a bus response from the previous clock tick and return a new bus request for the new
   //! state.
-  using StateFunc = BusRequest (*)(Mos6502&, BusResponse response, Byte step);
+  using StateFunc = BusRequest (*)(Mos6502&, BusResponse response);
 
   struct Instruction
   {
@@ -79,8 +79,6 @@ public:
   void setInstruction(const Instruction& instr) noexcept;
 
 private:
-  static constexpr Byte ExtraStepRequired = 1 << 7;
-
   //! Turns the given flag on or off depending on value.
   Byte SetFlag(Byte flag, bool value) noexcept;
 
@@ -88,9 +86,6 @@ private:
   bool HasFlag(Byte flag) const noexcept;
 
   // State transition functions
-
-  // Start the addressing mode (if applicable) or the operation if addressing mode is implied.
-  void DecodeNextInstruction(Byte opcode) noexcept;
 
   // Transition from addressing mode to operation.
   BusRequest StartOperation(BusResponse response);
@@ -100,11 +95,14 @@ private:
 
   void Log() const;
 
+  static BusRequest fetchNextOpcode(Mos6502& cpu, BusResponse response);
+  static BusRequest decodeOpcode(Mos6502& cpu, BusResponse response);
+
   friend struct AddressMode;
   friend struct Operations;
 
   const Instruction* m_instruction = nullptr;
-  StateFunc m_action = nullptr;
+  StateFunc m_action = &Mos6502::fetchNextOpcode;
 
   uint32_t m_tickCount = 0;  // Number of ticks since the last reset
 
@@ -118,9 +116,6 @@ private:
   Byte m_y{0};
   Byte m_sp{0};
   Byte m_status{0};
-
-  // Which step of the current instruction we are in
-  Byte m_step{0};
 
   // Scratch data for operations and logging
   Byte m_operand;
