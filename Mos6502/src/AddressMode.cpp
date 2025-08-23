@@ -3,12 +3,12 @@
 Common::BusRequest AddressMode::acc(Mos6502& cpu, Common::BusResponse response)
 {
   cpu.m_log.setOperand("A");
-  return cpu.StartOperation(response);
+  return Mos6502::nextOp(cpu, response);
 }
 
 Common::BusRequest AddressMode::imp(Mos6502& cpu, Common::BusResponse response)
 {
-  return cpu.StartOperation(response);
+  return Mos6502::nextOp(cpu, response);
 }
 
 Common::BusRequest AddressMode::imm(Mos6502& cpu, Common::BusResponse /*response*/)
@@ -24,7 +24,7 @@ Common::BusRequest AddressMode::imm1(Mos6502& cpu, Common::BusResponse response)
   char buffer[] = "#$XX";
   std::format_to(buffer + 2, "{:02X}", response.data);
   cpu.m_log.setOperand(buffer);
-  return cpu.StartOperation(response);
+  return Mos6502::nextOp(cpu, response);
 }
 
 void AddressMode::logRelOperand(Mos6502& cpu, Common::Byte displacement)
@@ -62,7 +62,7 @@ Common::BusRequest AddressMode::rel1(Mos6502& cpu, Common::BusResponse response)
   AddressMode::logRelOperand(cpu, response.data);
 
   // Hand off to the branch operation (BEQ/BNE/etc.)
-  return cpu.StartOperation(response);
+  return Mos6502::nextOp(cpu, response);
 }
 
 Common::BusRequest AddressMode::Fetch(Mos6502& cpu, Common::BusResponse /*response*/)
@@ -70,7 +70,7 @@ Common::BusRequest AddressMode::Fetch(Mos6502& cpu, Common::BusResponse /*respon
   cpu.m_action = [](Mos6502& cpu, Common::BusResponse response)
   {
     cpu.m_operand = response.data;
-    return cpu.StartOperation(response);
+    return Mos6502::nextOp(cpu, response);
   };
   return Common::BusRequest::Read(cpu.m_target);
 }

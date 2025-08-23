@@ -47,7 +47,7 @@ struct AddressMode
     // In the case of zero page addressing, we wrap around to the start of the page,
     // so the second value returned is the correct value.
     cpu.m_target = address2;
-    return cpu.StartOperation(response);
+    return Mos6502::nextOp(cpu, response);
   }
 
   template<Index index>
@@ -98,20 +98,20 @@ struct AddressMode
         return Common::BusRequest::Read(wrongAddress);
       }
     }
-    return cpu.StartOperation(response);
+    return Mos6502::nextOp(cpu, response);
   }
   template<Index index>
   static Common::BusRequest abs3(Mos6502& cpu, Common::BusResponse response)
   {
     // If we get here we were in index mode and we crossed a page boundary.
-    return cpu.StartOperation(response);
+    return Mos6502::nextOp(cpu, response);
   }
 
   template<Index index>
     requires(index != Index::None)
   static Common::BusRequest indirect(Mos6502& cpu, Common::BusResponse response)
   {
-    return cpu.StartOperation(response);
+    return Mos6502::nextOp(cpu, response);
   }
 
   static Common::BusRequest Fetch(Mos6502& cpu, Common::BusResponse response);

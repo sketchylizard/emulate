@@ -24,12 +24,6 @@ using namespace Common;
 struct Operations
 {
 
-  // Can be called after a write operation so that the data is actually written to memory before the next operation.
-  static BusRequest finishAfterWrite(Mos6502& cpu, BusResponse)
-  {
-    return cpu.FinishOperation();
-  }
-
   // BRK, NMI, IRQ, and Reset operations all share similar logic for pushing the PC and status onto the stack
   // and setting the PC to the appropriate vector address. This function handles that logic.
   // It returns true when the operation is complete. If forceRead is true, it force the BusRequest to READ rather than
@@ -80,7 +74,7 @@ struct Operations
   {
     // Set PC to the interrupt/reset vector address
     cpu.regs.pc = Common::MakeAddress(cpu.m_operand, response.data);
-    return cpu.FinishOperation();  // Operation complete
+    return Mos6502::nextOp(cpu, response);  // Operation complete
   }
 
   static Common::BusRequest adc(Mos6502& cpu, Common::BusResponse response)
@@ -99,24 +93,24 @@ struct Operations
     cpu.regs.setZN(result);
 
     cpu.regs.a = result;
-    return cpu.FinishOperation();
+    return Mos6502::nextOp(cpu, response);
   }
 
-  static Common::BusRequest cld(Mos6502& cpu, Common::BusResponse /*response*/)
+  static Common::BusRequest cld(Mos6502& cpu, Common::BusResponse response)
   {
     cpu.regs.set(Mos6502::Decimal, false);
-    return cpu.FinishOperation();
+    return Mos6502::nextOp(cpu, response);
   }
 
-  static Common::BusRequest txs(Mos6502& cpu, Common::BusResponse /*response*/)
+  static Common::BusRequest txs(Mos6502& cpu, Common::BusResponse response)
   {
     cpu.regs.sp = cpu.regs.x;
-    return cpu.FinishOperation();
+    return Mos6502::nextOp(cpu, response);
   }
 
   static Common::BusRequest sta(Mos6502& cpu, Common::BusResponse /*response*/)
   {
-    cpu.m_action = &finishAfterWrite;
+    cpu.m_action = &Mos6502::nextOp;
     return Common::BusRequest::Write(cpu.m_target, cpu.regs.a);
   }
 
@@ -126,7 +120,7 @@ struct Operations
     cpu.regs.a |= response.data;
     cpu.regs.set(Mos6502::Zero, cpu.regs.a == 0);  // Set zero flag
     cpu.regs.set(Mos6502::Negative, cpu.regs.a & 0x80);  // Set negative flag
-    return cpu.FinishOperation();
+    return Mos6502::nextOp(cpu, response);
   }
 
   static Common::BusRequest jmpAbsolute(Mos6502& cpu, Common::BusResponse /*response*/)
@@ -158,7 +152,7 @@ struct Operations
     std::format_to(buffer + 1, "{:04X}", cpu.regs.pc);
     cpu.m_log.setOperand(buffer);
 
-    return cpu.FinishOperation();
+    return Mos6502::nextOp(cpu, response);
   }
 
   static Common::BusRequest jmpIndirect(Mos6502& cpu, Common::BusResponse /*response*/)
@@ -208,10 +202,10 @@ struct Operations
   {
     const Byte targetHi = response.data;
     cpu.regs.pc = MakeAddress(cpu.m_operand, targetHi);
-    return cpu.FinishOperation();
+    return Mos6502::nextOp(cpu, response);
   }
 
-  static Common::BusRequest bne(Mos6502& cpu, Common::BusResponse /*response*/)
+  static Common::BusRequest bne(Mos6502& cpu, Common::BusResponse response)
   {
     if (!(cpu.regs.p & Mos6502::Zero))
     {
@@ -221,10 +215,10 @@ struct Operations
       int8_t signedOffset = static_cast<int8_t>(cpu.m_operand);
       cpu.regs.pc += signedOffset;
     }
-    return cpu.FinishOperation();
+    return Mos6502::nextOp(cpu, response);
   }
 
-  static Common::BusRequest beq(Mos6502& cpu, Common::BusResponse /*response*/)
+  static Common::BusRequest beq(Mos6502& cpu, Common::BusResponse response)
   {
     if (cpu.regs.p & Mos6502::Zero)
     {
@@ -234,7 +228,7 @@ struct Operations
       int8_t signedOffset = static_cast<int8_t>(cpu.m_operand);
       cpu.regs.pc += signedOffset;
     }
-    return cpu.FinishOperation();
+    return Mos6502::nextOp(cpu, response);
   }
 
   template<Index index>
@@ -263,12 +257,12 @@ struct Operations
     // Check negative flag
     cpu.regs.set(Mos6502::Negative, (*reg & 0x80) != 0);
 
-    return cpu.FinishOperation();
+    return Mos6502::nextOp(cpu, response);
   }
 
   template<Index index>
     requires(index != Index::None)
-  static Common::BusRequest increment(Mos6502& cpu, Common::BusResponse /*response*/)
+  static Common::BusRequest increment(Mos6502& cpu, Common::BusResponse response)
   {
     // Handle increment operation for X or Y registers
 
@@ -284,12 +278,12 @@ struct Operations
       cpu.regs.set(Mos6502::Zero, cpu.regs.y == 0);
       cpu.regs.set(Mos6502::Negative, (cpu.regs.y & 0x80) != 0);
     }
-    return cpu.FinishOperation();
+    return Mos6502::nextOp(cpu, response);
   }
 
   template<Index index>
     requires(index != Index::None)
-  static Common::BusRequest decrement(Mos6502& cpu, Common::BusResponse /*response*/)
+  static Common::BusRequest decrement(Mos6502& cpu, Common::BusResponse response)
   {
     // Handle increment operation for X or Y registers
     if constexpr (index == Index::X)
@@ -304,7 +298,7 @@ struct Operations
       cpu.regs.set(Mos6502::Zero, cpu.regs.y == 0);
       cpu.regs.set(Mos6502::Negative, (cpu.regs.y & 0x80) != 0);
     }
-    return cpu.FinishOperation();
+    return Mos6502::nextOp(cpu, response);
   }
 
   template<Index index>
@@ -329,7 +323,7 @@ struct Operations
     cpu.regs.set(Mos6502::Zero, result == 0);
     cpu.regs.set(Mos6502::Negative, (result & 0x80) != 0);
 
-    return cpu.FinishOperation();
+    return Mos6502::nextOp(cpu, response);
   }
 
 };  // struct Operations
@@ -456,7 +450,7 @@ Common::BusRequest Mos6502::Tick(Common::BusResponse response) noexcept
 
   assert(m_action);
 
-  // Execute the current action until it calls StartOperation or FinishOperation.
+  // Execute the current action until it calls nextOp.
   m_lastBusRequest = m_action(*this, response);
 
   return m_lastBusRequest;
@@ -490,34 +484,29 @@ void Mos6502::setInstruction(const Instruction& instr) noexcept
   assert(m_action);
 }
 
-Common::BusRequest Mos6502::StartOperation(Common::BusResponse response)
+BusRequest Mos6502::nextOp(Mos6502& cpu, BusResponse response)
 {
-  assert(m_instruction);
+  assert(cpu.m_instruction);
 
   // Find the next action in the instruction's operation sequence.
   // If there are no more actions, finish the operation.
   do
   {
-    ++m_stage;
-  } while (m_stage < std::size(m_instruction->op) && !m_instruction->op[m_stage]);
-  if (m_stage >= std::size(m_instruction->op))
+    ++cpu.m_stage;
+  } while (cpu.m_stage < std::size(cpu.m_instruction->op) && !cpu.m_instruction->op[cpu.m_stage]);
+  if (cpu.m_stage >= std::size(cpu.m_instruction->op))
   {
-    return FinishOperation();
+    // Instruction complete, log the last instruction.
+    cpu.m_log.print();
+
+    // Start the log for the next instruction.
+    cpu.m_log.reset(cpu.regs.pc);
+
+    cpu.m_instruction = nullptr;
+    cpu.m_action = &Mos6502::fetchNextOpcode;
+    return fetchNextOpcode(cpu, BusResponse{});
   }
 
-  m_action = m_instruction->op[m_stage];
-  return m_action(*this, response);
-}
-
-Common::BusRequest Mos6502::FinishOperation()
-{
-  // Instruction complete, log the last instruction.
-  m_log.print();
-
-  // Start the log for the next instruction.
-  m_log.reset(regs.pc);
-
-  m_instruction = nullptr;
-  m_action = &Mos6502::fetchNextOpcode;
-  return fetchNextOpcode(*this, BusResponse{});
+  cpu.m_action = cpu.m_instruction->op[cpu.m_stage];
+  return cpu.m_action(cpu, response);
 }

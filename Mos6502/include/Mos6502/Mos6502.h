@@ -99,16 +99,11 @@ public:
 private:
   // State transition functions
 
-  // Transition from addressing mode to operation.
-  BusRequest StartOperation(BusResponse response);
-
-  // Transition from operation to next instruction.
-  BusRequest FinishOperation();
-
   void Log() const;
 
   static BusRequest fetchNextOpcode(Mos6502& cpu, BusResponse response);
   static BusRequest decodeOpcode(Mos6502& cpu, BusResponse response);
+  static BusRequest nextOp(Mos6502& cpu, BusResponse response);
 
   friend struct AddressMode;
   friend struct Operations;
