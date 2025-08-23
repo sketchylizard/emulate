@@ -41,7 +41,7 @@ struct Operations
 
     cpu.m_action = &Operations::brk1<ForceRead>;
     // Push PC high byte
-    return Common::BusRequest::Write(Common::MakeAddress(cpu.m_sp--, c_StackPage), Common::HiByte(cpu.pc()), control);
+    return Common::BusRequest::Write(Common::MakeAddress(cpu.regs.sp--, c_StackPage), Common::HiByte(cpu.regs.pc), control);
   }
   template<bool ForceRead>
   static Common::BusRequest brk1(Mos6502& cpu, Common::BusResponse /*response*/)
@@ -49,7 +49,7 @@ struct Operations
     Control control = ForceRead ? Control::Read : Control{};
     cpu.m_action = &Operations::brk2<ForceRead>;
     // Push PC low byte
-    return Common::BusRequest::Write(Common::MakeAddress(cpu.m_sp--, c_StackPage), Common::LoByte(cpu.pc()), control);
+    return Common::BusRequest::Write(Common::MakeAddress(cpu.regs.sp--, c_StackPage), Common::LoByte(cpu.regs.pc), control);
   }
   template<bool ForceRead>
   static Common::BusRequest brk2(Mos6502& cpu, Common::BusResponse /*response*/)
@@ -57,7 +57,7 @@ struct Operations
     Control control = ForceRead ? Control::Read : Control{};
     cpu.m_action = &Operations::brk3<ForceRead>;
     // Push status register
-    return Common::BusRequest::Write(Common::MakeAddress(cpu.m_sp--, c_StackPage), cpu.status(), control);
+    return Common::BusRequest::Write(Common::MakeAddress(cpu.regs.sp--, c_StackPage), cpu.regs.p, control);
   }
   template<bool ForceRead>
   static Common::BusRequest brk3(Mos6502& cpu, Common::BusResponse /*response*/)
@@ -79,60 +79,60 @@ struct Operations
   static Common::BusRequest brk5(Mos6502& cpu, Common::BusResponse response)
   {
     // Set PC to the interrupt/reset vector address
-    cpu.m_pc = Common::MakeAddress(cpu.m_operand, response.data);
+    cpu.regs.pc = Common::MakeAddress(cpu.m_operand, response.data);
     return cpu.FinishOperation();  // Operation complete
   }
 
   static Common::BusRequest adc(Mos6502& cpu, Common::BusResponse response)
   {
-    assert(cpu.HasFlag(Mos6502::Decimal) == false);  // BCD mode not supported
+    assert(cpu.regs.has(Mos6502::Decimal) == false);  // BCD mode not supported
 
-    const Byte a = cpu.a();
+    const Byte a = cpu.regs.a;
     const Byte m = response.data;
-    const Byte c = cpu.HasFlag(Mos6502::Carry) ? 1 : 0;
+    const Byte c = cpu.regs.has(Mos6502::Carry) ? 1 : 0;
 
     const uint16_t sum = uint16_t(a) + uint16_t(m) + uint16_t(c);
     const Byte result = Byte(sum & 0xFF);
 
-    cpu.m_status = cpu.SetFlag(Mos6502::Carry, (sum & 0x100) != 0);
-    cpu.m_status = cpu.SetFlag(Mos6502::Overflow, ((~(a ^ m) & (a ^ result)) & 0x80) != 0);
-    cpu.SetZN(result);
+    cpu.regs.set(Mos6502::Carry, (sum & 0x100) != 0);
+    cpu.regs.set(Mos6502::Overflow, ((~(a ^ m) & (a ^ result)) & 0x80) != 0);
+    cpu.regs.setZN(result);
 
-    cpu.set_a(result);
+    cpu.regs.a = result;
     return cpu.FinishOperation();
   }
 
   static Common::BusRequest cld(Mos6502& cpu, Common::BusResponse /*response*/)
   {
-    cpu.m_status = cpu.SetFlag(Mos6502::Decimal, false);
+    cpu.regs.set(Mos6502::Decimal, false);
     return cpu.FinishOperation();
   }
 
   static Common::BusRequest txs(Mos6502& cpu, Common::BusResponse /*response*/)
   {
-    cpu.set_sp(cpu.x());
+    cpu.regs.sp = cpu.regs.x;
     return cpu.FinishOperation();
   }
 
   static Common::BusRequest sta(Mos6502& cpu, Common::BusResponse /*response*/)
   {
     cpu.m_action = &finishAfterWrite;
-    return Common::BusRequest::Write(cpu.m_target, cpu.a());
+    return Common::BusRequest::Write(cpu.m_target, cpu.regs.a);
   }
 
   static Common::BusRequest ora(Mos6502& cpu, Common::BusResponse response)
   {
     // Perform OR with accumulator
-    cpu.m_a |= response.data;
-    cpu.m_status = cpu.SetFlag(Mos6502::Zero, cpu.m_a == 0);  // Set zero flag
-    cpu.m_status = cpu.SetFlag(Mos6502::Negative, cpu.m_a & 0x80);  // Set negative flag
+    cpu.regs.a |= response.data;
+    cpu.regs.set(Mos6502::Zero, cpu.regs.a == 0);  // Set zero flag
+    cpu.regs.set(Mos6502::Negative, cpu.regs.a & 0x80);  // Set negative flag
     return cpu.FinishOperation();
   }
 
   static Common::BusRequest jmpAbsolute(Mos6502& cpu, Common::BusResponse /*response*/)
   {
     cpu.m_action = &Operations::jmpAbsolute1;
-    return Common::BusRequest::Read(cpu.m_pc++);  // Fetch low byte
+    return Common::BusRequest::Read(cpu.regs.pc++);  // Fetch low byte
   }
   static Common::BusRequest jmpAbsolute1(Mos6502& cpu, Common::BusResponse response)
   {
@@ -141,7 +141,7 @@ struct Operations
     cpu.m_log.addByte(loByte, 0);
 
     cpu.m_action = &Operations::jmpAbsolute2;
-    return Common::BusRequest::Read(cpu.m_pc++);  // Fetch high byte
+    return Common::BusRequest::Read(cpu.regs.pc++);  // Fetch high byte
   }
 
   static Common::BusRequest jmpAbsolute2(Mos6502& cpu, Common::BusResponse response)
@@ -152,10 +152,10 @@ struct Operations
     cpu.m_log.addByte(hiByte, 1);
 
     Common::Byte loByte = Common::LoByte(cpu.m_target);
-    cpu.m_pc = Common::MakeAddress(loByte, hiByte);
+    cpu.regs.pc = Common::MakeAddress(loByte, hiByte);
 
     char buffer[] = "$XXXX";
-    std::format_to(buffer + 1, "{:04X}", cpu.m_pc);
+    std::format_to(buffer + 1, "{:04X}", cpu.regs.pc);
     cpu.m_log.setOperand(buffer);
 
     return cpu.FinishOperation();
@@ -165,7 +165,7 @@ struct Operations
   {
     cpu.m_action = &Operations::jmpIndirect1;
     // Fetch indirect address low byte
-    return Common::BusRequest::Read(cpu.m_pc++);
+    return Common::BusRequest::Read(cpu.regs.pc++);
   }
 
   static Common::BusRequest jmpIndirect1(Mos6502& cpu, Common::BusResponse response)
@@ -175,7 +175,7 @@ struct Operations
 
     cpu.m_target = MakeAddress(loByte, c_ZeroPage);  // store low into m_target temporarily
     cpu.m_action = &Operations::jmpIndirect2;
-    return BusRequest::Read(cpu.m_pc++);  // fetch ptr high
+    return BusRequest::Read(cpu.regs.pc++);  // fetch ptr high
   }
 
   static Common::BusRequest jmpIndirect2(Mos6502& cpu, Common::BusResponse response)
@@ -207,32 +207,32 @@ struct Operations
   static Common::BusRequest jmpIndirect4(Mos6502& cpu, Common::BusResponse response)
   {
     const Byte targetHi = response.data;
-    cpu.m_pc = MakeAddress(cpu.m_operand, targetHi);
+    cpu.regs.pc = MakeAddress(cpu.m_operand, targetHi);
     return cpu.FinishOperation();
   }
 
   static Common::BusRequest bne(Mos6502& cpu, Common::BusResponse /*response*/)
   {
-    if (!(cpu.m_status & Mos6502::Zero))
+    if (!(cpu.regs.p & Mos6502::Zero))
     {
       // BNE assumes that two values were compared by subtracting one from the other, or, that a loop counter was
       // decremented. This means that the the zero flag would be set if they were equal, or the counter reached zero.
       // Since this is Branch if Not Equal, take the branch only if the zero flag is clear.
       int8_t signedOffset = static_cast<int8_t>(cpu.m_operand);
-      cpu.m_pc += signedOffset;
+      cpu.regs.pc += signedOffset;
     }
     return cpu.FinishOperation();
   }
 
   static Common::BusRequest beq(Mos6502& cpu, Common::BusResponse /*response*/)
   {
-    if (cpu.m_status & Mos6502::Zero)
+    if (cpu.regs.p & Mos6502::Zero)
     {
       // BEQ assumes that two values were compared by subtracting one from the other, or, that a loop counter was
       // decremented. This means that the the zero flag would be set if they were equal, or the counter reached zero.
       // Since this is Branch if EQual, take the branch only if the zero flag is set.
       int8_t signedOffset = static_cast<int8_t>(cpu.m_operand);
-      cpu.m_pc += signedOffset;
+      cpu.regs.pc += signedOffset;
     }
     return cpu.FinishOperation();
   }
@@ -245,23 +245,23 @@ struct Operations
     Common::Byte* reg = nullptr;
     if constexpr (index == Index::None)
     {
-      reg = &cpu.m_a;
+      reg = &cpu.regs.a;
     }
     else if constexpr (index == Index::X)
     {
-      reg = &cpu.m_x;
+      reg = &cpu.regs.x;
     }
     else if constexpr (index == Index::Y)
     {
-      reg = &cpu.m_y;
+      reg = &cpu.regs.y;
     }
     assert(reg != nullptr);
     cpu.m_operand = response.data;
     *reg = response.data;
     // Check zero flag
-    cpu.m_status = cpu.SetFlag(Mos6502::Zero, *reg == 0);
+    cpu.regs.set(Mos6502::Zero, *reg == 0);
     // Check negative flag
-    cpu.m_status = cpu.SetFlag(Mos6502::Negative, (*reg & 0x80) != 0);
+    cpu.regs.set(Mos6502::Negative, (*reg & 0x80) != 0);
 
     return cpu.FinishOperation();
   }
@@ -274,15 +274,15 @@ struct Operations
 
     if constexpr (index == Index::X)
     {
-      cpu.m_x++;
-      cpu.m_status = cpu.SetFlag(Mos6502::Zero, cpu.m_x == 0);
-      cpu.m_status = cpu.SetFlag(Mos6502::Negative, (cpu.m_x & 0x80) != 0);
+      cpu.regs.x++;
+      cpu.regs.set(Mos6502::Zero, cpu.regs.x == 0);
+      cpu.regs.set(Mos6502::Negative, (cpu.regs.x & 0x80) != 0);
     }
     else if constexpr (index == Index::Y)
     {
-      cpu.m_y++;
-      cpu.m_status = cpu.SetFlag(Mos6502::Zero, cpu.m_y == 0);
-      cpu.m_status = cpu.SetFlag(Mos6502::Negative, (cpu.m_y & 0x80) != 0);
+      cpu.regs.y++;
+      cpu.regs.set(Mos6502::Zero, cpu.regs.y == 0);
+      cpu.regs.set(Mos6502::Negative, (cpu.regs.y & 0x80) != 0);
     }
     return cpu.FinishOperation();
   }
@@ -294,15 +294,15 @@ struct Operations
     // Handle increment operation for X or Y registers
     if constexpr (index == Index::X)
     {
-      --cpu.m_x;
-      cpu.m_status = cpu.SetFlag(Mos6502::Zero, cpu.m_x == 0);
-      cpu.m_status = cpu.SetFlag(Mos6502::Negative, (cpu.m_x & 0x80) != 0);
+      --cpu.regs.x;
+      cpu.regs.set(Mos6502::Zero, cpu.regs.x == 0);
+      cpu.regs.set(Mos6502::Negative, (cpu.regs.x & 0x80) != 0);
     }
     else if constexpr (index == Index::Y)
     {
-      --cpu.m_y;
-      cpu.m_status = cpu.SetFlag(Mos6502::Zero, cpu.m_y == 0);
-      cpu.m_status = cpu.SetFlag(Mos6502::Negative, (cpu.m_y & 0x80) != 0);
+      --cpu.regs.y;
+      cpu.regs.set(Mos6502::Zero, cpu.regs.y == 0);
+      cpu.regs.set(Mos6502::Negative, (cpu.regs.y & 0x80) != 0);
     }
     return cpu.FinishOperation();
   }
@@ -313,21 +313,21 @@ struct Operations
     Common::Byte valueToCompare = 0;
     if constexpr (index == Index::None)
     {
-      valueToCompare = cpu.m_a;
+      valueToCompare = cpu.regs.a;
     }
     else if constexpr (index == Index::X)
     {
-      valueToCompare = cpu.m_x;
+      valueToCompare = cpu.regs.x;
     }
     else if constexpr (index == Index::Y)
     {
-      valueToCompare = cpu.m_y;
+      valueToCompare = cpu.regs.y;
     }
 
     Common::Byte result = valueToCompare - response.data;
-    cpu.m_status = cpu.SetFlag(Mos6502::Carry, valueToCompare >= response.data);
-    cpu.m_status = cpu.SetFlag(Mos6502::Zero, result == 0);
-    cpu.m_status = cpu.SetFlag(Mos6502::Negative, (result & 0x80) != 0);
+    cpu.regs.set(Mos6502::Carry, valueToCompare >= response.data);
+    cpu.regs.set(Mos6502::Zero, result == 0);
+    cpu.regs.set(Mos6502::Negative, (result & 0x80) != 0);
 
     return cpu.FinishOperation();
   }
@@ -465,7 +465,7 @@ Common::BusRequest Mos6502::Tick(Common::BusResponse response) noexcept
 BusRequest Mos6502::fetchNextOpcode(Mos6502& cpu, BusResponse /*response*/)
 {
   cpu.m_action = &Mos6502::decodeOpcode;
-  return BusRequest::Fetch(cpu.m_pc++);
+  return BusRequest::Fetch(cpu.regs.pc++);
 }
 
 BusRequest Mos6502::decodeOpcode(Mos6502& cpu, BusResponse response)
@@ -475,7 +475,7 @@ BusRequest Mos6502::decodeOpcode(Mos6502& cpu, BusResponse response)
   cpu.setInstruction(c_instructions[static_cast<size_t>(opcode)]);
 
   cpu.m_log.setInstruction(opcode, cpu.m_instruction->name);
-  cpu.m_log.setRegisters(cpu.m_a, cpu.m_x, cpu.m_y, cpu.m_status, cpu.m_sp);
+  cpu.m_log.setRegisters(cpu.regs.a, cpu.regs.x, cpu.regs.y, cpu.regs.p, cpu.regs.sp);
 
   return cpu.m_action(cpu, BusResponse{});
 }
@@ -515,7 +515,7 @@ Common::BusRequest Mos6502::FinishOperation()
   m_log.print();
 
   // Start the log for the next instruction.
-  m_log.reset(m_pc);
+  m_log.reset(regs.pc);
 
   m_instruction = nullptr;
   m_action = &Mos6502::fetchNextOpcode;

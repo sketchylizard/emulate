@@ -14,7 +14,7 @@ Common::BusRequest AddressMode::imp(Mos6502& cpu, Common::BusResponse response)
 Common::BusRequest AddressMode::imm(Mos6502& cpu, Common::BusResponse /*response*/)
 {
   cpu.m_action = &AddressMode::imm1;
-  return Common::BusRequest::Read(cpu.m_pc++);
+  return Common::BusRequest::Read(cpu.regs.pc++);
 }
 
 Common::BusRequest AddressMode::imm1(Mos6502& cpu, Common::BusResponse response)
@@ -34,7 +34,7 @@ void AddressMode::logRelOperand(Mos6502& cpu, Common::Byte displacement)
 
   // 2) Compute final target = (PC after reading displacement) + signed(displacement)
   const int8_t off = static_cast<int8_t>(displacement);
-  const auto base = cpu.m_pc;  // PC already incremented in rel()
+  const auto base = cpu.regs.pc;  // PC already incremented in rel()
   const auto target = Common::Address(static_cast<uint16_t>(static_cast<uint16_t>(base) + static_cast<int16_t>(off)));
 
   // 3) Show the resolved absolute target in the operand text (e.g., "BEQ $C012")
@@ -50,7 +50,7 @@ Common::BusRequest AddressMode::rel(Mos6502& cpu, Common::BusResponse /*response
 {
   // Fetch the signed 8-bit displacement, then PC will point to the next opcode.
   cpu.m_action = &AddressMode::rel1;
-  return Common::BusRequest::Read(cpu.m_pc++);
+  return Common::BusRequest::Read(cpu.regs.pc++);
 }
 
 Common::BusRequest AddressMode::rel1(Mos6502& cpu, Common::BusResponse response)

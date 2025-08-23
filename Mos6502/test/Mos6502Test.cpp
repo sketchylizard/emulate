@@ -244,7 +244,7 @@ TEST_CASE("Mos6502: Functional_tests", "[.]")
   auto programStart = Address{0x0400};
 
   // Set the reset vector to 0x0400
-  cpu.set_pc(programStart);
+  cpu.regs.pc = programStart;
 
   Address lastProgramCounter = programStart;
 
@@ -259,12 +259,12 @@ TEST_CASE("Mos6502: Functional_tests", "[.]")
     {
       response = *newResponse;
     }
-    if (request.isSync() && cpu.pc() == lastProgramCounter)
+    if (request.isSync() && cpu.regs.pc == lastProgramCounter)
     {
       // If the PC hasn't changed, the program might be stuck; break to avoid infinite loop
-      std::cout << "Program counter stuck at: " << std::hex << static_cast<uint16_t>(cpu.pc()) << "\n";
+      std::cout << "Program counter stuck at: " << std::hex << static_cast<uint16_t>(cpu.regs.pc) << "\n";
       //      break;
     }
-    lastProgramCounter = cpu.pc();
+    lastProgramCounter = cpu.regs.pc;
   }
 }

@@ -28,7 +28,7 @@ struct AddressMode
   static Common::BusRequest zp0(Mos6502& cpu, Common::BusResponse /*response*/)
   {
     cpu.m_action = &AddressMode::zp1<index>;
-    return Common::BusRequest::Read(cpu.m_pc++);
+    return Common::BusRequest::Read(cpu.regs.pc++);
   }
 
   template<Index index>
@@ -55,7 +55,7 @@ struct AddressMode
   {
     // Put the address of the lo byte on the BusRequest
     cpu.m_action = &AddressMode::abs1<index>;
-    return Common::BusRequest::Read(cpu.m_pc++);
+    return Common::BusRequest::Read(cpu.regs.pc++);
   }
   template<Index index>
   static Common::BusRequest abs1(Mos6502& cpu, Common::BusResponse response)
@@ -66,7 +66,7 @@ struct AddressMode
 
     cpu.m_action = &AddressMode::abs2<index>;
     // Put the address of the hi byte on the bus.
-    return Common::BusRequest::Read(cpu.m_pc++);
+    return Common::BusRequest::Read(cpu.regs.pc++);
   }
   template<Index index>
   static Common::BusRequest abs2(Mos6502& cpu, Common::BusResponse response)
@@ -146,12 +146,12 @@ std::pair<Common::Address, Common::Address> AddressMode::indexed(const Mos6502& 
 
     if constexpr (index == Index::X)
     {
-      low += cpu.m_x;
+      low += cpu.regs.x;
     }
     else
     {
       assert((index == Index::Y));
-      low += cpu.m_y;
+      low += cpu.regs.y;
     }
     if (low > Common::Address{0x00FF})  // overflowed
     {
