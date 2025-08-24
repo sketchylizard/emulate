@@ -72,5 +72,5 @@ Common::BusRequest AddressMode::Fetch(Mos6502& cpu, Common::BusResponse /*respon
     cpu.m_operand = response.data;
     return Mos6502::nextOp(cpu, response);
   };
-  return Common::BusRequest::Read(cpu.m_target);
+  return Common::BusRequest::Read(cpu.getEffectiveAddress());
 }

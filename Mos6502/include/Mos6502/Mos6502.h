@@ -71,8 +71,6 @@ public:
 
   Mos6502() noexcept;
 
-  [[nodiscard]] Address target() const noexcept;
-
   [[nodiscard]] BusRequest Tick(BusResponse response) noexcept;
 
   //! Get the number of ticks since the last reset.
@@ -91,6 +89,11 @@ public:
       return r.x;
     else /* R == Register::Y */
       return r.y;
+  }
+
+  Address getEffectiveAddress() const noexcept
+  {
+    return Common::MakeAddress(m_targetLo, m_targetHi);
   }
 
   // Registers
@@ -113,7 +116,8 @@ private:
 
   uint32_t m_tickCount = 0;  // Number of ticks since the last reset
 
-  Address m_target{0};
+  Byte m_targetLo = 0;  // Low byte of the target address
+  Byte m_targetHi = 0;  // High byte of the target address
 
   // Scratch data for operations and logging
   Byte m_operand;
@@ -147,11 +151,6 @@ constexpr void Mos6502::Regs::setZN(Byte v) noexcept
 constexpr void Mos6502::Regs::assignP(Byte v) noexcept
 {
   p = Byte((v | Unused));
-}
-
-inline Common::Address Mos6502::target() const noexcept
-{
-  return m_target;
 }
 
 inline uint32_t Mos6502::tickCount() const noexcept

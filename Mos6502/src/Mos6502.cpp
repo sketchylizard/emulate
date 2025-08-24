@@ -111,7 +111,7 @@ struct Operations
   static Common::BusRequest sta(Mos6502& cpu, Common::BusResponse /*response*/)
   {
     cpu.m_action = &Mos6502::nextOp;
-    return Common::BusRequest::Write(cpu.m_target, cpu.regs.a);
+    return Common::BusRequest::Write(cpu.getEffectiveAddress(), cpu.regs.a);
   }
 
   static Common::BusRequest ora(Mos6502& cpu, Common::BusResponse response)
@@ -128,11 +128,11 @@ struct Operations
     cpu.m_action = &Operations::jmpAbsolute1;
     return Common::BusRequest::Read(cpu.regs.pc++);  // Fetch low byte
   }
+
   static Common::BusRequest jmpAbsolute1(Mos6502& cpu, Common::BusResponse response)
   {
-    Common::Byte loByte = response.data;
-    cpu.m_target = Common::MakeAddress(loByte, c_ZeroPage);
-    cpu.m_log.addByte(loByte, 0);
+    cpu.m_targetLo = response.data;
+    cpu.m_log.addByte(cpu.m_targetLo, 0);
 
     cpu.m_action = &Operations::jmpAbsolute2;
     return Common::BusRequest::Read(cpu.regs.pc++);  // Fetch high byte
@@ -141,12 +141,10 @@ struct Operations
   static Common::BusRequest jmpAbsolute2(Mos6502& cpu, Common::BusResponse response)
   {
     // Step 2
-    Common::Byte hiByte = response.data;
+    cpu.m_targetHi = response.data;
+    cpu.m_log.addByte(cpu.m_targetHi, 1);
 
-    cpu.m_log.addByte(hiByte, 1);
-
-    Common::Byte loByte = Common::LoByte(cpu.m_target);
-    cpu.regs.pc = Common::MakeAddress(loByte, hiByte);
+    cpu.regs.pc = cpu.getEffectiveAddress();
 
     char buffer[] = "$XXXX";
     std::format_to(buffer + 1, "{:04X}", cpu.regs.pc);
@@ -164,26 +162,26 @@ struct Operations
 
   static Common::BusRequest jmpIndirect1(Mos6502& cpu, Common::BusResponse response)
   {
-    Common::Byte loByte = response.data;
-    cpu.m_log.addByte(loByte, 0);
+    cpu.m_targetLo = response.data;
+    cpu.m_log.addByte(cpu.m_targetLo, 0);
 
-    cpu.m_target = MakeAddress(loByte, c_ZeroPage);  // store low into m_target temporarily
     cpu.m_action = &Operations::jmpIndirect2;
     return BusRequest::Read(cpu.regs.pc++);  // fetch ptr high
   }
 
   static Common::BusRequest jmpIndirect2(Mos6502& cpu, Common::BusResponse response)
   {
-    Common::Byte hiByte = response.data;
-    cpu.m_log.addByte(hiByte, 1);
-    cpu.m_target = Common::MakeAddress(LoByte(cpu.m_target), hiByte);
+    cpu.m_targetHi = response.data;
+    cpu.m_log.addByte(cpu.m_targetHi, 1);
+
+    auto target = cpu.getEffectiveAddress();
 
     char buffer[] = "($XXXX)";
-    std::format_to(buffer + 2, "{:04X}", cpu.m_target);
+    std::format_to(buffer + 2, "{:04X}", target);
     cpu.m_log.setOperand(buffer);
 
     cpu.m_action = &Operations::jmpIndirect3;
-    return BusRequest::Read(cpu.m_target);  // Read target low byte
+    return BusRequest::Read(target);  // Read target low byte
   }
 
   static Common::BusRequest jmpIndirect3(Mos6502& cpu, Common::BusResponse response)
@@ -191,7 +189,7 @@ struct Operations
     const Byte targetLo = response.data;
 
     // 6502 bug: high byte read wraps within the *same* page as ptr
-    const Address hiAddr = MakeAddress(Byte(LoByte(cpu.m_target) + 1), HiByte(cpu.m_target));
+    const Address hiAddr = MakeAddress(Byte(cpu.m_targetLo + 1), cpu.m_targetHi);
 
     cpu.m_action = &Operations::jmpIndirect4;
     cpu.m_operand = targetLo;  // stash low

@@ -29,7 +29,7 @@ static BusRequest TestWriteOperation(Mos6502& cpu, BusResponse /*response*/)
 {
   wasStartOperationCalled = true;
 
-  return BusRequest::Write(cpu.target(), cpu.regs.a);
+  return BusRequest::Write(cpu.getEffectiveAddress(), cpu.regs.a);
 }
 
 // Helper function for multi-step execution
