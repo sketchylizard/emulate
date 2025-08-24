@@ -64,7 +64,7 @@ struct Operations
   static Common::BusRequest brk4(Mos6502& cpu, Common::BusResponse response)
   {
     // Store the lo byte of the vector
-    cpu.m_operand = response.data;
+    cpu.m_operand.lo = response.data;
     cpu.m_action = &Operations::brk5<ForceRead>;
     // Fetch the high byte of the interrupt/reset vector
     return Common::BusRequest::Read(Mos6502::c_brkVector + 1);
@@ -73,7 +73,8 @@ struct Operations
   static Common::BusRequest brk5(Mos6502& cpu, Common::BusResponse response)
   {
     // Set PC to the interrupt/reset vector address
-    cpu.regs.pc = Common::MakeAddress(cpu.m_operand, response.data);
+    cpu.m_operand.hi = response.data;
+    cpu.regs.pc = cpu.getEffectiveAddress();
     return Mos6502::nextOp(cpu, response);  // Operation complete
   }
 
@@ -131,8 +132,7 @@ struct Operations
 
   static Common::BusRequest jmpAbsolute1(Mos6502& cpu, Common::BusResponse response)
   {
-    cpu.m_targetLo = response.data;
-    cpu.m_log.addByte(cpu.m_targetLo, 0);
+    cpu.m_operand.lo = response.data;
 
     cpu.m_action = &Operations::jmpAbsolute2;
     return Common::BusRequest::Read(cpu.regs.pc++);  // Fetch high byte
@@ -141,15 +141,8 @@ struct Operations
   static Common::BusRequest jmpAbsolute2(Mos6502& cpu, Common::BusResponse response)
   {
     // Step 2
-    cpu.m_targetHi = response.data;
-    cpu.m_log.addByte(cpu.m_targetHi, 1);
-
+    cpu.m_operand.hi = response.data;
     cpu.regs.pc = cpu.getEffectiveAddress();
-
-    char buffer[] = "$XXXX";
-    std::format_to(buffer + 1, "{:04X}", cpu.regs.pc);
-    cpu.m_log.setOperand(buffer);
-
     return Mos6502::nextOp(cpu, response);
   }
 
@@ -162,44 +155,32 @@ struct Operations
 
   static Common::BusRequest jmpIndirect1(Mos6502& cpu, Common::BusResponse response)
   {
-    cpu.m_targetLo = response.data;
-    cpu.m_log.addByte(cpu.m_targetLo, 0);
-
+    cpu.m_operand.lo = response.data;
     cpu.m_action = &Operations::jmpIndirect2;
     return BusRequest::Read(cpu.regs.pc++);  // fetch ptr high
   }
 
   static Common::BusRequest jmpIndirect2(Mos6502& cpu, Common::BusResponse response)
   {
-    cpu.m_targetHi = response.data;
-    cpu.m_log.addByte(cpu.m_targetHi, 1);
-
-    auto target = cpu.getEffectiveAddress();
-
-    char buffer[] = "($XXXX)";
-    std::format_to(buffer + 2, "{:04X}", target);
-    cpu.m_log.setOperand(buffer);
-
+    cpu.m_operand.hi = response.data;
     cpu.m_action = &Operations::jmpIndirect3;
-    return BusRequest::Read(target);  // Read target low byte
+    return BusRequest::Read(cpu.getEffectiveAddress());  // Read target low byte
   }
 
   static Common::BusRequest jmpIndirect3(Mos6502& cpu, Common::BusResponse response)
   {
-    const Byte targetLo = response.data;
+    cpu.m_operand.lo = response.data;
 
     // 6502 bug: high byte read wraps within the *same* page as ptr
-    const Address hiAddr = MakeAddress(Byte(cpu.m_targetLo + 1), cpu.m_targetHi);
-
+    cpu.m_operand.hi = 0;  // this is wrong
     cpu.m_action = &Operations::jmpIndirect4;
-    cpu.m_operand = targetLo;  // stash low
-    return BusRequest::Read(hiAddr);  // read target high (buggy wrap)
+    return BusRequest::Read(cpu.getEffectiveAddress());  // read target high (buggy wrap)
   }
 
   static Common::BusRequest jmpIndirect4(Mos6502& cpu, Common::BusResponse response)
   {
-    const Byte targetHi = response.data;
-    cpu.regs.pc = MakeAddress(cpu.m_operand, targetHi);
+    cpu.m_operand.hi = response.data;
+    cpu.regs.pc = cpu.getEffectiveAddress();
     return Mos6502::nextOp(cpu, response);
   }
 
@@ -210,7 +191,7 @@ struct Operations
       // BNE assumes that two values were compared by subtracting one from the other, or, that a loop counter was
       // decremented. This means that the the zero flag would be set if they were equal, or the counter reached zero.
       // Since this is Branch if Not Equal, take the branch only if the zero flag is clear.
-      int8_t signedOffset = static_cast<int8_t>(cpu.m_operand);
+      int8_t signedOffset = static_cast<int8_t>(cpu.m_operand.lo);
       cpu.regs.pc += signedOffset;
     }
     return Mos6502::nextOp(cpu, response);
@@ -223,7 +204,7 @@ struct Operations
       // BEQ assumes that two values were compared by subtracting one from the other, or, that a loop counter was
       // decremented. This means that the the zero flag would be set if they were equal, or the counter reached zero.
       // Since this is Branch if EQual, take the branch only if the zero flag is set.
-      int8_t signedOffset = static_cast<int8_t>(cpu.m_operand);
+      int8_t signedOffset = static_cast<int8_t>(cpu.m_operand.lo);
       cpu.regs.pc += signedOffset;
     }
     return Mos6502::nextOp(cpu, response);
@@ -248,7 +229,7 @@ struct Operations
       reg = &cpu.regs.y;
     }
     assert(reg != nullptr);
-    cpu.m_operand = response.data;
+    cpu.m_operand.lo = response.data;
     *reg = response.data;
     // Check zero flag
     cpu.regs.set(Mos6502::Zero, *reg == 0);
@@ -456,6 +437,8 @@ Common::BusRequest Mos6502::Tick(Common::BusResponse response) noexcept
 
 BusRequest Mos6502::fetchNextOpcode(Mos6502& cpu, BusResponse /*response*/)
 {
+  cpu.m_preOpRegs = cpu.regs;  // Save registers before executing the next instruction
+  // Fetch the next opcode
   cpu.m_action = &Mos6502::decodeOpcode;
   return BusRequest::Fetch(cpu.regs.pc++);
 }
@@ -465,10 +448,6 @@ BusRequest Mos6502::decodeOpcode(Mos6502& cpu, BusResponse response)
   // Decode opcode
   Byte opcode = response.data;
   cpu.setInstruction(c_instructions[static_cast<size_t>(opcode)]);
-
-  cpu.m_log.setInstruction(opcode, cpu.m_instruction->name);
-  cpu.m_log.setRegisters(cpu.regs.a, cpu.regs.x, cpu.regs.y, cpu.regs.p, cpu.regs.sp);
-
   return cpu.m_action(cpu, BusResponse{});
 }
 
@@ -495,10 +474,6 @@ BusRequest Mos6502::nextOp(Mos6502& cpu, BusResponse response)
   if (cpu.m_stage >= std::size(cpu.m_instruction->op))
   {
     // Instruction complete, log the last instruction.
-    cpu.m_log.print();
-
-    // Start the log for the next instruction.
-    cpu.m_log.reset(cpu.regs.pc);
 
     cpu.m_instruction = nullptr;
     cpu.m_action = &Mos6502::fetchNextOpcode;

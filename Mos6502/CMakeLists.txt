@@ -1,11 +1,9 @@
 find_package(Catch2 REQUIRED)
 
 add_library(Mos6502 STATIC
-  include/Mos6502/Log.h
   include/Mos6502/Mos6502.h
   src/AddressMode.cpp
   src/AddressMode.h
-  src/Log.cpp
   src/Mos6502.cpp
 )
 

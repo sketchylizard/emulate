@@ -22,20 +22,12 @@ struct AddressMode
   static Common::BusRequest rel(Mos6502& cpu, Common::BusResponse response);
   static Common::BusRequest rel1(Mos6502& cpu, Common::BusResponse response);
 
-  static void logRelOperand(Mos6502& cpu, Common::Byte displacement);
-
   template<Index index>
   static Common::BusRequest zp0(Mos6502& cpu, Common::BusResponse /*response*/)
   {
+    cpu.m_operand.type = Mos6502::Operand::Type::Zp;
     cpu.m_action = &AddressMode::zp1<index>;
     return Common::BusRequest::Read(cpu.regs.pc++);
-  }
-
-  [[nodiscard]] static bool incrementByte(Common::Byte& byte, int8_t inc) noexcept
-  {
-    const uint16_t sum = static_cast<uint16_t>(static_cast<uint16_t>(byte) + inc);
-    byte = static_cast<Common::Byte>(sum & 0xFF);
-    return (sum & 0x100) != 0;
   }
 
   [[nodiscard]] static bool incrementByte(Common::Byte& byte, Common::Byte inc) noexcept
@@ -50,21 +42,13 @@ struct AddressMode
   {
     // Zero Page Write addressing mode
     // Fetch the low byte of the address
-    cpu.m_targetLo = response.data;
-    cpu.m_targetHi = c_ZeroPage;
-    cpu.m_log.addByte(cpu.m_targetLo, 0);
-
-    char buffer[] = "$XX  ";
-    std::format_to(buffer + 1, "{:02X}{}", cpu.m_targetLo,
-        index == Index::None ? "  " :
-        index == Index::X    ? ",X" :
-                               ",Y");
-    cpu.m_log.setOperand(buffer);
+    cpu.m_operand.lo = response.data;
+    cpu.m_operand.hi = c_ZeroPage;
 
     if constexpr (index != Index::None)
     {
       // Add the index register to the low byte, wrapping around within the zero page.
-      bool carry = incrementByte(cpu.m_targetLo, getIndexValue<index>(cpu));
+      bool carry = incrementByte(cpu.m_operand.lo, getIndexValue<index>(cpu));
       static_cast<void>(carry);  // carry is ignored in zero page addressing
     }
     return Mos6502::nextOp(cpu, response);
@@ -73,6 +57,13 @@ struct AddressMode
   template<Index index>
   static Common::BusRequest abs0(Mos6502& cpu, Common::BusResponse /*response*/)
   {
+    if constexpr (index == Index::None)
+      cpu.m_operand.type = Mos6502::Operand::Type::Abs;
+    else if constexpr (index == Index::X)
+      cpu.m_operand.type = Mos6502::Operand::Type::AbsX;
+    else
+      cpu.m_operand.type = Mos6502::Operand::Type::AbsY;
+
     // Put the address of the lo byte on the BusRequest
     cpu.m_action = &AddressMode::abs1<index>;
     return Common::BusRequest::Read(cpu.regs.pc++);
@@ -82,8 +73,7 @@ struct AddressMode
   static Common::BusRequest abs1(Mos6502& cpu, Common::BusResponse response)
   {
     // Read the lo byte from the BusRequest
-    cpu.m_targetLo = response.data;
-    cpu.m_log.addByte(response.data, 0);
+    cpu.m_operand.lo = response.data;
 
     cpu.m_action = &AddressMode::abs2<index>;
     // Put the address of the hi byte on the bus.
@@ -93,13 +83,7 @@ struct AddressMode
   static Common::BusRequest abs2(Mos6502& cpu, Common::BusResponse response)
   {
     // Read the hi byte from the response.
-    cpu.m_targetHi = response.data;
-    cpu.m_log.addByte(cpu.m_targetHi, 1);
-
-    // Log the target address
-    char buffer[] = "$XXXX";
-    std::format_to(buffer + 1, "{:02X}{:02X}", cpu.m_targetHi, cpu.m_targetLo);
-    cpu.m_log.setOperand(buffer);
+    cpu.m_operand.hi = response.data;
 
     // If this is an indexed addressing mode, add the index register to the lo byte.
     // Note: This can cause the address to wrap around if it exceeds 0xFF which will
@@ -109,7 +93,7 @@ struct AddressMode
     bool carry = false;
     if constexpr (index != Index::None)  // overflow occurred
     {
-      carry = incrementByte(cpu.m_targetLo, getIndexValue<index>(cpu));
+      carry = incrementByte(cpu.m_operand.lo, getIndexValue<index>(cpu));
     }
 
     // If carry is set, then target is the wrong address, but we need to read from it to emulate the 6502's,
@@ -127,7 +111,7 @@ struct AddressMode
   static Common::BusRequest abs3(Mos6502& cpu, Common::BusResponse response)
   {
     // We read from the wrong address due to page boundary crossing.
-    ++cpu.m_targetHi;  // increment hi byte to get the correct address
+    ++cpu.m_operand.hi;  // increment hi byte to get the correct address
     return Mos6502::nextOp(cpu, response);
   }
 
@@ -135,6 +119,12 @@ struct AddressMode
     requires(index != Index::None)
   static Common::BusRequest indirect(Mos6502& cpu, Common::BusResponse response)
   {
+    if constexpr (index == Index::None)
+      cpu.m_operand.type = Mos6502::Operand::Type::Ind;
+    else if constexpr (index == Index::X)
+      cpu.m_operand.type = Mos6502::Operand::Type::IndZpX;
+    else
+      cpu.m_operand.type = Mos6502::Operand::Type::IndZpY;
     return Mos6502::nextOp(cpu, response);
   }
 

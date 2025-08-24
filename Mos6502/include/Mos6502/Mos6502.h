@@ -9,7 +9,6 @@
 #include <string_view>
 #include <tuple>
 
-#include "Mos6502/Log.h"
 #include "common/Bus.h"
 
 #define MOS6502_TRACE 1
@@ -69,6 +68,22 @@ public:
     StateFunc op[3] = {};
   };
 
+  struct Operand
+  {
+    // clang-format off
+    enum class Type : uint8_t {
+      Impl, Acc, Imm8, 
+      Zp, ZpX, ZpY, 
+      Abs, AbsX, AbsY,
+      Ind, IndZpX, IndZpY,
+      Rel
+    };
+    // clang-format on
+    Type type = Type::Impl;
+    Byte lo = 0;
+    Byte hi = 0;
+  };
+
   Mos6502() noexcept;
 
   [[nodiscard]] BusRequest Tick(BusResponse response) noexcept;
@@ -93,7 +108,7 @@ public:
 
   Address getEffectiveAddress() const noexcept
   {
-    return Common::MakeAddress(m_targetLo, m_targetHi);
+    return Common::MakeAddress(m_operand.lo, m_operand.hi);
   }
 
   // Registers
@@ -101,8 +116,6 @@ public:
 
 private:
   // State transition functions
-
-  void Log() const;
 
   static BusRequest fetchNextOpcode(Mos6502& cpu, BusResponse response);
   static BusRequest decodeOpcode(Mos6502& cpu, BusResponse response);
@@ -116,19 +129,15 @@ private:
 
   uint32_t m_tickCount = 0;  // Number of ticks since the last reset
 
-  Byte m_targetLo = 0;  // Low byte of the target address
-  Byte m_targetHi = 0;  // High byte of the target address
+  Regs m_preOpRegs;  // Registers before the current operation (for logging)
 
-  // Scratch data for operations and logging
-  Byte m_operand;
+  Operand m_operand;  // Value of the current operand (if any)
 
   // Stage of the current instruction (0-2)
   Byte m_stage = 0;
 
   // Last bus request
   BusRequest m_lastBusRequest;
-
-  LogBuffer m_log;
 };
 
 constexpr bool Mos6502::Regs::has(Byte f) const noexcept
