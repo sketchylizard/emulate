@@ -129,6 +129,7 @@ private:
   const Instruction* m_instruction = nullptr;
   StateFunc m_action = &Mos6502::fetchNextOpcode;
 
+  Address m_lastPc{0};  // Last PC value, to detect a stuck PC
   uint32_t m_tickCount = 0;  // Number of ticks since the last reset
 
   Operand m_operand;  // Value of the current operand (if any)

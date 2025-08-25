@@ -97,11 +97,13 @@ struct Operations
     return Mos6502::nextOp(cpu, response);
   }
 
-  static Common::BusRequest cld(Mos6502& cpu, Common::BusResponse response)
+  template<Mos6502::Flag Flag, bool Set>
+  static Common::BusRequest flagOp(Mos6502& cpu, Common::BusResponse response)
   {
-    cpu.regs.set(Mos6502::Flag::Decimal, false);
+    cpu.regs.set(Flag, Set);
     return Mos6502::nextOp(cpu, response);
   }
+
 
   static Common::BusRequest txs(Mos6502& cpu, Common::BusResponse response)
   {
@@ -350,6 +352,13 @@ struct Operations
     return Mos6502::nextOp(cpu, response);
   }
 
+  static Common::BusRequest eor(Mos6502& cpu, Common::BusResponse response)
+  {
+    cpu.regs.a ^= response.data;  // A ← A ⊕ M
+    cpu.regs.setZN(cpu.regs.a);
+    return Mos6502::nextOp(cpu, response);
+  }
+
 };  // struct Operations
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -405,8 +414,14 @@ static constexpr std::array<Mos6502::Instruction, 256> c_instructions = []
   table[0xAC] = {"LDY", {Mode::abs, &Mode::Fetch, &Operations::load<Mos6502::Register::Y>}};
   table[0xBC] = {"LDY", {Mode::absX, &Mode::Fetch, &Operations::load<Mos6502::Register::Y>}};
 
-  table[0xD8] = {"CLD", {&Mode::imp, &Operations::cld}};
-  table[0x9A] = {"TXS", {&Mode::imp, &Operations::txs}};
+  // Flag operations
+  table[0x18] = {"CLC", {&Mode::imp, &Operations::flagOp<Mos6502::Flag::Carry,     false>}};
+  table[0x38] = {"SEC", {&Mode::imp, &Operations::flagOp<Mos6502::Flag::Carry,      true>}};
+  table[0x58] = {"CLI", {&Mode::imp, &Operations::flagOp<Mos6502::Flag::Interrupt, false>}};
+  table[0x78] = {"SEI", {&Mode::imp, &Operations::flagOp<Mos6502::Flag::Interrupt,  true>}};
+  table[0xB8] = {"CLV", {&Mode::imp, &Operations::flagOp<Mos6502::Flag::Overflow,  false>}};
+  table[0xD8] = {"CLD", {&Mode::imp, &Operations::flagOp<Mos6502::Flag::Decimal,   false>}};
+  table[0xF8] = {"SED", {&Mode::imp, &Operations::flagOp<Mos6502::Flag::Decimal,    true>}};
 
   // STA variations
   table[0x85] = {"STA", {Mode::zp, &Mode::Fetch,&Operations::sta}};
@@ -470,8 +485,18 @@ static constexpr std::array<Mos6502::Instruction, 256> c_instructions = []
   table[0xA8] = {"TAY", {Mode::imp, &Operations::transfer<Mos6502::Register::A, Mos6502::Register::Y>}};
   table[0x8A] = {"TXA", {Mode::imp, &Operations::transfer<Mos6502::Register::X, Mos6502::Register::A>}};
   table[0xAA] = {"TAX", {Mode::imp, &Operations::transfer<Mos6502::Register::A, Mos6502::Register::X>}};
+  table[0x9A] = {"TXS", {&Mode::imp, &Operations::txs}};
   // table[0xBA] = {"TSX", {Mode::imp, &Operations::transfer<Mos6502::Register::S, Mos6502::Register::X>}};
-  // table[0x9A] = {"TXS", {Mode::imp, &Operations::transfer<Mos6502::Register::X, Mos6502::Register::S>}};
+
+  table[0x49] = {"EOR", {&Mode::imm,  &Operations::eor}};
+  table[0x45] = {"EOR", {Mode::zp,    &Mode::Fetch, &Operations::eor}};
+  table[0x55] = {"EOR", {Mode::zpX,   &Mode::Fetch, &Operations::eor}};
+  table[0x4D] = {"EOR", {Mode::abs,   &Mode::Fetch, &Operations::eor}};
+  table[0x5D] = {"EOR", {Mode::absX,  &Mode::Fetch, &Operations::eor}};
+  table[0x59] = {"EOR", {Mode::absY,  &Mode::Fetch, &Operations::eor}};
+  table[0x41] = {"EOR", {&Mode::indirect<Index::X>, &Operations::eor}};
+  table[0x51] = {"EOR", {&Mode::indirect<Index::Y>, &Operations::eor}};
+
   // Add more instructions as needed
 
   // clang-format on
@@ -494,7 +519,15 @@ Common::BusRequest Mos6502::Tick(Common::BusResponse response) noexcept
 
 BusRequest Mos6502::fetchNextOpcode(Mos6502& cpu, BusResponse /*response*/)
 {
+  // Check for a stuck PC
+  if (cpu.regs.pc == cpu.m_lastPc)
+  {
+    throw std::runtime_error(std::format("PC stuck at ${:04X}\n", cpu.regs.pc));
+  }
+
   cpu.m_tracer.addRegisters(cpu.regs.pc, cpu.regs.a, cpu.regs.x, cpu.regs.y, cpu.regs.p, cpu.regs.sp);
+
+  cpu.m_lastPc = cpu.regs.pc;
 
   // Fetch the next opcode
   cpu.m_action = &Mos6502::decodeOpcode;

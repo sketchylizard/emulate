@@ -235,44 +235,53 @@ private:
 
 TEST_CASE("Mos6502: Functional_tests", "[.]")
 {
-  auto file = LoadFile(std::string(KLAUS6502_TESTS_DIR) + "/bin_files/6502_functional_test.bin");
-
-  Mapping memory{Address{0x0000}, Address{0xFFFF}, RamSpan{file}};
-
-  Mos6502 cpu;
-
-  auto programStart = Address{0x0400};
-
-  // Set the reset vector to 0x0400
-  cpu.regs.pc = programStart;
-
-  Address lastProgramCounter = programStart;
-
-  BusRequest request;
-  BusResponse response;
-
-  try
+  auto runTest = []()
   {
+    auto file = LoadFile(std::string(KLAUS6502_TESTS_DIR) + "/bin_files/6502_functional_test.bin");
 
-    for (int i = 0; i < 0xffff; ++i)
+    Mapping memory{Address{0x0000}, Address{0xFFFF}, RamSpan{file}};
+
+    Mos6502 cpu;
+
+    auto programStart = Address{0x0400};
+
+    // Set the reset vector to 0x0400
+    cpu.regs.pc = programStart;
+
+    Address lastProgramCounter = programStart;
+
+    BusRequest request;
+    BusResponse response;
+
+    try
     {
-      request = cpu.Tick(response);
-      auto newResponse = memory.Tick(request);
-      if (newResponse)
+
+      for (;;)
       {
-        response = *newResponse;
+        request = cpu.Tick(response);
+        auto newResponse = memory.Tick(request);
+        if (newResponse)
+        {
+          response = *newResponse;
+        }
+        if (request.isSync() && cpu.regs.pc == lastProgramCounter)
+        {
+          // If the PC hasn't changed, the program might be stuck; break to avoid infinite loop
+          std::cout << "Program counter stuck at: " << std::hex << static_cast<uint16_t>(cpu.regs.pc) << "\n";
+          return false;
+        }
+        lastProgramCounter = cpu.regs.pc;
+        if (cpu.regs.pc == Address{0x3469})  // End of the test program
+        {
+          return true;
+        }
       }
-      if (request.isSync() && cpu.regs.pc == lastProgramCounter)
-      {
-        // If the PC hasn't changed, the program might be stuck; break to avoid infinite loop
-        std::cout << "Program counter stuck at: " << std::hex << static_cast<uint16_t>(cpu.regs.pc) << "\n";
-        //      break;
-      }
-      lastProgramCounter = cpu.regs.pc;
     }
-  }
-  catch (const std::exception& e)
-  {
-    std::cerr << e.what() << '\n';
-  }
+    catch (const std::exception& e)
+    {
+      std::cerr << e.what() << '\n';
+      return false;
+    }
+  };
+  CHECK(runTest() == true);
 }
