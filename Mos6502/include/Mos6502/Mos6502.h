@@ -32,14 +32,17 @@ public:
   static constexpr Address c_irqVector = Address{0xFFFE};
   static constexpr Address c_brkVector = Address{0xFFFE};
 
-  static constexpr Byte Carry = 0x01;
-  static constexpr Byte Zero = 0x02;
-  static constexpr Byte Interrupt = 0x04;
-  static constexpr Byte Decimal = 0x08;
-  static constexpr Byte Break = 0x10;
-  static constexpr Byte Unused = 0x20;  // "U" bit, set when pushed
-  static constexpr Byte Overflow = 0x40;
-  static constexpr Byte Negative = 0x80;
+  enum class Flag : Byte
+  {
+    Carry = 0x01,
+    Zero = 0x02,
+    Interrupt = 0x04,
+    Decimal = 0x08,
+    Break = 0x10,
+    Unused = 0x20,  // "U" bit, set when pushed
+    Overflow = 0x40,
+    Negative = 0x80,
+  };
 
   struct Regs
   {
@@ -48,11 +51,11 @@ public:
     Byte x{0};
     Byte y{0};
     Byte sp{0};
-    Byte p{Unused};  // keep U set
+    Byte p{static_cast<Byte>(Flag::Unused)};  // keep U set
 
     // Flag helpers
-    [[nodiscard]] constexpr bool has(Byte f) const noexcept;
-    constexpr void set(Byte f, bool v) noexcept;
+    [[nodiscard]] constexpr bool has(Flag f) const noexcept;
+    constexpr void set(Flag f, bool v) noexcept;
     constexpr void setZN(Byte v) noexcept;
     constexpr void assignP(Byte v) noexcept;
   };
@@ -139,26 +142,26 @@ private:
   Tracer m_tracer;
 };
 
-constexpr bool Mos6502::Regs::has(Byte f) const noexcept
+constexpr bool Mos6502::Regs::has(Flag f) const noexcept
 {
-  return (p & f) != 0;
+  return (p & static_cast<uint8_t>(f)) != 0;
 }
 
-constexpr void Mos6502::Regs::set(Byte f, bool v) noexcept
+constexpr void Mos6502::Regs::set(Flag f, bool v) noexcept
 {
-  p = v ? (p | f) : (p & ~f);
+  p = v ? (p | static_cast<uint8_t>(f)) : (p & ~static_cast<uint8_t>(f));
 }
 
 constexpr void Mos6502::Regs::setZN(Byte v) noexcept
 {
-  set(Zero, v == 0);
-  set(Negative, (v & 0x80) != 0);
+  set(Flag::Zero, v == 0);
+  set(Flag::Negative, (v & 0x80) != 0);
 }
 
 // If you ever assign p wholesale, re-assert U:
 constexpr void Mos6502::Regs::assignP(Byte v) noexcept
 {
-  p = Byte((v | Unused));
+  p = Byte((v | static_cast<uint8_t>(Flag::Unused)));
 }
 
 inline uint32_t Mos6502::tickCount() const noexcept

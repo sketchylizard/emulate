@@ -80,17 +80,17 @@ struct Operations
 
   static Common::BusRequest adc(Mos6502& cpu, Common::BusResponse response)
   {
-    assert(cpu.regs.has(Mos6502::Decimal) == false);  // BCD mode not supported
+    assert(cpu.regs.has(Mos6502::Flag::Decimal) == false);  // BCD mode not supported
 
     const Byte a = cpu.regs.a;
     const Byte m = response.data;
-    const Byte c = cpu.regs.has(Mos6502::Carry) ? 1 : 0;
+    const Byte c = cpu.regs.has(Mos6502::Flag::Carry) ? 1 : 0;
 
     const uint16_t sum = uint16_t(a) + uint16_t(m) + uint16_t(c);
     const Byte result = Byte(sum & 0xFF);
 
-    cpu.regs.set(Mos6502::Carry, (sum & 0x100) != 0);
-    cpu.regs.set(Mos6502::Overflow, ((~(a ^ m) & (a ^ result)) & 0x80) != 0);
+    cpu.regs.set(Mos6502::Flag::Carry, (sum & 0x100) != 0);
+    cpu.regs.set(Mos6502::Flag::Overflow, ((~(a ^ m) & (a ^ result)) & 0x80) != 0);
     cpu.regs.setZN(result);
 
     cpu.regs.a = result;
@@ -99,7 +99,7 @@ struct Operations
 
   static Common::BusRequest cld(Mos6502& cpu, Common::BusResponse response)
   {
-    cpu.regs.set(Mos6502::Decimal, false);
+    cpu.regs.set(Mos6502::Flag::Decimal, false);
     return Mos6502::nextOp(cpu, response);
   }
 
@@ -119,8 +119,8 @@ struct Operations
   {
     // Perform OR with accumulator
     cpu.regs.a |= response.data;
-    cpu.regs.set(Mos6502::Zero, cpu.regs.a == 0);  // Set zero flag
-    cpu.regs.set(Mos6502::Negative, cpu.regs.a & 0x80);  // Set negative flag
+    cpu.regs.set(Mos6502::Flag::Zero, cpu.regs.a == 0);  // Set zero flag
+    cpu.regs.set(Mos6502::Flag::Negative, cpu.regs.a & 0x80);  // Set negative flag
     return Mos6502::nextOp(cpu, response);
   }
 
@@ -184,30 +184,110 @@ struct Operations
     return Mos6502::nextOp(cpu, response);
   }
 
+  // Branch step 0: Evaluate condition and decide whether to branch
+  template<Mos6502::Flag flag, bool condition>
+  static Common::BusRequest branch0(Mos6502& cpu, Common::BusResponse response)
+  {
+    // Check if the flag matches the desired condition
+    bool flagSet = cpu.regs.has(flag);
+    bool shouldBranch = (flagSet == condition);
+
+    if (!shouldBranch)
+    {
+      // Branch not taken - 2 cycles total, we're done
+      return Mos6502::nextOp(cpu, response);
+    }
+    else
+    {
+      // Branch taken - continue to step 1
+      cpu.m_action = &Operations::branch1;
+      return BusRequest::Read(cpu.regs.pc);
+    }
+  }
+
+  // Branch step 1: Add offset to PC low byte, check for page crossing
+  static Common::BusRequest branch1(Mos6502& cpu, Common::BusResponse response)
+  {
+    int8_t offset = static_cast<int8_t>(cpu.m_operand.lo);
+
+    // Add offset to PC low byte
+    auto tmp = static_cast<int16_t>(static_cast<uint16_t>(cpu.regs.pc) & 0xFF) + offset;
+    bool carry = tmp < 0 || tmp > 0xFF;  // Detect if page boundary is crossed
+
+    // Update PC with new low byte (keep high byte for now)
+    cpu.regs.pc = MakeAddress(static_cast<uint8_t>(tmp), HiByte(cpu.regs.pc));
+
+    if (!carry)
+    {
+      // No page boundary crossed - 3 cycles total, we're done
+      // PC is already correct
+      return Mos6502::nextOp(cpu, response);
+    }
+    else
+    {
+      // Page boundary crossed - need step 2 for fixup
+      cpu.m_action = &Operations::branch2;
+      return Common::BusRequest::Read(cpu.regs.pc);  // Dummy read to consume cycle
+    }
+  }
+
+  // Branch step 2: Fix up PC high byte after page boundary crossing
+  static Common::BusRequest branch2(Mos6502& cpu, Common::BusResponse response)
+  {
+    // Apply the carry/borrow to the high byte
+    if (cpu.m_operand.lo & 0x80)
+    {
+      // Negative offset - decrement high byte
+      cpu.regs.pc -= 0x100;
+    }
+    else
+    {
+      // Positive offset - increment high byte
+      cpu.regs.pc += 0x100;
+    }
+    // 4 cycles total, we're done
+    return Mos6502::nextOp(cpu, response);
+  }
+
+  // Specific branch instruction implementations
+  static Common::BusRequest bpl(Mos6502& cpu, Common::BusResponse response)
+  {
+    return branch0<Mos6502::Flag::Negative, false>(cpu, response);  // Branch if N=0
+  }
+
+  static Common::BusRequest bmi(Mos6502& cpu, Common::BusResponse response)
+  {
+    return branch0<Mos6502::Flag::Negative, true>(cpu, response);  // Branch if N=1
+  }
+
+  static Common::BusRequest bcc(Mos6502& cpu, Common::BusResponse response)
+  {
+    return branch0<Mos6502::Flag::Carry, false>(cpu, response);  // Branch if C=0
+  }
+
+  static Common::BusRequest bcs(Mos6502& cpu, Common::BusResponse response)
+  {
+    return branch0<Mos6502::Flag::Carry, true>(cpu, response);  // Branch if C=1
+  }
+
   static Common::BusRequest bne(Mos6502& cpu, Common::BusResponse response)
   {
-    if (!(cpu.regs.p & Mos6502::Zero))
-    {
-      // BNE assumes that two values were compared by subtracting one from the other, or, that a loop counter was
-      // decremented. This means that the the zero flag would be set if they were equal, or the counter reached zero.
-      // Since this is Branch if Not Equal, take the branch only if the zero flag is clear.
-      int8_t signedOffset = static_cast<int8_t>(cpu.m_operand.lo);
-      cpu.regs.pc += signedOffset;
-    }
-    return Mos6502::nextOp(cpu, response);
+    return branch0<Mos6502::Flag::Zero, false>(cpu, response);  // Branch if Z=0
   }
 
   static Common::BusRequest beq(Mos6502& cpu, Common::BusResponse response)
   {
-    if (cpu.regs.p & Mos6502::Zero)
-    {
-      // BEQ assumes that two values were compared by subtracting one from the other, or, that a loop counter was
-      // decremented. This means that the the zero flag would be set if they were equal, or the counter reached zero.
-      // Since this is Branch if EQual, take the branch only if the zero flag is set.
-      int8_t signedOffset = static_cast<int8_t>(cpu.m_operand.lo);
-      cpu.regs.pc += signedOffset;
-    }
-    return Mos6502::nextOp(cpu, response);
+    return branch0<Mos6502::Flag::Zero, true>(cpu, response);  // Branch if Z=1
+  }
+
+  static Common::BusRequest bvc(Mos6502& cpu, Common::BusResponse response)
+  {
+    return branch0<Mos6502::Flag::Overflow, false>(cpu, response);  // Branch if V=0
+  }
+
+  static Common::BusRequest bvs(Mos6502& cpu, Common::BusResponse response)
+  {
+    return branch0<Mos6502::Flag::Overflow, true>(cpu, response);  // Branch if V=1
   }
 
   template<Mos6502::Register reg>
@@ -254,7 +334,7 @@ struct Operations
   {
     auto& r = cpu.sel<reg>(cpu.regs);
     bool borrow = subtractWithBorrow(r, response.data);
-    cpu.regs.set(Mos6502::Carry, !borrow);
+    cpu.regs.set(Mos6502::Flag::Carry, !borrow);
     cpu.regs.setZN(r);
     return Mos6502::nextOp(cpu, response);
   }
@@ -353,6 +433,12 @@ static constexpr std::array<Mos6502::Instruction, 256> c_instructions = []
   // Branch instructions
   table[0xD0] = {"BNE", {&Mode::rel  , &Operations::bne}};
   table[0xF0] = {"BEQ", {&Mode::rel  , &Operations::beq}};
+  table[0x10] = {"BPL", {&Mode::rel  , &Operations::bpl}};
+  table[0x30] = {"BMI", {&Mode::rel  , &Operations::bmi}};
+  table[0x90] = {"BCC", {&Mode::rel  , &Operations::bcc}};
+  table[0xB0] = {"BCS", {&Mode::rel  , &Operations::bcs}};
+  table[0x50] = {"BVC", {&Mode::rel  , &Operations::bvc}};
+  table[0x70] = {"BVS", {&Mode::rel  , &Operations::bvs}};
 
   // Increment and Decrement instructions
   table[0xE8] = {"INX", {&Mode::imp  , &Operations::increment<Mos6502::Register::X>}};
