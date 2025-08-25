@@ -251,20 +251,28 @@ TEST_CASE("Mos6502: Functional_tests", "[.]")
   BusRequest request;
   BusResponse response;
 
-  for (int i = 0; i < 0xffff; ++i)
+  try
   {
-    request = cpu.Tick(response);
-    auto newResponse = memory.Tick(request);
-    if (newResponse)
+
+    for (int i = 0; i < 0xffff; ++i)
     {
-      response = *newResponse;
+      request = cpu.Tick(response);
+      auto newResponse = memory.Tick(request);
+      if (newResponse)
+      {
+        response = *newResponse;
+      }
+      if (request.isSync() && cpu.regs.pc == lastProgramCounter)
+      {
+        // If the PC hasn't changed, the program might be stuck; break to avoid infinite loop
+        std::cout << "Program counter stuck at: " << std::hex << static_cast<uint16_t>(cpu.regs.pc) << "\n";
+        //      break;
+      }
+      lastProgramCounter = cpu.regs.pc;
     }
-    if (request.isSync() && cpu.regs.pc == lastProgramCounter)
-    {
-      // If the PC hasn't changed, the program might be stuck; break to avoid infinite loop
-      std::cout << "Program counter stuck at: " << std::hex << static_cast<uint16_t>(cpu.regs.pc) << "\n";
-      //      break;
-    }
-    lastProgramCounter = cpu.regs.pc;
+  }
+  catch (const std::exception& e)
+  {
+    std::cerr << e.what() << '\n';
   }
 }

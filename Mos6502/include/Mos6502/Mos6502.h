@@ -9,9 +9,8 @@
 #include <string_view>
 #include <tuple>
 
+#include "Mos6502/Tracer.h"
 #include "common/Bus.h"
-
-#define MOS6502_TRACE 1
 
 class Mos6502
 {
@@ -129,8 +128,6 @@ private:
 
   uint32_t m_tickCount = 0;  // Number of ticks since the last reset
 
-  Regs m_preOpRegs;  // Registers before the current operation (for logging)
-
   Operand m_operand;  // Value of the current operand (if any)
 
   // Stage of the current instruction (0-2)
@@ -138,6 +135,8 @@ private:
 
   // Last bus request
   BusRequest m_lastBusRequest;
+
+  Tracer m_tracer;
 };
 
 constexpr bool Mos6502::Regs::has(Byte f) const noexcept

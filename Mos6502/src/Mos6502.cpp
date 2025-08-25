@@ -210,98 +210,63 @@ struct Operations
     return Mos6502::nextOp(cpu, response);
   }
 
-  template<Index index>
+  template<Mos6502::Register reg>
   static Common::BusRequest load(Mos6502& cpu, Common::BusResponse response)
   {
     // This is a generic load operation for A, X, or Y registers.
 
-    Common::Byte* reg = nullptr;
-    if constexpr (index == Index::None)
-    {
-      reg = &cpu.regs.a;
-    }
-    else if constexpr (index == Index::X)
-    {
-      reg = &cpu.regs.x;
-    }
-    else if constexpr (index == Index::Y)
-    {
-      reg = &cpu.regs.y;
-    }
-    assert(reg != nullptr);
-    cpu.m_operand.lo = response.data;
-    *reg = response.data;
-    // Check zero flag
-    cpu.regs.set(Mos6502::Zero, *reg == 0);
-    // Check negative flag
-    cpu.regs.set(Mos6502::Negative, (*reg & 0x80) != 0);
-
+    auto data = cpu.sel<reg>(cpu.regs) = response.data;
+    cpu.regs.setZN(data);
     return Mos6502::nextOp(cpu, response);
   }
 
-  template<Index index>
-    requires(index != Index::None)
+  template<Mos6502::Register reg>
+    requires(reg != Mos6502::Register::A)
   static Common::BusRequest increment(Mos6502& cpu, Common::BusResponse response)
   {
     // Handle increment operation for X or Y registers
-
-    if constexpr (index == Index::X)
-    {
-      cpu.regs.x++;
-      cpu.regs.set(Mos6502::Zero, cpu.regs.x == 0);
-      cpu.regs.set(Mos6502::Negative, (cpu.regs.x & 0x80) != 0);
-    }
-    else if constexpr (index == Index::Y)
-    {
-      cpu.regs.y++;
-      cpu.regs.set(Mos6502::Zero, cpu.regs.y == 0);
-      cpu.regs.set(Mos6502::Negative, (cpu.regs.y & 0x80) != 0);
-    }
+    auto& r = cpu.sel<reg>(cpu.regs);
+    ++r;
+    cpu.regs.setZN(r);
     return Mos6502::nextOp(cpu, response);
   }
 
-  template<Index index>
-    requires(index != Index::None)
+  template<Mos6502::Register reg>
+    requires(reg != Mos6502::Register::A)
   static Common::BusRequest decrement(Mos6502& cpu, Common::BusResponse response)
   {
-    // Handle increment operation for X or Y registers
-    if constexpr (index == Index::X)
-    {
-      --cpu.regs.x;
-      cpu.regs.set(Mos6502::Zero, cpu.regs.x == 0);
-      cpu.regs.set(Mos6502::Negative, (cpu.regs.x & 0x80) != 0);
-    }
-    else if constexpr (index == Index::Y)
-    {
-      --cpu.regs.y;
-      cpu.regs.set(Mos6502::Zero, cpu.regs.y == 0);
-      cpu.regs.set(Mos6502::Negative, (cpu.regs.y & 0x80) != 0);
-    }
+    auto& r = cpu.sel<reg>(cpu.regs);
+    --r;
+    cpu.regs.setZN(r);
     return Mos6502::nextOp(cpu, response);
   }
 
-  template<Index index>
+  static bool subtractWithBorrow(Byte& reg, Byte value) noexcept
+  {
+    uint16_t diff = uint16_t(reg) - uint16_t(value);
+    reg = Byte(diff & 0xFF);
+    bool borrow = (diff & 0x100) != 0;
+    return borrow;
+  }
+
+  template<Mos6502::Register reg>
   static Common::BusRequest compare(Mos6502& cpu, Common::BusResponse response)
   {
-    Common::Byte valueToCompare = 0;
-    if constexpr (index == Index::None)
-    {
-      valueToCompare = cpu.regs.a;
-    }
-    else if constexpr (index == Index::X)
-    {
-      valueToCompare = cpu.regs.x;
-    }
-    else if constexpr (index == Index::Y)
-    {
-      valueToCompare = cpu.regs.y;
-    }
+    auto& r = cpu.sel<reg>(cpu.regs);
+    bool borrow = subtractWithBorrow(r, response.data);
+    cpu.regs.set(Mos6502::Carry, !borrow);
+    cpu.regs.setZN(r);
+    return Mos6502::nextOp(cpu, response);
+  }
 
-    Common::Byte result = valueToCompare - response.data;
-    cpu.regs.set(Mos6502::Carry, valueToCompare >= response.data);
-    cpu.regs.set(Mos6502::Zero, result == 0);
-    cpu.regs.set(Mos6502::Negative, (result & 0x80) != 0);
-
+  template<Mos6502::Register src, Mos6502::Register dst>
+    requires(src != dst)
+  static Common::BusRequest transfer(Mos6502& cpu, Common::BusResponse response)
+  {
+    auto s = cpu.sel<src>(cpu.regs);
+    auto& d = cpu.sel<dst>(cpu.regs);
+    d = s;
+    cpu.regs.setZN(d);
     return Mos6502::nextOp(cpu, response);
   }
 
@@ -337,28 +302,28 @@ static constexpr std::array<Mos6502::Instruction, 256> c_instructions = []
   table[0x71] = {"ADC", {&Mode::indirect<Index::Y>, &Operations::adc}};
 
   // LDA instructions
-  table[0xA9] = {"LDA", {&Mode::imm, &Operations::load<Index::None>}};
-  table[0xA5] = {"LDA", {Mode::zp, &Mode::Fetch,&Operations::load<Index::None>}};
-  table[0xB5] = {"LDA", {Mode::zpX, &Mode::Fetch,&Operations::load<Index::None>}};
-  table[0xAD] = {"LDA", {Mode::abs, &Mode::Fetch, &Operations::load<Index::None>}};
-  table[0xBD] = {"LDA", {Mode::absX, &Mode::Fetch, &Operations::load<Index::None>}};
-  table[0xB9] = {"LDA", {Mode::absY, &Mode::Fetch, &Operations::load<Index::None>}};
-  table[0xA1] = {"LDA", {&Mode::indirect<Index::X>, &Operations::load<Index::None>}};
-  table[0xB1] = {"LDA", {&Mode::indirect<Index::Y>, &Operations::load<Index::None>}};
+  table[0xA9] = {"LDA", {&Mode::imm, &Operations::load<Mos6502::Register::A>}};
+  table[0xA5] = {"LDA", {Mode::zp, &Mode::Fetch,&Operations::load<Mos6502::Register::A>}};
+  table[0xB5] = {"LDA", {Mode::zpX, &Mode::Fetch,&Operations::load<Mos6502::Register::A>}};
+  table[0xAD] = {"LDA", {Mode::abs, &Mode::Fetch, &Operations::load<Mos6502::Register::A>}};
+  table[0xBD] = {"LDA", {Mode::absX, &Mode::Fetch, &Operations::load<Mos6502::Register::A>}};
+  table[0xB9] = {"LDA", {Mode::absY, &Mode::Fetch, &Operations::load<Mos6502::Register::A>}};
+  table[0xA1] = {"LDA", {&Mode::indirect<Index::X>, &Operations::load<Mos6502::Register::A>}};
+  table[0xB1] = {"LDA", {&Mode::indirect<Index::Y>, &Operations::load<Mos6502::Register::A>}};
 
   // LDX instructions
-  table[0xA2] = {"LDX", {&Mode::imm, &Operations::load<Index::X>}};
-  table[0xA6] = {"LDX", {Mode::zp, &Mode::Fetch,&Operations::load<Index::X>}};
-  table[0xB6] = {"LDX", {Mode::zpY, &Mode::Fetch,&Operations::load<Index::X>}};
-  table[0xAE] = {"LDX", {Mode::abs, &Mode::Fetch, &Operations::load<Index::X>}};
-  table[0xBE] = {"LDX", {Mode::absY, &Mode::Fetch, &Operations::load<Index::X>}};
+  table[0xA2] = {"LDX", {&Mode::imm, &Operations::load<Mos6502::Register::X>}};
+  table[0xA6] = {"LDX", {Mode::zp, &Mode::Fetch,&Operations::load<Mos6502::Register::X>}};
+  table[0xB6] = {"LDX", {Mode::zpY, &Mode::Fetch,&Operations::load<Mos6502::Register::X>}};
+  table[0xAE] = {"LDX", {Mode::abs, &Mode::Fetch, &Operations::load<Mos6502::Register::X>}};
+  table[0xBE] = {"LDX", {Mode::absY, &Mode::Fetch, &Operations::load<Mos6502::Register::X>}};
 
   // LDY instructions
-  table[0xA0] = {"LDY", {&Mode::imm, &Operations::load<Index::Y>}};
-  table[0xA4] = {"LDY", {Mode::zp, &Mode::Fetch,&Operations::load<Index::Y>}};
-  table[0xB4] = {"LDY", {Mode::zpX, &Mode::Fetch,&Operations::load<Index::Y>}};
-  table[0xAC] = {"LDY", {Mode::abs, &Mode::Fetch, &Operations::load<Index::Y>}};
-  table[0xBC] = {"LDY", {Mode::absX, &Mode::Fetch, &Operations::load<Index::Y>}};
+  table[0xA0] = {"LDY", {&Mode::imm, &Operations::load<Mos6502::Register::Y>}};
+  table[0xA4] = {"LDY", {Mode::zp, &Mode::Fetch,&Operations::load<Mos6502::Register::Y>}};
+  table[0xB4] = {"LDY", {Mode::zpX, &Mode::Fetch,&Operations::load<Mos6502::Register::Y>}};
+  table[0xAC] = {"LDY", {Mode::abs, &Mode::Fetch, &Operations::load<Mos6502::Register::Y>}};
+  table[0xBC] = {"LDY", {Mode::absX, &Mode::Fetch, &Operations::load<Mos6502::Register::Y>}};
 
   table[0xD8] = {"CLD", {&Mode::imp, &Operations::cld}};
   table[0x9A] = {"TXS", {&Mode::imp, &Operations::txs}};
@@ -390,31 +355,37 @@ static constexpr std::array<Mos6502::Instruction, 256> c_instructions = []
   table[0xF0] = {"BEQ", {&Mode::rel  , &Operations::beq}};
 
   // Increment and Decrement instructions
-  table[0xE8] = {"INX", {&Mode::imp  , &Operations::increment<Index::X>}};
-  table[0xC8] = {"INY", {&Mode::imp  , &Operations::increment<Index::Y>}};
-  table[0xCA] = {"DEX", {&Mode::imp  , &Operations::decrement<Index::X>}};
-  table[0x88] = {"DEY", {&Mode::imp  , &Operations::decrement<Index::Y>}};
+  table[0xE8] = {"INX", {&Mode::imp  , &Operations::increment<Mos6502::Register::X>}};
+  table[0xC8] = {"INY", {&Mode::imp  , &Operations::increment<Mos6502::Register::Y>}};
+  table[0xCA] = {"DEX", {&Mode::imp  , &Operations::decrement<Mos6502::Register::X>}};
+  table[0x88] = {"DEY", {&Mode::imp  , &Operations::decrement<Mos6502::Register::Y>}};
 
   // CMP — Compare Accumulator
-  table[0xC9] = {"CMP", {&Mode::imm, &Operations::compare<Index::None>}};
-  table[0xC5] = {"CMP", {Mode::zp, &Mode::Fetch,&Operations::compare<Index::None>}};
-  table[0xD5] = {"CMP", {Mode::zpX, &Mode::Fetch,&Operations::compare<Index::None>}};
-  table[0xCD] = {"CMP", {Mode::abs, &Mode::Fetch, &Operations::compare<Index::None>}};
-  table[0xDD] = {"CMP", {Mode::absX, &Mode::Fetch, &Operations::compare<Index::None>}};
-  table[0xD9] = {"CMP", {Mode::absY, &Mode::Fetch, &Operations::compare<Index::None>}};
-  table[0xC1] = {"CMP", {&Mode::indirect<Index::X>, &Operations::compare<Index::None>}};
-  table[0xD1] = {"CMP", {&Mode::indirect<Index::Y>, &Operations::compare<Index::None>}};
+  table[0xC9] = {"CMP", {&Mode::imm, &Operations::compare<Mos6502::Register::A>}};
+  table[0xC5] = {"CMP", {Mode::zp, &Mode::Fetch,&Operations::compare<Mos6502::Register::A>}};
+  table[0xD5] = {"CMP", {Mode::zpX, &Mode::Fetch,&Operations::compare<Mos6502::Register::A>}};
+  table[0xCD] = {"CMP", {Mode::abs, &Mode::Fetch, &Operations::compare<Mos6502::Register::A>}};
+  table[0xDD] = {"CMP", {Mode::absX, &Mode::Fetch, &Operations::compare<Mos6502::Register::A>}};
+  table[0xD9] = {"CMP", {Mode::absY, &Mode::Fetch, &Operations::compare<Mos6502::Register::A>}};
+  table[0xC1] = {"CMP", {&Mode::indirect<Index::X>, &Operations::compare<Mos6502::Register::A>}};
+  table[0xD1] = {"CMP", {&Mode::indirect<Index::Y>, &Operations::compare<Mos6502::Register::A>}};
 
   // CPX — Compare X Register
-  table[0xE0] = {"CPX", {&Mode::imm, &Operations::compare<Index::X>}};
-  table[0xE4] = {"CPX", {Mode::zp, &Mode::Fetch,&Operations::compare<Index::X>}};
-  table[0xEC] = {"CPX", {Mode::abs, &Mode::Fetch, &Operations::compare<Index::X>}};
+  table[0xE0] = {"CPX", {&Mode::imm, &Operations::compare<Mos6502::Register::X>}};
+  table[0xE4] = {"CPX", {Mode::zp, &Mode::Fetch,&Operations::compare<Mos6502::Register::X>}};
+  table[0xEC] = {"CPX", {Mode::abs, &Mode::Fetch, &Operations::compare<Mos6502::Register::X>}};
 
   // CPY — Compare Y Register
-  table[0xC0] = {"CPY", {&Mode::imm, &Operations::compare<Index::Y>}};
-  table[0xC4] = {"CPY", {Mode::zp, &Mode::Fetch,&Operations::compare<Index::Y>}};
-  table[0xCC] = {"CPY", {Mode::abs, &Mode::Fetch, &Operations::compare<Index::Y>}};
+  table[0xC0] = {"CPY", {&Mode::imm, &Operations::compare<Mos6502::Register::Y>}};
+  table[0xC4] = {"CPY", {Mode::zp, &Mode::Fetch,&Operations::compare<Mos6502::Register::Y>}};
+  table[0xCC] = {"CPY", {Mode::abs, &Mode::Fetch, &Operations::compare<Mos6502::Register::Y>}};
 
+  table[0x98] = {"TYA", {Mode::imp, &Operations::transfer<Mos6502::Register::Y, Mos6502::Register::A>}};
+  table[0xA8] = {"TAY", {Mode::imp, &Operations::transfer<Mos6502::Register::A, Mos6502::Register::Y>}};
+  table[0x8A] = {"TXA", {Mode::imp, &Operations::transfer<Mos6502::Register::X, Mos6502::Register::A>}};
+  table[0xAA] = {"TAX", {Mode::imp, &Operations::transfer<Mos6502::Register::A, Mos6502::Register::X>}};
+  // table[0xBA] = {"TSX", {Mode::imp, &Operations::transfer<Mos6502::Register::S, Mos6502::Register::X>}};
+  // table[0x9A] = {"TXS", {Mode::imp, &Operations::transfer<Mos6502::Register::X, Mos6502::Register::S>}};
   // Add more instructions as needed
 
   // clang-format on
@@ -437,7 +408,8 @@ Common::BusRequest Mos6502::Tick(Common::BusResponse response) noexcept
 
 BusRequest Mos6502::fetchNextOpcode(Mos6502& cpu, BusResponse /*response*/)
 {
-  cpu.m_preOpRegs = cpu.regs;  // Save registers before executing the next instruction
+  cpu.m_tracer.addRegisters(cpu.regs.pc, cpu.regs.a, cpu.regs.x, cpu.regs.y, cpu.regs.p, cpu.regs.sp);
+
   // Fetch the next opcode
   cpu.m_action = &Mos6502::decodeOpcode;
   return BusRequest::Fetch(cpu.regs.pc++);
@@ -447,13 +419,22 @@ BusRequest Mos6502::decodeOpcode(Mos6502& cpu, BusResponse response)
 {
   // Decode opcode
   Byte opcode = response.data;
-  cpu.setInstruction(c_instructions[static_cast<size_t>(opcode)]);
+  const auto& instruction = c_instructions[static_cast<size_t>(opcode)];
+  if (instruction.op[0] == nullptr)
+  {
+    throw std::runtime_error(std::format("Unknown opcode: ${:02X} at PC=${:04X}\n", opcode, cpu.regs.pc - 1));
+  }
+
+  cpu.setInstruction(instruction);
   return cpu.m_action(cpu, BusResponse{});
 }
 
 void Mos6502::setInstruction(const Instruction& instr) noexcept
 {
   m_instruction = &instr;
+
+  m_tracer.addInstruction(static_cast<Byte>(std::distance(&c_instructions[0], &instr)), instr.name);
+
   m_stage = 0;
 
   assert(m_instruction);
