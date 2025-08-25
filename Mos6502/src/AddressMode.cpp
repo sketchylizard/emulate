@@ -44,10 +44,10 @@ Common::BusRequest AddressMode::rel1(Mos6502& cpu, Common::BusResponse response)
 
 Common::BusRequest AddressMode::Fetch(Mos6502& cpu, Common::BusResponse /*response*/)
 {
-  cpu.m_action = [](Mos6502& cpu, Common::BusResponse response)
+  cpu.m_action = [](Mos6502& cpu1, Common::BusResponse response1)
   {
-    cpu.m_operand.lo = response.data;
-    return Mos6502::nextOp(cpu, response);
+    cpu1.m_operand.lo = response1.data;
+    return Mos6502::nextOp(cpu1, response1);
   };
   return Common::BusRequest::Read(cpu.getEffectiveAddress());
 }

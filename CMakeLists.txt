@@ -7,8 +7,10 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+option(CMAKE_COMPILE_WARNING_AS_ERROR
+  "Treat all compiler warnings as errors" ON)
+
 include(cmake/Common.cmake)
-include(${CMAKE_BINARY_DIR}/conan_toolchain.cmake OPTIONAL)
 
 # add dependencies
 include(cmake/CPM.cmake)

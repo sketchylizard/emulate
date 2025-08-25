@@ -112,7 +112,6 @@ void Tracer::formatOperand() noexcept
     }
     case OperandType::Accumulator: std::cout << "A"; break;
     case OperandType::None:
-    default:
       // No operand to display
       break;
   }

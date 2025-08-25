@@ -7,7 +7,7 @@
       "binaryDir": "build/clang/debug",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_TOOLCHAIN_FILE": "build/clang/debug/conan_toolchain.cmake"
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/build/clang/debug/build/Debug/generators/conan_toolchain.cmake"
       }
     },
     {
@@ -16,7 +16,7 @@
       "binaryDir": "build/clang/release",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "CMAKE_TOOLCHAIN_FILE": "build/clang/release/conan_toolchain.cmake"
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/build/clang/release/build/Release/generators/conan_toolchain.cmake"
       }
     },
     {
@@ -25,7 +25,7 @@
       "binaryDir": "build/gcc/debug",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_TOOLCHAIN_FILE": "build/gcc/debug/conan_toolchain.cmake"
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/build/gcc/debug/build/Debug/generators/conan_toolchain.cmake"
       }
     },
     {
@@ -34,7 +34,7 @@
       "binaryDir": "build/gcc/release",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "CMAKE_TOOLCHAIN_FILE": "build/gcc/release/conan_toolchain.cmake"
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/build/gcc/release/build/Release/generators/conan_toolchain.cmake"
       }
     },
     {
@@ -43,7 +43,7 @@
       "binaryDir": "build/msvc/debug",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_TOOLCHAIN_FILE": "build/msvc/debug/conan_toolchain.cmake"
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/build/msvc/debug/build/Debug/generators/conan_toolchain.cmake"
       }
     },
     {
@@ -52,7 +52,7 @@
       "binaryDir": "build/msvc/release",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "CMAKE_TOOLCHAIN_FILE": "build/msvc/release/conan_toolchain.cmake"
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/build/msvc/release/build/Release/generators/conan_toolchain.cmake"
       }
     }
   ],
