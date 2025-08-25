@@ -1,0 +1,21 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        cfg: [Debug, Release]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Conan
+        run: pipx install conan
+      - name: Conan install
+        run: conan install . -s build_type=${{ matrix.cfg }} -of=build/${{ matrix.cfg }} --lockfile=conan-${{ matrix.cfg == 'Debug' && 'debug' || 'release' }}.lock || conan install . -s build_type=${{ matrix.cfg }} -of=build/${{ matrix.cfg }} --build=missing
+      - name: Configure
+        run: cmake --preset conan-${{ matrix.cfg == 'Debug' && 'debug' || 'release' }}
+      - name: Build
+        run: cmake --build --preset build-${{ matrix.cfg == 'Debug' && 'debug' || 'release' }}
+      - name: Test
+        run: ctest --preset test-${{ matrix.cfg == 'Debug' && 'debug' || 'release' }}
