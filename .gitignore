@@ -7,6 +7,7 @@ build/*/
 # CMake files
 CMakeFiles/
 CMakeCache.txt
+CMakeUserPresets.json
 cmake_install.cmake
 Makefile
 

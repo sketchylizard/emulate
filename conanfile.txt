@@ -1,0 +1,7 @@
+[requires]
+catch2/3.5.4
+incbin/cci.20211107
+
+[generators]
+CMakeDeps
+CMakeToolchain

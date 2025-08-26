@@ -2,6 +2,8 @@
 
 set(CMAKE_COMPILE_WARNING_AS_ERROR ${CMAKE_COMPILE_WARNING_AS_ERROR})
 
+include(cmake/CPM.cmake)
+
 option(EMULATE_ENABLE_TIDY "Enable clang-tidy via CMake" OFF)
 if(EMULATE_ENABLE_TIDY)
   set(CMAKE_CXX_CLANG_TIDY "clang-tidy;-warnings-as-errors=*")
@@ -39,3 +41,11 @@ elseif (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
   message(STATUS "Using MSVC warning flags")
   add_compile_options(/W4 /WX)
 endif()
+
+################################################################################
+# add dependencies
+################################################################################
+CPMAddPackage(NAME Klaus6502
+ URL "https://github.com/Klaus2m5/6502_65C02_functional_tests/archive/refs/heads/master.zip"
+ DOWNLOAD_ONLY
+ )

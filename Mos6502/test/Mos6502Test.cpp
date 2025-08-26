@@ -1,11 +1,14 @@
 #include "Mos6502/Mos6502.h"
 
+#include <bitset>
 #include <catch2/catch_test_macros.hpp>
 #include <cstddef>  // for std::byte
 #include <cstdint>  // for std::uint8_t
 #include <utility>  // for std::pair
 #include <variant>  // for std::variant
+#include <vector>  // for std::variant
 
+#include "KlausFunctional.h"
 #include "common/Bus.h"
 #include "common/Memory.h"
 #include "util/hex.h"
@@ -237,9 +240,17 @@ TEST_CASE("Mos6502: Functional_tests", "[.]")
 {
   auto runTest = []()
   {
-    auto file = LoadFile(std::string(KLAUS6502_TESTS_DIR) + "/bin_files/6502_functional_test.bin");
+    auto data = Klaus__6502_functional_test::data();  // Ensure the data is linked in
 
-    Mapping memory{Address{0x0000}, Address{0xFFFF}, RamSpan{file}};
+    std::vector<Byte> ram(data.begin(), data.end());  // 64 KiB RAM initialized to zero
+    Mapping memory{Address{0x0000}, Address{0xFFFF}, std::span<Byte>(ram)};
+
+    std::bitset<0x10000> breakpoints;
+    for (const auto& addr : Klaus__6502_functional_test::errors)
+    {
+      breakpoints.set(static_cast<size_t>(addr));
+    }
+    breakpoints.set(static_cast<size_t>(Klaus__6502_functional_test::success));
 
     Mos6502 cpu;
 
@@ -248,32 +259,30 @@ TEST_CASE("Mos6502: Functional_tests", "[.]")
     // Set the reset vector to 0x0400
     cpu.regs.pc = programStart;
 
-    Address lastProgramCounter = programStart;
-
     BusRequest request;
     BusResponse response;
 
     try
     {
-
       for (;;)
       {
         request = cpu.Tick(response);
+
+        if (breakpoints.test(static_cast<size_t>(cpu.regs.pc)))
+        {
+          if (cpu.regs.pc == Klaus__6502_functional_test::success)
+          {
+            return true;  // Test passed
+          }
+          else
+          {
+            throw std::runtime_error(std::format("Test failed at address ${:04X}\n", cpu.regs.pc));
+          }
+        }
         auto newResponse = memory.Tick(request);
         if (newResponse)
         {
           response = *newResponse;
-        }
-        if (request.isSync() && cpu.regs.pc == lastProgramCounter)
-        {
-          // If the PC hasn't changed, the program might be stuck; break to avoid infinite loop
-          std::cout << "Program counter stuck at: " << std::hex << static_cast<uint16_t>(cpu.regs.pc) << "\n";
-          return false;
-        }
-        lastProgramCounter = cpu.regs.pc;
-        if (cpu.regs.pc == Address{0x3469})  // End of the test program
-        {
-          return true;
         }
       }
     }

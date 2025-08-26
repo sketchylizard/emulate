@@ -12,14 +12,6 @@ option(CMAKE_COMPILE_WARNING_AS_ERROR
 
 include(cmake/Common.cmake)
 
-# add dependencies
-include(cmake/CPM.cmake)
-
-CPMAddPackage(NAME Klaus6502
- URL "https://github.com/Klaus2m5/6502_65C02_functional_tests/archive/refs/heads/master.zip"
- DOWNLOAD_ONLY
- )
-
 add_subdirectory(util)
 add_subdirectory(libs/common)
 add_subdirectory(Mos6502)
