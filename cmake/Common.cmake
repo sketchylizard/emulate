@@ -2,6 +2,11 @@
 
 set(CMAKE_COMPILE_WARNING_AS_ERROR ${CMAKE_COMPILE_WARNING_AS_ERROR})
 
+option(EMULATE_ENABLE_TIDY "Enable clang-tidy via CMake" OFF)
+if(EMULATE_ENABLE_TIDY)
+  set(CMAKE_CXX_CLANG_TIDY "clang-tidy;-warnings-as-errors=*")
+endif()
+
 if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
   add_compile_options(
     -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Wshadow

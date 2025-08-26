@@ -127,4 +127,4 @@ TabWidth: 2
 TypenameMacros: ["STDMETHOD", "STDMETHODIMP"]
 UseTab: Never
 SpaceBeforeRangeBasedForLoopColon: true
-# AllowShortCompoundRequirementOnASingleLine: false
+AllowShortCompoundRequirementOnASingleLine  : true
