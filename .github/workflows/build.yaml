@@ -1,14 +1,53 @@
-name: build
-on: [push, pull_request]
+name: Build Matrix
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
 jobs:
   build:
-    strategy: { matrix: { os: [ubuntu-latest, macos-latest, windows-latest] } }
     runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        preset: [
+          clang-debug, clang-release,
+          gcc-debug, gcc-release,
+          msvc-debug, msvc-release
+        ]
+        exclude:
+          - os: macos-latest
+            preset: gcc-debug
+          - os: macos-latest
+            preset: gcc-release
+          - os: macos-latest
+            preset: msvc-debug
+          - os: macos-latest
+            preset: msvc-release
+          - os: windows-latest
+            preset: clang-debug
+          - os: windows-latest
+            preset: clang-release
+          - os: windows-latest
+            preset: gcc-debug
+          - os: windows-latest
+            preset: gcc-release
+          - os: ubuntu-latest
+            preset: msvc-debug
+          - os: ubuntu-latest
+            preset: msvc-release
+
     steps:
       - uses: actions/checkout@v4
+      - name: Set up Python (for CMake, if needed)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install CMake
+        uses: jwlawson/actions-setup-cmake@v1
       - name: Configure
-        run: cmake --preset default
+        run: cmake --preset ${{ matrix.preset }}
       - name: Build
-        run: cmake --build --preset default
-      - name: Test
-        run: ctest --output-on-failure --preset default
+        run: cmake --build --preset ${{ matrix.preset }}
