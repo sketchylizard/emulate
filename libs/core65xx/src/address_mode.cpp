@@ -1,4 +1,4 @@
-#include "AddressMode.h"
+#include "core65xx/address_mode.h"
 
 Common::BusRequest AddressMode::acc(Mos6502& cpu, Common::BusResponse response)
 {

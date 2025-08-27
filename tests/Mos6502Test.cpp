@@ -1,5 +1,3 @@
-#include "Mos6502/Mos6502.h"
-
 #include <bitset>
 #include <catch2/catch_test_macros.hpp>
 #include <cstddef>  // for std::byte
@@ -10,8 +8,10 @@
 
 #include "KlausFunctional.h"
 #include "common/Bus.h"
-#include "common/Memory.h"
-#include "util/hex.h"
+#include "common/address.h"
+#include "common/hex.h"
+#include "common/memory.h"
+#include "core65xx/core65xx.h"
 
 using namespace Common;
 

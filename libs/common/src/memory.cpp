@@ -1,4 +1,4 @@
-#include "common/Memory.h"
+#include "common/memory.h"
 
 #include <algorithm>
 #include <fstream>
@@ -6,6 +6,8 @@
 #include <span>
 #include <string_view>
 #include <vector>
+
+#include "common/address.h"
 
 namespace Common
 {

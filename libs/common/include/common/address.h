@@ -1,108 +1,99 @@
 #pragma once
+
 #include <cassert>
 #include <cstdint>
-#include <fstream>
-#include <span>
-#include <stdexcept>
-#include <string>
+#include <format>
 
 namespace Common
 {
 using Byte = uint8_t;
 
+//! 16-bit address type
 enum class Address : uint16_t
 {
 };
 
-using RamSpan = std::span<Byte>;
-using RomSpan = std::span<const Byte>;
 
 // Address arithmetic operators
-constexpr Address& operator++(Address& addr)
+constexpr Address& operator++(Address& addr) noexcept
 {  // prefix
   addr = Address(static_cast<uint16_t>(addr) + 1);
   return addr;
 }
 
-constexpr Address operator++(Address& addr, int)
+constexpr Address operator++(Address& addr, int) noexcept
 {  // postfix
   Address old = addr;
   ++addr;
   return old;
 }
 
-constexpr Address& operator--(Address& addr)
+constexpr Address& operator--(Address& addr) noexcept
 {  // prefix
   addr = Address(static_cast<uint16_t>(addr) - 1);
   return addr;
 }
 
-constexpr Address operator--(Address& addr, int)
+constexpr Address operator--(Address& addr, int) noexcept
 {  // postfix
   Address old = addr;
   --addr;
   return old;
 }
 
-constexpr Address& operator+=(Address& addr, int16_t offset)
+constexpr Address& operator+=(Address& addr, int16_t offset) noexcept
 {
   addr = Address(static_cast<uint16_t>(addr) + offset);
   return addr;
 }
 
-constexpr Address& operator-=(Address& addr, int16_t offset)
+constexpr Address& operator-=(Address& addr, int16_t offset) noexcept
 {
   addr = Address(static_cast<uint16_t>(addr) - offset);
   return addr;
 }
 
-constexpr Address operator+(Address addr, uint16_t offset)
+constexpr Address operator+(Address addr, uint16_t offset) noexcept
 {
   return Address(static_cast<uint16_t>(addr) + offset);
 }
 
-constexpr Address operator-(Address addr, uint16_t offset)
+constexpr Address operator-(Address addr, uint16_t offset) noexcept
 {
   return Address(static_cast<uint16_t>(addr) - offset);
 }
 
-constexpr uint16_t operator-(Address lhs, Address rhs)
+constexpr uint16_t operator-(Address lhs, Address rhs) noexcept
 {
   return static_cast<uint16_t>(lhs) - static_cast<uint16_t>(rhs);
 }
 
 // Byte extraction functions
-constexpr Byte HiByte(uint16_t value)
+constexpr Byte HiByte(uint16_t value) noexcept
 {
   return static_cast<Byte>(value >> 8);
 }
 
-constexpr Byte LoByte(uint16_t value)
+constexpr Byte LoByte(uint16_t value) noexcept
 {
   return static_cast<Byte>(value & 0xFF);
 }
 
-constexpr Byte HiByte(Address addr)
+constexpr Byte HiByte(Address addr) noexcept
 {
   return HiByte(static_cast<uint16_t>(addr));
 }
 
-constexpr Byte LoByte(Address addr)
+constexpr Byte LoByte(Address addr) noexcept
 {
   return LoByte(static_cast<uint16_t>(addr));
 }
 
 // Address construction
-constexpr Address MakeAddress(Byte low, Byte high)
+constexpr Address MakeAddress(Byte low, Byte high) noexcept
 {
   return Address((static_cast<uint16_t>(high) << 8) | low);
 }
-
-// Load file into memory
-std::vector<Byte> LoadFile(const std::string_view& filename) noexcept;
-
-// Load file into memory span
-void Load(RamSpan memory, const std::string& filename, Address start_addr = Address{0});
 
 constexpr Address operator""_addr(unsigned long long value) noexcept
 {
@@ -121,3 +112,16 @@ struct std::formatter<Common::Address> : std::formatter<uint16_t>
     return std::formatter<uint16_t>::format(static_cast<uint16_t>(addr), ctx);
   }
 };
+
+namespace Catch
+{
+
+template<typename T, typename>
+struct StringMaker;
+
+// If you get an error here, you probably need to #include "common/address_string_maker.cpp"
+
+template<>
+struct StringMaker<Common::Address, void>;
+
+}  // namespace Catch

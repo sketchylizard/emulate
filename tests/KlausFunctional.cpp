@@ -5,12 +5,12 @@
 
 #include <span>
 
-#include "common/Memory.h"
+#include "common/address.h"
 #include "incbin.h"
 
 extern "C" {
 INCBIN(Common::Byte, _Klaus__6502_functional_testBin,
-    "../../build/clang/debug/_deps/master-src/bin_files/6502_functional_test.bin");
+    "../build/clang/debug/_deps/master-src/bin_files/6502_functional_test.bin");
 }
 
 std::span<const Common::Byte> Klaus__6502_functional_test::data() noexcept

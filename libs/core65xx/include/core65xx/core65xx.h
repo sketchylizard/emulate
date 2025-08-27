@@ -9,7 +9,6 @@
 #include <string_view>
 #include <tuple>
 
-#include "Mos6502/Tracer.h"
 #include "common/Bus.h"
 
 class Mos6502
@@ -138,8 +137,6 @@ private:
 
   // Last bus request
   BusRequest m_lastBusRequest;
-
-  Tracer m_tracer;
 };
 
 constexpr bool Mos6502::Regs::has(Flag f) const noexcept

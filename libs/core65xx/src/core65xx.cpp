@@ -1,4 +1,4 @@
-#include "Mos6502/Mos6502.h"
+#include "core65xx/core65xx.h"
 
 #include <algorithm>
 #include <array>
@@ -12,8 +12,8 @@
 #include <string_view>
 #include <utility>
 
-#include "AddressMode.h"
 #include "common/Bus.h"
+#include "core65xx/address_mode.h"
 
 using namespace Common;
 
@@ -552,8 +552,6 @@ Common::BusRequest Mos6502::Tick(Common::BusResponse response) noexcept
 
 BusRequest Mos6502::fetchNextOpcode(Mos6502& cpu, BusResponse /*response*/)
 {
-  cpu.m_tracer.addRegisters(cpu.regs.pc, cpu.regs.a, cpu.regs.x, cpu.regs.y, cpu.regs.p, cpu.regs.sp);
-
   // Fetch the next opcode
   cpu.m_action = &Mos6502::decodeOpcode;
   return BusRequest::Fetch(cpu.regs.pc++);
@@ -576,8 +574,6 @@ BusRequest Mos6502::decodeOpcode(Mos6502& cpu, BusResponse response)
 void Mos6502::setInstruction(const Instruction& instr) noexcept
 {
   m_instruction = &instr;
-
-  m_tracer.addInstruction(static_cast<Byte>(std::distance(&c_instructions[0], &instr)), instr.name);
 
   m_stage = 0;
 

@@ -7,11 +7,19 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+include(CTest) # enables BUILD_TESTING option
+include(cmake/Common.cmake)
+
+option(BUILD_SLOW_TESTS "Enable slow suites (Klaus, fuzz)" ON)
+
 option(CMAKE_COMPILE_WARNING_AS_ERROR
   "Treat all compiler warnings as errors" ON)
 
-include(cmake/Common.cmake)
-
-add_subdirectory(util)
 add_subdirectory(libs/common)
-add_subdirectory(Mos6502)
+add_subdirectory(libs/core65xx)
+
+# add_subdirectory(libs/isa-mos6502)
+# add_subdirectory(libs/isa-wdc65c02)
+if(BUILD_TESTING)
+  add_subdirectory(tests) # integration tests
+endif()

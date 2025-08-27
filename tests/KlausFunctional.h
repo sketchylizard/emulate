@@ -4,7 +4,7 @@
 #pragma once
 #include <span>
 
-#include "common/Memory.h"
+#include "common/address.h"
 
 struct Klaus__6502_functional_test
 {

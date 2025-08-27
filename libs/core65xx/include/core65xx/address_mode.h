@@ -1,7 +1,7 @@
 #pragma once
 
-#include "Mos6502/Mos6502.h"
 #include "common/Bus.h"
+#include "core65xx/core65xx.h"
 
 enum class Index
 {

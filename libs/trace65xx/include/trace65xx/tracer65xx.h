@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <string_view>
 
-#include "common/Memory.h"
+#include "common/address.h"
 
 #ifndef MOS6502_TRACE
 #define MOS6502_TRACE 0

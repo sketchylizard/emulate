@@ -78,7 +78,7 @@ def gen_header_text(
     out.append(f"// Source: {lst_abs}")
     out.append("// Credit: Klaus Dormann — https://github.com/Klaus2m5/6502_65C02_functional_tests")
     out.append("#pragma once")
-    out.append('#include "common/Memory.h"')
+    out.append('#include "common/address.h"')
     out.append("#include <span>")
     out.append('#include "incbin.h"')
     out.append("")

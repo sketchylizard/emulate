@@ -1,12 +1,11 @@
-#include "src/AddressMode.h"
-
 #include <catch2/catch_test_macros.hpp>
 #include <format>
 #include <fstream>
 #include <span>
 
-#include "Mos6502/Mos6502.h"
-#include "common/Memory.h"
+#include "common/address.h"
+#include "core65xx/address_mode.h"
+#include "core65xx/core65xx.h"
 
 using namespace Common;
 
