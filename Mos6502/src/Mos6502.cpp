@@ -334,7 +334,7 @@ struct Operations
   template<Mos6502::Register reg>
   static Common::BusRequest compare(Mos6502& cpu, Common::BusResponse response)
   {
-    auto& r = cpu.sel<reg>(cpu.regs);
+    auto r = cpu.sel<reg>(cpu.regs);
     bool borrow = subtractWithBorrow(r, response.data);
     cpu.regs.set(Mos6502::Flag::Carry, !borrow);
     cpu.regs.setZN(r);
@@ -357,6 +357,36 @@ struct Operations
     cpu.regs.a ^= response.data;  // A ← A ⊕ M
     cpu.regs.setZN(cpu.regs.a);
     return Mos6502::nextOp(cpu, response);
+  }
+
+  static Common::BusRequest pha(Mos6502& cpu, Common::BusResponse /*response*/)
+  {
+    cpu.m_action = [](Mos6502& cpu1, Common::BusResponse /*response1*/)
+    {
+      cpu1.m_action = &Mos6502::nextOp;
+      cpu1.m_operand.lo = cpu1.regs.sp--;
+      cpu1.m_operand.hi = c_StackPage;
+      return Common::BusRequest::Write(cpu1.getEffectiveAddress(), cpu1.regs.a);
+    };
+    return Common::BusRequest::Read(cpu.regs.pc);  // Dummy read to consume cycle
+  }
+
+  static Common::BusRequest pla(Mos6502& cpu, Common::BusResponse /*response*/)
+  {
+    cpu.m_action = [](Mos6502& cpu1, Common::BusResponse /*response1*/)
+    {
+      cpu1.m_action = [](Mos6502& cpu2, Common::BusResponse response2)
+      {
+        cpu2.regs.a = response2.data;
+        cpu2.regs.setZN(cpu2.regs.a);
+        return Mos6502::nextOp(cpu2, response2);
+      };
+      cpu1.m_operand.lo = cpu1.regs.sp;
+      cpu1.m_operand.hi = c_StackPage;
+      return Common::BusRequest::Write(cpu1.getEffectiveAddress(), cpu1.regs.a);
+    };
+    cpu.regs.sp++;
+    return Common::BusRequest::Read(cpu.regs.pc);  // Dummy read to consume cycle
   }
 
 };  // struct Operations
@@ -497,6 +527,9 @@ static constexpr std::array<Mos6502::Instruction, 256> c_instructions = []
   table[0x41] = {"EOR", {&Mode::indirect<Index::X>, &Operations::eor}};
   table[0x51] = {"EOR", {&Mode::indirect<Index::Y>, &Operations::eor}};
 
+  table[0x48] = {"PHA", {&Mode::imp, &Operations::pha}};
+  table[0x68] = {"PLA", {&Mode::imp, &Operations::pla}};
+
   // Add more instructions as needed
 
   // clang-format on
@@ -519,15 +552,7 @@ Common::BusRequest Mos6502::Tick(Common::BusResponse response) noexcept
 
 BusRequest Mos6502::fetchNextOpcode(Mos6502& cpu, BusResponse /*response*/)
 {
-  // Check for a stuck PC
-  if (cpu.regs.pc == cpu.m_lastPc)
-  {
-    throw std::runtime_error(std::format("PC stuck at ${:04X}\n", cpu.regs.pc));
-  }
-
   cpu.m_tracer.addRegisters(cpu.regs.pc, cpu.regs.a, cpu.regs.x, cpu.regs.y, cpu.regs.p, cpu.regs.sp);
-
-  cpu.m_lastPc = cpu.regs.pc;
 
   // Fetch the next opcode
   cpu.m_action = &Mos6502::decodeOpcode;

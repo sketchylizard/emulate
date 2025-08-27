@@ -245,13 +245,6 @@ TEST_CASE("Mos6502: Functional_tests", "[.]")
     std::vector<Byte> ram(data.begin(), data.end());  // 64 KiB RAM initialized to zero
     Mapping memory{Address{0x0000}, Address{0xFFFF}, std::span<Byte>(ram)};
 
-    std::bitset<0x10000> breakpoints;
-    for (const auto& addr : Klaus__6502_functional_test::errors)
-    {
-      breakpoints.set(static_cast<size_t>(addr));
-    }
-    breakpoints.set(static_cast<size_t>(Klaus__6502_functional_test::success));
-
     Mos6502 cpu;
 
     auto programStart = Address{0x0400};
@@ -262,27 +255,52 @@ TEST_CASE("Mos6502: Functional_tests", "[.]")
     BusRequest request;
     BusResponse response;
 
+    std::bitset<0x10000> breakpoints;
+    breakpoints.set(static_cast<size_t>(0x05a7));
+    breakpoints.set(static_cast<size_t>(0x0594));
+
     try
     {
+      Address lastInstructionStart{0xFFFF};
+
       for (;;)
       {
-        request = cpu.Tick(response);
-
-        if (breakpoints.test(static_cast<size_t>(cpu.regs.pc)))
+        do
         {
-          if (cpu.regs.pc == Klaus__6502_functional_test::success)
+          request = cpu.Tick(response);
+
+          auto newResponse = memory.Tick(request);
+          if (newResponse)
+          {
+            response = *newResponse;
+          }
+        } while (!request.isSync());
+
+        // We are at an instruction boundary. This is a good place to check for infinite loops or breakpoints.
+
+        if (request.address == lastInstructionStart)
+        {
+          // See if it is one of the known trap points
+          if (request.address == Klaus__6502_functional_test::success)
           {
             return true;  // Test passed
           }
+          else if (std::ranges::find(Klaus__6502_functional_test::errors, request.address) !=
+                   std::end(Klaus__6502_functional_test::errors))
+          {
+            throw std::runtime_error(std::format("Test failed at address ${:04X}\n", request.address));
+          }
           else
           {
-            throw std::runtime_error(std::format("Test failed at address ${:04X}\n", cpu.regs.pc));
+            throw std::runtime_error(std::format("Infinite loop detected at address ${:04X}\n", request.address));
           }
         }
-        auto newResponse = memory.Tick(request);
-        if (newResponse)
+        lastInstructionStart = request.address;
+
+        // See if the requested address is a breakpoint
+        if (breakpoints.test(static_cast<size_t>(request.address)))
         {
-          response = *newResponse;
+          std::cout << std::format("User breakpoint at address ${:04X}\n", request.address);
         }
       }
     }
