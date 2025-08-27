@@ -11,7 +11,7 @@
 
 #include "common/Bus.h"
 
-class Mos6502
+class Core65xx
 {
 public:
   using Address = Common::Address;
@@ -61,7 +61,7 @@ public:
 
   //! State functions should accept a bus response from the previous clock tick and return a new bus request for the new
   //! state.
-  using StateFunc = BusRequest (*)(Mos6502&, BusResponse response);
+  using StateFunc = BusRequest (*)(Core65xx&, BusResponse response);
 
   struct Instruction
   {
@@ -85,7 +85,7 @@ public:
     Byte hi = 0;
   };
 
-  Mos6502() noexcept;
+  Core65xx() noexcept;
 
   [[nodiscard]] BusRequest Tick(BusResponse response) noexcept;
 
@@ -118,15 +118,15 @@ public:
 private:
   // State transition functions
 
-  static BusRequest fetchNextOpcode(Mos6502& cpu, BusResponse response);
-  static BusRequest decodeOpcode(Mos6502& cpu, BusResponse response);
-  static BusRequest nextOp(Mos6502& cpu, BusResponse response);
+  static BusRequest fetchNextOpcode(Core65xx& cpu, BusResponse response);
+  static BusRequest decodeOpcode(Core65xx& cpu, BusResponse response);
+  static BusRequest nextOp(Core65xx& cpu, BusResponse response);
 
   friend struct AddressMode;
   friend struct Operations;
 
   const Instruction* m_instruction = nullptr;
-  StateFunc m_action = &Mos6502::fetchNextOpcode;
+  StateFunc m_action = &Core65xx::fetchNextOpcode;
 
   uint32_t m_tickCount = 0;  // Number of ticks since the last reset
 
@@ -139,29 +139,29 @@ private:
   BusRequest m_lastBusRequest;
 };
 
-constexpr bool Mos6502::Regs::has(Flag f) const noexcept
+constexpr bool Core65xx::Regs::has(Flag f) const noexcept
 {
   return (p & static_cast<uint8_t>(f)) != 0;
 }
 
-constexpr void Mos6502::Regs::set(Flag f, bool v) noexcept
+constexpr void Core65xx::Regs::set(Flag f, bool v) noexcept
 {
   p = v ? (p | static_cast<uint8_t>(f)) : (p & ~static_cast<uint8_t>(f));
 }
 
-constexpr void Mos6502::Regs::setZN(Byte v) noexcept
+constexpr void Core65xx::Regs::setZN(Byte v) noexcept
 {
   set(Flag::Zero, v == 0);
   set(Flag::Negative, (v & 0x80) != 0);
 }
 
 // If you ever assign p wholesale, re-assert U:
-constexpr void Mos6502::Regs::assignP(Byte v) noexcept
+constexpr void Core65xx::Regs::assignP(Byte v) noexcept
 {
   p = Byte((v | static_cast<uint8_t>(Flag::Unused)));
 }
 
-inline uint32_t Mos6502::tickCount() const noexcept
+inline uint32_t Core65xx::tickCount() const noexcept
 {
   return m_tickCount;
 }

@@ -37,10 +37,10 @@ EmuLate/
 │       │   └── common
 │       ├── src
 │       └── test
-├── Mos6502
+├── Core65xx
 │   ├── CMakeLists.txt
 │   ├── include
-│   │   └── Mos6502
+│   │   └── Core65xx
 │   ├── src
 │   └── test
 ```

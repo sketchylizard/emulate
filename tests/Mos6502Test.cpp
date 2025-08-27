@@ -236,7 +236,7 @@ private:
   std::span<Mapping> m_mappings;
 };
 
-TEST_CASE("Mos6502: Functional_tests", "[.]")
+TEST_CASE("Core65xx: Functional_tests", "[.]")
 {
   auto runTest = []()
   {
@@ -245,7 +245,7 @@ TEST_CASE("Mos6502: Functional_tests", "[.]")
     std::vector<Byte> ram(data.begin(), data.end());  // 64 KiB RAM initialized to zero
     Mapping memory{Address{0x0000}, Address{0xFFFF}, std::span<Byte>(ram)};
 
-    Mos6502 cpu;
+    Core65xx cpu;
 
     auto programStart = Address{0x0400};
 

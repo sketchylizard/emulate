@@ -1,16 +1,16 @@
-add_library(Mos6502 STATIC
-  include/Mos6502/Mos6502.h
-  include/Mos6502/Tracer.h
+add_library(Core65xx STATIC
+  include/Core65xx/Core65xx.h
+  include/Core65xx/Tracer.h
   src/AddressMode.cpp
   src/AddressMode.h
-  src/Mos6502.cpp
+  src/Core65xx.cpp
   src/Tracer.cpp
 )
 
-target_link_libraries(Mos6502 PUBLIC common)
-target_include_directories(Mos6502 PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(Core65xx PUBLIC common)
+target_include_directories(Core65xx PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-target_compile_definitions(Mos6502 PUBLIC MOS6502_TRACE=1)
+target_compile_definitions(Core65xx PUBLIC MOS6502_TRACE=1)
 
 find_package(Catch2 REQUIRED)
 find_package(incbin REQUIRED)
@@ -26,5 +26,5 @@ add_executable(Mos6502Test
   test/KlausFunctional.h
 )
 
-target_link_libraries(Mos6502Test PRIVATE Mos6502 Catch2::Catch2WithMain util incbin::incbin)
+target_link_libraries(Mos6502Test PRIVATE Core65xx Catch2::Catch2WithMain util incbin::incbin)
 target_include_directories(Mos6502Test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

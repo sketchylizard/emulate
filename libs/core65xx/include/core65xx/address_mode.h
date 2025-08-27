@@ -15,17 +15,17 @@ inline constexpr Common::Byte c_StackPage{0x01};
 
 struct AddressMode
 {
-  static Common::BusRequest acc(Mos6502& cpu, Common::BusResponse response);
-  static Common::BusRequest imp(Mos6502& cpu, Common::BusResponse response);
-  static Common::BusRequest imm(Mos6502& cpu, Common::BusResponse response);
-  static Common::BusRequest imm1(Mos6502& cpu, Common::BusResponse response);
-  static Common::BusRequest rel(Mos6502& cpu, Common::BusResponse response);
-  static Common::BusRequest rel1(Mos6502& cpu, Common::BusResponse response);
+  static Common::BusRequest acc(Core65xx& cpu, Common::BusResponse response);
+  static Common::BusRequest imp(Core65xx& cpu, Common::BusResponse response);
+  static Common::BusRequest imm(Core65xx& cpu, Common::BusResponse response);
+  static Common::BusRequest imm1(Core65xx& cpu, Common::BusResponse response);
+  static Common::BusRequest rel(Core65xx& cpu, Common::BusResponse response);
+  static Common::BusRequest rel1(Core65xx& cpu, Common::BusResponse response);
 
   template<Index index>
-  static Common::BusRequest zp0(Mos6502& cpu, Common::BusResponse /*response*/)
+  static Common::BusRequest zp0(Core65xx& cpu, Common::BusResponse /*response*/)
   {
-    cpu.m_operand.type = Mos6502::Operand::Type::Zp;
+    cpu.m_operand.type = Core65xx::Operand::Type::Zp;
     cpu.m_action = &AddressMode::zp1<index>;
     return Common::BusRequest::Read(cpu.regs.pc++);
   }
@@ -38,7 +38,7 @@ struct AddressMode
   }
 
   template<Index index>
-  static Common::BusRequest zp1(Mos6502& cpu, Common::BusResponse response)
+  static Common::BusRequest zp1(Core65xx& cpu, Common::BusResponse response)
   {
     // Zero Page Write addressing mode
     // Fetch the low byte of the address
@@ -51,18 +51,18 @@ struct AddressMode
       bool carry = incrementByte(cpu.m_operand.lo, getIndexValue<index>(cpu));
       static_cast<void>(carry);  // carry is ignored in zero page addressing
     }
-    return Mos6502::nextOp(cpu, response);
+    return Core65xx::nextOp(cpu, response);
   }
 
   template<Index index>
-  static Common::BusRequest abs0(Mos6502& cpu, Common::BusResponse /*response*/)
+  static Common::BusRequest abs0(Core65xx& cpu, Common::BusResponse /*response*/)
   {
     if constexpr (index == Index::None)
-      cpu.m_operand.type = Mos6502::Operand::Type::Abs;
+      cpu.m_operand.type = Core65xx::Operand::Type::Abs;
     else if constexpr (index == Index::X)
-      cpu.m_operand.type = Mos6502::Operand::Type::AbsX;
+      cpu.m_operand.type = Core65xx::Operand::Type::AbsX;
     else
-      cpu.m_operand.type = Mos6502::Operand::Type::AbsY;
+      cpu.m_operand.type = Core65xx::Operand::Type::AbsY;
 
     // Put the address of the lo byte on the BusRequest
     cpu.m_action = &AddressMode::abs1<index>;
@@ -70,7 +70,7 @@ struct AddressMode
   }
 
   template<Index index>
-  static Common::BusRequest abs1(Mos6502& cpu, Common::BusResponse response)
+  static Common::BusRequest abs1(Core65xx& cpu, Common::BusResponse response)
   {
     // Read the lo byte from the BusRequest
     cpu.m_operand.lo = response.data;
@@ -80,7 +80,7 @@ struct AddressMode
     return Common::BusRequest::Read(cpu.regs.pc++);
   }
   template<Index index>
-  static Common::BusRequest abs2(Mos6502& cpu, Common::BusResponse response)
+  static Common::BusRequest abs2(Core65xx& cpu, Common::BusResponse response)
   {
     // Read the hi byte from the response.
     cpu.m_operand.hi = response.data;
@@ -104,31 +104,31 @@ struct AddressMode
       cpu.m_action = &AddressMode::abs3<index>;
       return Common::BusRequest::Read(cpu.getEffectiveAddress());
     }
-    return Mos6502::nextOp(cpu, response);
+    return Core65xx::nextOp(cpu, response);
   }
 
   template<Index index>
-  static Common::BusRequest abs3(Mos6502& cpu, Common::BusResponse response)
+  static Common::BusRequest abs3(Core65xx& cpu, Common::BusResponse response)
   {
     // We read from the wrong address due to page boundary crossing.
     ++cpu.m_operand.hi;  // increment hi byte to get the correct address
-    return Mos6502::nextOp(cpu, response);
+    return Core65xx::nextOp(cpu, response);
   }
 
   template<Index index>
     requires(index != Index::None)
-  static Common::BusRequest indirect(Mos6502& cpu, Common::BusResponse response)
+  static Common::BusRequest indirect(Core65xx& cpu, Common::BusResponse response)
   {
     if constexpr (index == Index::None)
-      cpu.m_operand.type = Mos6502::Operand::Type::Ind;
+      cpu.m_operand.type = Core65xx::Operand::Type::Ind;
     else if constexpr (index == Index::X)
-      cpu.m_operand.type = Mos6502::Operand::Type::IndZpX;
+      cpu.m_operand.type = Core65xx::Operand::Type::IndZpX;
     else
-      cpu.m_operand.type = Mos6502::Operand::Type::IndZpY;
-    return Mos6502::nextOp(cpu, response);
+      cpu.m_operand.type = Core65xx::Operand::Type::IndZpY;
+    return Core65xx::nextOp(cpu, response);
   }
 
-  static Common::BusRequest Fetch(Mos6502& cpu, Common::BusResponse response);
+  static Common::BusRequest Fetch(Core65xx& cpu, Common::BusResponse response);
 
   static constexpr auto abs = &AddressMode::abs0<Index::None>;
   static constexpr auto absX = &AddressMode::abs0<Index::X>;
@@ -140,7 +140,7 @@ struct AddressMode
 
   template<Index index>
     requires(index != Index::None)
-  static Common::Byte getIndexValue(const Mos6502& cpu) noexcept
+  static Common::Byte getIndexValue(const Core65xx& cpu) noexcept
   {
     if constexpr (index == Index::X)
     {

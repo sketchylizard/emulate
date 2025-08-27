@@ -1,4 +1,4 @@
-#include "Mos6502/Tracer.h"
+#include "Core65xx/Tracer.h"
 
 // helps ensure that Tracer.h is self-contained
 

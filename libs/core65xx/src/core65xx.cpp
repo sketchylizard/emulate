@@ -29,7 +29,7 @@ struct Operations
   // It returns true when the operation is complete. If forceRead is true, it force the BusRequest to READ rather than
   // WRITE mode and the writes to the stack will be ignored.
   template<bool ForceRead>
-  static Common::BusRequest brk(Mos6502& cpu, Common::BusResponse /*response*/)
+  static Common::BusRequest brk(Core65xx& cpu, Common::BusResponse /*response*/)
   {
     Control control = ForceRead ? Control::Read : Control{};
 
@@ -38,7 +38,7 @@ struct Operations
     return Common::BusRequest::Write(Common::MakeAddress(cpu.regs.sp--, c_StackPage), Common::HiByte(cpu.regs.pc), control);
   }
   template<bool ForceRead>
-  static Common::BusRequest brk1(Mos6502& cpu, Common::BusResponse /*response*/)
+  static Common::BusRequest brk1(Core65xx& cpu, Common::BusResponse /*response*/)
   {
     Control control = ForceRead ? Control::Read : Control{};
     cpu.m_action = &Operations::brk2<ForceRead>;
@@ -46,7 +46,7 @@ struct Operations
     return Common::BusRequest::Write(Common::MakeAddress(cpu.regs.sp--, c_StackPage), Common::LoByte(cpu.regs.pc), control);
   }
   template<bool ForceRead>
-  static Common::BusRequest brk2(Mos6502& cpu, Common::BusResponse /*response*/)
+  static Common::BusRequest brk2(Core65xx& cpu, Common::BusResponse /*response*/)
   {
     Control control = ForceRead ? Control::Read : Control{};
     cpu.m_action = &Operations::brk3<ForceRead>;
@@ -54,85 +54,85 @@ struct Operations
     return Common::BusRequest::Write(Common::MakeAddress(cpu.regs.sp--, c_StackPage), cpu.regs.p, control);
   }
   template<bool ForceRead>
-  static Common::BusRequest brk3(Mos6502& cpu, Common::BusResponse /*response*/)
+  static Common::BusRequest brk3(Core65xx& cpu, Common::BusResponse /*response*/)
   {
     // Fetch the low byte of the interrupt/reset vector
     cpu.m_action = &Operations::brk4<ForceRead>;
-    return Common::BusRequest::Read(Mos6502::c_brkVector);
+    return Common::BusRequest::Read(Core65xx::c_brkVector);
   }
   template<bool ForceRead>
-  static Common::BusRequest brk4(Mos6502& cpu, Common::BusResponse response)
+  static Common::BusRequest brk4(Core65xx& cpu, Common::BusResponse response)
   {
     // Store the lo byte of the vector
     cpu.m_operand.lo = response.data;
     cpu.m_action = &Operations::brk5<ForceRead>;
     // Fetch the high byte of the interrupt/reset vector
-    return Common::BusRequest::Read(Mos6502::c_brkVector + 1);
+    return Common::BusRequest::Read(Core65xx::c_brkVector + 1);
   }
   template<bool ForceRead>
-  static Common::BusRequest brk5(Mos6502& cpu, Common::BusResponse response)
+  static Common::BusRequest brk5(Core65xx& cpu, Common::BusResponse response)
   {
     // Set PC to the interrupt/reset vector address
     cpu.m_operand.hi = response.data;
     cpu.regs.pc = cpu.getEffectiveAddress();
-    return Mos6502::nextOp(cpu, response);  // Operation complete
+    return Core65xx::nextOp(cpu, response);  // Operation complete
   }
 
-  static Common::BusRequest adc(Mos6502& cpu, Common::BusResponse response)
+  static Common::BusRequest adc(Core65xx& cpu, Common::BusResponse response)
   {
-    assert(cpu.regs.has(Mos6502::Flag::Decimal) == false);  // BCD mode not supported
+    assert(cpu.regs.has(Core65xx::Flag::Decimal) == false);  // BCD mode not supported
 
     const Byte a = cpu.regs.a;
     const Byte m = response.data;
-    const Byte c = cpu.regs.has(Mos6502::Flag::Carry) ? 1 : 0;
+    const Byte c = cpu.regs.has(Core65xx::Flag::Carry) ? 1 : 0;
 
     const uint16_t sum = uint16_t(a) + uint16_t(m) + uint16_t(c);
     const Byte result = Byte(sum & 0xFF);
 
-    cpu.regs.set(Mos6502::Flag::Carry, (sum & 0x100) != 0);
-    cpu.regs.set(Mos6502::Flag::Overflow, ((~(a ^ m) & (a ^ result)) & 0x80) != 0);
+    cpu.regs.set(Core65xx::Flag::Carry, (sum & 0x100) != 0);
+    cpu.regs.set(Core65xx::Flag::Overflow, ((~(a ^ m) & (a ^ result)) & 0x80) != 0);
     cpu.regs.setZN(result);
 
     cpu.regs.a = result;
-    return Mos6502::nextOp(cpu, response);
+    return Core65xx::nextOp(cpu, response);
   }
 
-  template<Mos6502::Flag Flag, bool Set>
-  static Common::BusRequest flagOp(Mos6502& cpu, Common::BusResponse response)
+  template<Core65xx::Flag Flag, bool Set>
+  static Common::BusRequest flagOp(Core65xx& cpu, Common::BusResponse response)
   {
     cpu.regs.set(Flag, Set);
-    return Mos6502::nextOp(cpu, response);
+    return Core65xx::nextOp(cpu, response);
   }
 
 
-  static Common::BusRequest txs(Mos6502& cpu, Common::BusResponse response)
+  static Common::BusRequest txs(Core65xx& cpu, Common::BusResponse response)
   {
     cpu.regs.sp = cpu.regs.x;
-    return Mos6502::nextOp(cpu, response);
+    return Core65xx::nextOp(cpu, response);
   }
 
-  static Common::BusRequest sta(Mos6502& cpu, Common::BusResponse /*response*/)
+  static Common::BusRequest sta(Core65xx& cpu, Common::BusResponse /*response*/)
   {
-    cpu.m_action = &Mos6502::nextOp;
+    cpu.m_action = &Core65xx::nextOp;
     return Common::BusRequest::Write(cpu.getEffectiveAddress(), cpu.regs.a);
   }
 
-  static Common::BusRequest ora(Mos6502& cpu, Common::BusResponse response)
+  static Common::BusRequest ora(Core65xx& cpu, Common::BusResponse response)
   {
     // Perform OR with accumulator
     cpu.regs.a |= response.data;
-    cpu.regs.set(Mos6502::Flag::Zero, cpu.regs.a == 0);  // Set zero flag
-    cpu.regs.set(Mos6502::Flag::Negative, cpu.regs.a & 0x80);  // Set negative flag
-    return Mos6502::nextOp(cpu, response);
+    cpu.regs.set(Core65xx::Flag::Zero, cpu.regs.a == 0);  // Set zero flag
+    cpu.regs.set(Core65xx::Flag::Negative, cpu.regs.a & 0x80);  // Set negative flag
+    return Core65xx::nextOp(cpu, response);
   }
 
-  static Common::BusRequest jmpAbsolute(Mos6502& cpu, Common::BusResponse /*response*/)
+  static Common::BusRequest jmpAbsolute(Core65xx& cpu, Common::BusResponse /*response*/)
   {
     cpu.m_action = &Operations::jmpAbsolute1;
     return Common::BusRequest::Read(cpu.regs.pc++);  // Fetch low byte
   }
 
-  static Common::BusRequest jmpAbsolute1(Mos6502& cpu, Common::BusResponse response)
+  static Common::BusRequest jmpAbsolute1(Core65xx& cpu, Common::BusResponse response)
   {
     cpu.m_operand.lo = response.data;
 
@@ -140,36 +140,36 @@ struct Operations
     return Common::BusRequest::Read(cpu.regs.pc++);  // Fetch high byte
   }
 
-  static Common::BusRequest jmpAbsolute2(Mos6502& cpu, Common::BusResponse response)
+  static Common::BusRequest jmpAbsolute2(Core65xx& cpu, Common::BusResponse response)
   {
     // Step 2
     cpu.m_operand.hi = response.data;
     cpu.regs.pc = cpu.getEffectiveAddress();
-    return Mos6502::nextOp(cpu, response);
+    return Core65xx::nextOp(cpu, response);
   }
 
-  static Common::BusRequest jmpIndirect(Mos6502& cpu, Common::BusResponse /*response*/)
+  static Common::BusRequest jmpIndirect(Core65xx& cpu, Common::BusResponse /*response*/)
   {
     cpu.m_action = &Operations::jmpIndirect1;
     // Fetch indirect address low byte
     return Common::BusRequest::Read(cpu.regs.pc++);
   }
 
-  static Common::BusRequest jmpIndirect1(Mos6502& cpu, Common::BusResponse response)
+  static Common::BusRequest jmpIndirect1(Core65xx& cpu, Common::BusResponse response)
   {
     cpu.m_operand.lo = response.data;
     cpu.m_action = &Operations::jmpIndirect2;
     return BusRequest::Read(cpu.regs.pc++);  // fetch ptr high
   }
 
-  static Common::BusRequest jmpIndirect2(Mos6502& cpu, Common::BusResponse response)
+  static Common::BusRequest jmpIndirect2(Core65xx& cpu, Common::BusResponse response)
   {
     cpu.m_operand.hi = response.data;
     cpu.m_action = &Operations::jmpIndirect3;
     return BusRequest::Read(cpu.getEffectiveAddress());  // Read target low byte
   }
 
-  static Common::BusRequest jmpIndirect3(Mos6502& cpu, Common::BusResponse response)
+  static Common::BusRequest jmpIndirect3(Core65xx& cpu, Common::BusResponse response)
   {
     cpu.m_operand.lo = response.data;
 
@@ -179,16 +179,16 @@ struct Operations
     return BusRequest::Read(cpu.getEffectiveAddress());  // read target high (buggy wrap)
   }
 
-  static Common::BusRequest jmpIndirect4(Mos6502& cpu, Common::BusResponse response)
+  static Common::BusRequest jmpIndirect4(Core65xx& cpu, Common::BusResponse response)
   {
     cpu.m_operand.hi = response.data;
     cpu.regs.pc = cpu.getEffectiveAddress();
-    return Mos6502::nextOp(cpu, response);
+    return Core65xx::nextOp(cpu, response);
   }
 
   // Branch step 0: Evaluate condition and decide whether to branch
-  template<Mos6502::Flag flag, bool condition>
-  static Common::BusRequest branch0(Mos6502& cpu, Common::BusResponse response)
+  template<Core65xx::Flag flag, bool condition>
+  static Common::BusRequest branch0(Core65xx& cpu, Common::BusResponse response)
   {
     // Check if the flag matches the desired condition
     bool flagSet = cpu.regs.has(flag);
@@ -197,7 +197,7 @@ struct Operations
     if (!shouldBranch)
     {
       // Branch not taken - 2 cycles total, we're done
-      return Mos6502::nextOp(cpu, response);
+      return Core65xx::nextOp(cpu, response);
     }
     else
     {
@@ -208,7 +208,7 @@ struct Operations
   }
 
   // Branch step 1: Add offset to PC low byte, check for page crossing
-  static Common::BusRequest branch1(Mos6502& cpu, Common::BusResponse response)
+  static Common::BusRequest branch1(Core65xx& cpu, Common::BusResponse response)
   {
     int8_t offset = static_cast<int8_t>(cpu.m_operand.lo);
 
@@ -223,7 +223,7 @@ struct Operations
     {
       // No page boundary crossed - 3 cycles total, we're done
       // PC is already correct
-      return Mos6502::nextOp(cpu, response);
+      return Core65xx::nextOp(cpu, response);
     }
     else
     {
@@ -234,7 +234,7 @@ struct Operations
   }
 
   // Branch step 2: Fix up PC high byte after page boundary crossing
-  static Common::BusRequest branch2(Mos6502& cpu, Common::BusResponse response)
+  static Common::BusRequest branch2(Core65xx& cpu, Common::BusResponse response)
   {
     // Apply the carry/borrow to the high byte
     if (cpu.m_operand.lo & 0x80)
@@ -248,79 +248,79 @@ struct Operations
       cpu.regs.pc += 0x100;
     }
     // 4 cycles total, we're done
-    return Mos6502::nextOp(cpu, response);
+    return Core65xx::nextOp(cpu, response);
   }
 
   // Specific branch instruction implementations
-  static Common::BusRequest bpl(Mos6502& cpu, Common::BusResponse response)
+  static Common::BusRequest bpl(Core65xx& cpu, Common::BusResponse response)
   {
-    return branch0<Mos6502::Flag::Negative, false>(cpu, response);  // Branch if N=0
+    return branch0<Core65xx::Flag::Negative, false>(cpu, response);  // Branch if N=0
   }
 
-  static Common::BusRequest bmi(Mos6502& cpu, Common::BusResponse response)
+  static Common::BusRequest bmi(Core65xx& cpu, Common::BusResponse response)
   {
-    return branch0<Mos6502::Flag::Negative, true>(cpu, response);  // Branch if N=1
+    return branch0<Core65xx::Flag::Negative, true>(cpu, response);  // Branch if N=1
   }
 
-  static Common::BusRequest bcc(Mos6502& cpu, Common::BusResponse response)
+  static Common::BusRequest bcc(Core65xx& cpu, Common::BusResponse response)
   {
-    return branch0<Mos6502::Flag::Carry, false>(cpu, response);  // Branch if C=0
+    return branch0<Core65xx::Flag::Carry, false>(cpu, response);  // Branch if C=0
   }
 
-  static Common::BusRequest bcs(Mos6502& cpu, Common::BusResponse response)
+  static Common::BusRequest bcs(Core65xx& cpu, Common::BusResponse response)
   {
-    return branch0<Mos6502::Flag::Carry, true>(cpu, response);  // Branch if C=1
+    return branch0<Core65xx::Flag::Carry, true>(cpu, response);  // Branch if C=1
   }
 
-  static Common::BusRequest bne(Mos6502& cpu, Common::BusResponse response)
+  static Common::BusRequest bne(Core65xx& cpu, Common::BusResponse response)
   {
-    return branch0<Mos6502::Flag::Zero, false>(cpu, response);  // Branch if Z=0
+    return branch0<Core65xx::Flag::Zero, false>(cpu, response);  // Branch if Z=0
   }
 
-  static Common::BusRequest beq(Mos6502& cpu, Common::BusResponse response)
+  static Common::BusRequest beq(Core65xx& cpu, Common::BusResponse response)
   {
-    return branch0<Mos6502::Flag::Zero, true>(cpu, response);  // Branch if Z=1
+    return branch0<Core65xx::Flag::Zero, true>(cpu, response);  // Branch if Z=1
   }
 
-  static Common::BusRequest bvc(Mos6502& cpu, Common::BusResponse response)
+  static Common::BusRequest bvc(Core65xx& cpu, Common::BusResponse response)
   {
-    return branch0<Mos6502::Flag::Overflow, false>(cpu, response);  // Branch if V=0
+    return branch0<Core65xx::Flag::Overflow, false>(cpu, response);  // Branch if V=0
   }
 
-  static Common::BusRequest bvs(Mos6502& cpu, Common::BusResponse response)
+  static Common::BusRequest bvs(Core65xx& cpu, Common::BusResponse response)
   {
-    return branch0<Mos6502::Flag::Overflow, true>(cpu, response);  // Branch if V=1
+    return branch0<Core65xx::Flag::Overflow, true>(cpu, response);  // Branch if V=1
   }
 
-  template<Mos6502::Register reg>
-  static Common::BusRequest load(Mos6502& cpu, Common::BusResponse response)
+  template<Core65xx::Register reg>
+  static Common::BusRequest load(Core65xx& cpu, Common::BusResponse response)
   {
     // This is a generic load operation for A, X, or Y registers.
 
     auto data = cpu.sel<reg>(cpu.regs) = response.data;
     cpu.regs.setZN(data);
-    return Mos6502::nextOp(cpu, response);
+    return Core65xx::nextOp(cpu, response);
   }
 
-  template<Mos6502::Register reg>
-    requires(reg != Mos6502::Register::A)
-  static Common::BusRequest increment(Mos6502& cpu, Common::BusResponse response)
+  template<Core65xx::Register reg>
+    requires(reg != Core65xx::Register::A)
+  static Common::BusRequest increment(Core65xx& cpu, Common::BusResponse response)
   {
     // Handle increment operation for X or Y registers
     auto& r = cpu.sel<reg>(cpu.regs);
     ++r;
     cpu.regs.setZN(r);
-    return Mos6502::nextOp(cpu, response);
+    return Core65xx::nextOp(cpu, response);
   }
 
-  template<Mos6502::Register reg>
-    requires(reg != Mos6502::Register::A)
-  static Common::BusRequest decrement(Mos6502& cpu, Common::BusResponse response)
+  template<Core65xx::Register reg>
+    requires(reg != Core65xx::Register::A)
+  static Common::BusRequest decrement(Core65xx& cpu, Common::BusResponse response)
   {
     auto& r = cpu.sel<reg>(cpu.regs);
     --r;
     cpu.regs.setZN(r);
-    return Mos6502::nextOp(cpu, response);
+    return Core65xx::nextOp(cpu, response);
   }
 
   static bool subtractWithBorrow(Byte& reg, Byte value) noexcept
@@ -331,39 +331,39 @@ struct Operations
     return borrow;
   }
 
-  template<Mos6502::Register reg>
-  static Common::BusRequest compare(Mos6502& cpu, Common::BusResponse response)
+  template<Core65xx::Register reg>
+  static Common::BusRequest compare(Core65xx& cpu, Common::BusResponse response)
   {
     auto r = cpu.sel<reg>(cpu.regs);
     bool borrow = subtractWithBorrow(r, response.data);
-    cpu.regs.set(Mos6502::Flag::Carry, !borrow);
+    cpu.regs.set(Core65xx::Flag::Carry, !borrow);
     cpu.regs.setZN(r);
-    return Mos6502::nextOp(cpu, response);
+    return Core65xx::nextOp(cpu, response);
   }
 
-  template<Mos6502::Register src, Mos6502::Register dst>
+  template<Core65xx::Register src, Core65xx::Register dst>
     requires(src != dst)
-  static Common::BusRequest transfer(Mos6502& cpu, Common::BusResponse response)
+  static Common::BusRequest transfer(Core65xx& cpu, Common::BusResponse response)
   {
     auto s = cpu.sel<src>(cpu.regs);
     auto& d = cpu.sel<dst>(cpu.regs);
     d = s;
     cpu.regs.setZN(d);
-    return Mos6502::nextOp(cpu, response);
+    return Core65xx::nextOp(cpu, response);
   }
 
-  static Common::BusRequest eor(Mos6502& cpu, Common::BusResponse response)
+  static Common::BusRequest eor(Core65xx& cpu, Common::BusResponse response)
   {
     cpu.regs.a ^= response.data;  // A ← A ⊕ M
     cpu.regs.setZN(cpu.regs.a);
-    return Mos6502::nextOp(cpu, response);
+    return Core65xx::nextOp(cpu, response);
   }
 
-  static Common::BusRequest pha(Mos6502& cpu, Common::BusResponse /*response*/)
+  static Common::BusRequest pha(Core65xx& cpu, Common::BusResponse /*response*/)
   {
-    cpu.m_action = [](Mos6502& cpu1, Common::BusResponse /*response1*/)
+    cpu.m_action = [](Core65xx& cpu1, Common::BusResponse /*response1*/)
     {
-      cpu1.m_action = &Mos6502::nextOp;
+      cpu1.m_action = &Core65xx::nextOp;
       cpu1.m_operand.lo = cpu1.regs.sp--;
       cpu1.m_operand.hi = c_StackPage;
       return Common::BusRequest::Write(cpu1.getEffectiveAddress(), cpu1.regs.a);
@@ -371,15 +371,15 @@ struct Operations
     return Common::BusRequest::Read(cpu.regs.pc);  // Dummy read to consume cycle
   }
 
-  static Common::BusRequest pla(Mos6502& cpu, Common::BusResponse /*response*/)
+  static Common::BusRequest pla(Core65xx& cpu, Common::BusResponse /*response*/)
   {
-    cpu.m_action = [](Mos6502& cpu1, Common::BusResponse /*response1*/)
+    cpu.m_action = [](Core65xx& cpu1, Common::BusResponse /*response1*/)
     {
-      cpu1.m_action = [](Mos6502& cpu2, Common::BusResponse response2)
+      cpu1.m_action = [](Core65xx& cpu2, Common::BusResponse response2)
       {
         cpu2.regs.a = response2.data;
         cpu2.regs.setZN(cpu2.regs.a);
-        return Mos6502::nextOp(cpu2, response2);
+        return Core65xx::nextOp(cpu2, response2);
       };
       cpu1.m_operand.lo = cpu1.regs.sp;
       cpu1.m_operand.hi = c_StackPage;
@@ -394,9 +394,9 @@ struct Operations
 ////////////////////////////////////////////////////////////////////////////////
 // CPU implementation
 ////////////////////////////////////////////////////////////////////////////////
-static constexpr std::array<Mos6502::Instruction, 256> c_instructions = []
+static constexpr std::array<Core65xx::Instruction, 256> c_instructions = []
 {
-  std::array<Mos6502::Instruction, 256> table{};
+  std::array<Core65xx::Instruction, 256> table{};
   // Fill with default NOPs or empty instructions
   for (size_t i = 0; i < 256; ++i)
   {
@@ -421,37 +421,37 @@ static constexpr std::array<Mos6502::Instruction, 256> c_instructions = []
   table[0x71] = {"ADC", {&Mode::indirect<Index::Y>, &Operations::adc}};
 
   // LDA instructions
-  table[0xA9] = {"LDA", {&Mode::imm, &Operations::load<Mos6502::Register::A>}};
-  table[0xA5] = {"LDA", {Mode::zp, &Mode::Fetch,&Operations::load<Mos6502::Register::A>}};
-  table[0xB5] = {"LDA", {Mode::zpX, &Mode::Fetch,&Operations::load<Mos6502::Register::A>}};
-  table[0xAD] = {"LDA", {Mode::abs, &Mode::Fetch, &Operations::load<Mos6502::Register::A>}};
-  table[0xBD] = {"LDA", {Mode::absX, &Mode::Fetch, &Operations::load<Mos6502::Register::A>}};
-  table[0xB9] = {"LDA", {Mode::absY, &Mode::Fetch, &Operations::load<Mos6502::Register::A>}};
-  table[0xA1] = {"LDA", {&Mode::indirect<Index::X>, &Operations::load<Mos6502::Register::A>}};
-  table[0xB1] = {"LDA", {&Mode::indirect<Index::Y>, &Operations::load<Mos6502::Register::A>}};
+  table[0xA9] = {"LDA", {&Mode::imm, &Operations::load<Core65xx::Register::A>}};
+  table[0xA5] = {"LDA", {Mode::zp, &Mode::Fetch,&Operations::load<Core65xx::Register::A>}};
+  table[0xB5] = {"LDA", {Mode::zpX, &Mode::Fetch,&Operations::load<Core65xx::Register::A>}};
+  table[0xAD] = {"LDA", {Mode::abs, &Mode::Fetch, &Operations::load<Core65xx::Register::A>}};
+  table[0xBD] = {"LDA", {Mode::absX, &Mode::Fetch, &Operations::load<Core65xx::Register::A>}};
+  table[0xB9] = {"LDA", {Mode::absY, &Mode::Fetch, &Operations::load<Core65xx::Register::A>}};
+  table[0xA1] = {"LDA", {&Mode::indirect<Index::X>, &Operations::load<Core65xx::Register::A>}};
+  table[0xB1] = {"LDA", {&Mode::indirect<Index::Y>, &Operations::load<Core65xx::Register::A>}};
 
   // LDX instructions
-  table[0xA2] = {"LDX", {&Mode::imm, &Operations::load<Mos6502::Register::X>}};
-  table[0xA6] = {"LDX", {Mode::zp, &Mode::Fetch,&Operations::load<Mos6502::Register::X>}};
-  table[0xB6] = {"LDX", {Mode::zpY, &Mode::Fetch,&Operations::load<Mos6502::Register::X>}};
-  table[0xAE] = {"LDX", {Mode::abs, &Mode::Fetch, &Operations::load<Mos6502::Register::X>}};
-  table[0xBE] = {"LDX", {Mode::absY, &Mode::Fetch, &Operations::load<Mos6502::Register::X>}};
+  table[0xA2] = {"LDX", {&Mode::imm, &Operations::load<Core65xx::Register::X>}};
+  table[0xA6] = {"LDX", {Mode::zp, &Mode::Fetch,&Operations::load<Core65xx::Register::X>}};
+  table[0xB6] = {"LDX", {Mode::zpY, &Mode::Fetch,&Operations::load<Core65xx::Register::X>}};
+  table[0xAE] = {"LDX", {Mode::abs, &Mode::Fetch, &Operations::load<Core65xx::Register::X>}};
+  table[0xBE] = {"LDX", {Mode::absY, &Mode::Fetch, &Operations::load<Core65xx::Register::X>}};
 
   // LDY instructions
-  table[0xA0] = {"LDY", {&Mode::imm, &Operations::load<Mos6502::Register::Y>}};
-  table[0xA4] = {"LDY", {Mode::zp, &Mode::Fetch,&Operations::load<Mos6502::Register::Y>}};
-  table[0xB4] = {"LDY", {Mode::zpX, &Mode::Fetch,&Operations::load<Mos6502::Register::Y>}};
-  table[0xAC] = {"LDY", {Mode::abs, &Mode::Fetch, &Operations::load<Mos6502::Register::Y>}};
-  table[0xBC] = {"LDY", {Mode::absX, &Mode::Fetch, &Operations::load<Mos6502::Register::Y>}};
+  table[0xA0] = {"LDY", {&Mode::imm, &Operations::load<Core65xx::Register::Y>}};
+  table[0xA4] = {"LDY", {Mode::zp, &Mode::Fetch,&Operations::load<Core65xx::Register::Y>}};
+  table[0xB4] = {"LDY", {Mode::zpX, &Mode::Fetch,&Operations::load<Core65xx::Register::Y>}};
+  table[0xAC] = {"LDY", {Mode::abs, &Mode::Fetch, &Operations::load<Core65xx::Register::Y>}};
+  table[0xBC] = {"LDY", {Mode::absX, &Mode::Fetch, &Operations::load<Core65xx::Register::Y>}};
 
   // Flag operations
-  table[0x18] = {"CLC", {&Mode::imp, &Operations::flagOp<Mos6502::Flag::Carry,     false>}};
-  table[0x38] = {"SEC", {&Mode::imp, &Operations::flagOp<Mos6502::Flag::Carry,      true>}};
-  table[0x58] = {"CLI", {&Mode::imp, &Operations::flagOp<Mos6502::Flag::Interrupt, false>}};
-  table[0x78] = {"SEI", {&Mode::imp, &Operations::flagOp<Mos6502::Flag::Interrupt,  true>}};
-  table[0xB8] = {"CLV", {&Mode::imp, &Operations::flagOp<Mos6502::Flag::Overflow,  false>}};
-  table[0xD8] = {"CLD", {&Mode::imp, &Operations::flagOp<Mos6502::Flag::Decimal,   false>}};
-  table[0xF8] = {"SED", {&Mode::imp, &Operations::flagOp<Mos6502::Flag::Decimal,    true>}};
+  table[0x18] = {"CLC", {&Mode::imp, &Operations::flagOp<Core65xx::Flag::Carry,     false>}};
+  table[0x38] = {"SEC", {&Mode::imp, &Operations::flagOp<Core65xx::Flag::Carry,      true>}};
+  table[0x58] = {"CLI", {&Mode::imp, &Operations::flagOp<Core65xx::Flag::Interrupt, false>}};
+  table[0x78] = {"SEI", {&Mode::imp, &Operations::flagOp<Core65xx::Flag::Interrupt,  true>}};
+  table[0xB8] = {"CLV", {&Mode::imp, &Operations::flagOp<Core65xx::Flag::Overflow,  false>}};
+  table[0xD8] = {"CLD", {&Mode::imp, &Operations::flagOp<Core65xx::Flag::Decimal,   false>}};
+  table[0xF8] = {"SED", {&Mode::imp, &Operations::flagOp<Core65xx::Flag::Decimal,    true>}};
 
   // STA variations
   table[0x85] = {"STA", {Mode::zp, &Mode::Fetch,&Operations::sta}};
@@ -486,37 +486,37 @@ static constexpr std::array<Mos6502::Instruction, 256> c_instructions = []
   table[0x70] = {"BVS", {&Mode::rel  , &Operations::bvs}};
 
   // Increment and Decrement instructions
-  table[0xE8] = {"INX", {&Mode::imp  , &Operations::increment<Mos6502::Register::X>}};
-  table[0xC8] = {"INY", {&Mode::imp  , &Operations::increment<Mos6502::Register::Y>}};
-  table[0xCA] = {"DEX", {&Mode::imp  , &Operations::decrement<Mos6502::Register::X>}};
-  table[0x88] = {"DEY", {&Mode::imp  , &Operations::decrement<Mos6502::Register::Y>}};
+  table[0xE8] = {"INX", {&Mode::imp  , &Operations::increment<Core65xx::Register::X>}};
+  table[0xC8] = {"INY", {&Mode::imp  , &Operations::increment<Core65xx::Register::Y>}};
+  table[0xCA] = {"DEX", {&Mode::imp  , &Operations::decrement<Core65xx::Register::X>}};
+  table[0x88] = {"DEY", {&Mode::imp  , &Operations::decrement<Core65xx::Register::Y>}};
 
   // CMP — Compare Accumulator
-  table[0xC9] = {"CMP", {&Mode::imm, &Operations::compare<Mos6502::Register::A>}};
-  table[0xC5] = {"CMP", {Mode::zp, &Mode::Fetch,&Operations::compare<Mos6502::Register::A>}};
-  table[0xD5] = {"CMP", {Mode::zpX, &Mode::Fetch,&Operations::compare<Mos6502::Register::A>}};
-  table[0xCD] = {"CMP", {Mode::abs, &Mode::Fetch, &Operations::compare<Mos6502::Register::A>}};
-  table[0xDD] = {"CMP", {Mode::absX, &Mode::Fetch, &Operations::compare<Mos6502::Register::A>}};
-  table[0xD9] = {"CMP", {Mode::absY, &Mode::Fetch, &Operations::compare<Mos6502::Register::A>}};
-  table[0xC1] = {"CMP", {&Mode::indirect<Index::X>, &Operations::compare<Mos6502::Register::A>}};
-  table[0xD1] = {"CMP", {&Mode::indirect<Index::Y>, &Operations::compare<Mos6502::Register::A>}};
+  table[0xC9] = {"CMP", {&Mode::imm, &Operations::compare<Core65xx::Register::A>}};
+  table[0xC5] = {"CMP", {Mode::zp, &Mode::Fetch,&Operations::compare<Core65xx::Register::A>}};
+  table[0xD5] = {"CMP", {Mode::zpX, &Mode::Fetch,&Operations::compare<Core65xx::Register::A>}};
+  table[0xCD] = {"CMP", {Mode::abs, &Mode::Fetch, &Operations::compare<Core65xx::Register::A>}};
+  table[0xDD] = {"CMP", {Mode::absX, &Mode::Fetch, &Operations::compare<Core65xx::Register::A>}};
+  table[0xD9] = {"CMP", {Mode::absY, &Mode::Fetch, &Operations::compare<Core65xx::Register::A>}};
+  table[0xC1] = {"CMP", {&Mode::indirect<Index::X>, &Operations::compare<Core65xx::Register::A>}};
+  table[0xD1] = {"CMP", {&Mode::indirect<Index::Y>, &Operations::compare<Core65xx::Register::A>}};
 
   // CPX — Compare X Register
-  table[0xE0] = {"CPX", {&Mode::imm, &Operations::compare<Mos6502::Register::X>}};
-  table[0xE4] = {"CPX", {Mode::zp, &Mode::Fetch,&Operations::compare<Mos6502::Register::X>}};
-  table[0xEC] = {"CPX", {Mode::abs, &Mode::Fetch, &Operations::compare<Mos6502::Register::X>}};
+  table[0xE0] = {"CPX", {&Mode::imm, &Operations::compare<Core65xx::Register::X>}};
+  table[0xE4] = {"CPX", {Mode::zp, &Mode::Fetch,&Operations::compare<Core65xx::Register::X>}};
+  table[0xEC] = {"CPX", {Mode::abs, &Mode::Fetch, &Operations::compare<Core65xx::Register::X>}};
 
   // CPY — Compare Y Register
-  table[0xC0] = {"CPY", {&Mode::imm, &Operations::compare<Mos6502::Register::Y>}};
-  table[0xC4] = {"CPY", {Mode::zp, &Mode::Fetch,&Operations::compare<Mos6502::Register::Y>}};
-  table[0xCC] = {"CPY", {Mode::abs, &Mode::Fetch, &Operations::compare<Mos6502::Register::Y>}};
+  table[0xC0] = {"CPY", {&Mode::imm, &Operations::compare<Core65xx::Register::Y>}};
+  table[0xC4] = {"CPY", {Mode::zp, &Mode::Fetch,&Operations::compare<Core65xx::Register::Y>}};
+  table[0xCC] = {"CPY", {Mode::abs, &Mode::Fetch, &Operations::compare<Core65xx::Register::Y>}};
 
-  table[0x98] = {"TYA", {Mode::imp, &Operations::transfer<Mos6502::Register::Y, Mos6502::Register::A>}};
-  table[0xA8] = {"TAY", {Mode::imp, &Operations::transfer<Mos6502::Register::A, Mos6502::Register::Y>}};
-  table[0x8A] = {"TXA", {Mode::imp, &Operations::transfer<Mos6502::Register::X, Mos6502::Register::A>}};
-  table[0xAA] = {"TAX", {Mode::imp, &Operations::transfer<Mos6502::Register::A, Mos6502::Register::X>}};
+  table[0x98] = {"TYA", {Mode::imp, &Operations::transfer<Core65xx::Register::Y, Core65xx::Register::A>}};
+  table[0xA8] = {"TAY", {Mode::imp, &Operations::transfer<Core65xx::Register::A, Core65xx::Register::Y>}};
+  table[0x8A] = {"TXA", {Mode::imp, &Operations::transfer<Core65xx::Register::X, Core65xx::Register::A>}};
+  table[0xAA] = {"TAX", {Mode::imp, &Operations::transfer<Core65xx::Register::A, Core65xx::Register::X>}};
   table[0x9A] = {"TXS", {&Mode::imp, &Operations::txs}};
-  // table[0xBA] = {"TSX", {Mode::imp, &Operations::transfer<Mos6502::Register::S, Mos6502::Register::X>}};
+  // table[0xBA] = {"TSX", {Mode::imp, &Operations::transfer<Core65xx::Register::S, Core65xx::Register::X>}};
 
   table[0x49] = {"EOR", {&Mode::imm,  &Operations::eor}};
   table[0x45] = {"EOR", {Mode::zp,    &Mode::Fetch, &Operations::eor}};
@@ -536,9 +536,9 @@ static constexpr std::array<Mos6502::Instruction, 256> c_instructions = []
   return table;
 }();
 
-Mos6502::Mos6502() noexcept = default;
+Core65xx::Core65xx() noexcept = default;
 
-Common::BusRequest Mos6502::Tick(Common::BusResponse response) noexcept
+Common::BusRequest Core65xx::Tick(Common::BusResponse response) noexcept
 {
   ++m_tickCount;
 
@@ -550,14 +550,14 @@ Common::BusRequest Mos6502::Tick(Common::BusResponse response) noexcept
   return m_lastBusRequest;
 }
 
-BusRequest Mos6502::fetchNextOpcode(Mos6502& cpu, BusResponse /*response*/)
+BusRequest Core65xx::fetchNextOpcode(Core65xx& cpu, BusResponse /*response*/)
 {
   // Fetch the next opcode
-  cpu.m_action = &Mos6502::decodeOpcode;
+  cpu.m_action = &Core65xx::decodeOpcode;
   return BusRequest::Fetch(cpu.regs.pc++);
 }
 
-BusRequest Mos6502::decodeOpcode(Mos6502& cpu, BusResponse response)
+BusRequest Core65xx::decodeOpcode(Core65xx& cpu, BusResponse response)
 {
   // Decode opcode
   Byte opcode = response.data;
@@ -571,7 +571,7 @@ BusRequest Mos6502::decodeOpcode(Mos6502& cpu, BusResponse response)
   return cpu.m_action(cpu, BusResponse{});
 }
 
-void Mos6502::setInstruction(const Instruction& instr) noexcept
+void Core65xx::setInstruction(const Instruction& instr) noexcept
 {
   m_instruction = &instr;
 
@@ -582,7 +582,7 @@ void Mos6502::setInstruction(const Instruction& instr) noexcept
   assert(m_action);
 }
 
-BusRequest Mos6502::nextOp(Mos6502& cpu, BusResponse response)
+BusRequest Core65xx::nextOp(Core65xx& cpu, BusResponse response)
 {
   assert(cpu.m_instruction);
 
@@ -597,7 +597,7 @@ BusRequest Mos6502::nextOp(Mos6502& cpu, BusResponse response)
     // Instruction complete, log the last instruction.
 
     cpu.m_instruction = nullptr;
-    cpu.m_action = &Mos6502::fetchNextOpcode;
+    cpu.m_action = &Core65xx::fetchNextOpcode;
     return fetchNextOpcode(cpu, BusResponse{});
   }
 
