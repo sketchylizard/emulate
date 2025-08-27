@@ -13,6 +13,9 @@
 #include "common/memory.h"
 #include "core65xx/core65xx.h"
 
+// temporary, remove when not needed
+#include "mos6502/mos6502.h"
+
 using namespace Common;
 
 struct Mapping
@@ -245,7 +248,7 @@ TEST_CASE("Core65xx: Functional_tests", "[.]")
     std::vector<Byte> ram(data.begin(), data.end());  // 64 KiB RAM initialized to zero
     Mapping memory{Address{0x0000}, Address{0xFFFF}, std::span<Byte>(ram)};
 
-    Core65xx cpu;
+    Core65xx cpu(mos6502::GetInstructions());
 
     auto programStart = Address{0x0400};
 

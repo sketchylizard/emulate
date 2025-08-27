@@ -6,10 +6,13 @@
 #include <cstdint>
 #include <format>
 #include <iostream>
+#include <span>
 #include <string_view>
-#include <tuple>
 
 #include "common/Bus.h"
+
+inline constexpr Common::Byte c_ZeroPage{0x00};
+inline constexpr Common::Byte c_StackPage{0x01};
 
 class Core65xx
 {
@@ -85,7 +88,7 @@ public:
     Byte hi = 0;
   };
 
-  Core65xx() noexcept;
+  Core65xx(std::span<const Instruction, 256> isa) noexcept;
 
   [[nodiscard]] BusRequest Tick(BusResponse response) noexcept;
 
@@ -124,6 +127,8 @@ private:
 
   friend struct AddressMode;
   friend struct Operations;
+
+  std::span<const Instruction, 256> m_instructions;
 
   const Instruction* m_instruction = nullptr;
   StateFunc m_action = &Core65xx::fetchNextOpcode;

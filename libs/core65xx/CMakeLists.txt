@@ -17,6 +17,6 @@ if(BUILD_TESTING)
     tests/address_mode_test.cpp
   )
 
-  target_link_libraries(core65xxTest PRIVATE core65xx Catch2::Catch2WithMain)
+  target_link_libraries(core65xxTest PRIVATE core65xx isa-mos6502 Catch2::Catch2WithMain)
   target_include_directories(core65xxTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 endif()

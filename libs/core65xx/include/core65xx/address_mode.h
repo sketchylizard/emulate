@@ -10,9 +10,6 @@ enum class Index
   Y
 };
 
-inline constexpr Common::Byte c_ZeroPage{0x00};
-inline constexpr Common::Byte c_StackPage{0x01};
-
 struct AddressMode
 {
   static Common::BusRequest acc(Core65xx& cpu, Common::BusResponse response);
