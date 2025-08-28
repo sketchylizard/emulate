@@ -6,9 +6,14 @@
 
 #include "common/Bus.h"
 #include "common/address.h"
-#include "core65xx/core65xx.h"
+#include "cpu6502/state.h"
+
+namespace cpu6502
+{
 
 struct mos6502
 {
-  static std::span<const Core65xx::Instruction, 256> GetInstructions() noexcept;
+  static std::span<const Instruction, 256> GetInstructions() noexcept;
 };
+
+}  // namespace cpu6502

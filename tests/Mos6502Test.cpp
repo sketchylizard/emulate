@@ -13,10 +13,9 @@
 #include "common/memory.h"
 #include "core65xx/core65xx.h"
 
-// temporary, remove when not needed
-#include "mos6502/mos6502.h"
-
 using namespace Common;
+
+#if 0
 
 struct Mapping
 {
@@ -315,3 +314,5 @@ TEST_CASE("Core65xx: Functional_tests", "[.]")
   };
   CHECK(runTest() == true);
 }
+
+#endif

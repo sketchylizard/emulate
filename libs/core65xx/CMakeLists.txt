@@ -1,7 +1,5 @@
 add_library(core65xx STATIC
-  include/core65xx/address_mode.h
   include/core65xx/core65xx.h
-  src/address_mode.cpp
   src/core65xx.cpp
 )
 
@@ -14,9 +12,9 @@ if(BUILD_TESTING)
   find_package(Catch2 REQUIRED)
 
   add_executable(core65xxTest
-    tests/address_mode_test.cpp
+    tests/core_cpu_test.cpp
   )
 
-  target_link_libraries(core65xxTest PRIVATE core65xx isa-mos6502 Catch2::Catch2WithMain)
+  target_link_libraries(core65xxTest PRIVATE core65xx cpu6502 Catch2::Catch2WithMain)
   target_include_directories(core65xxTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 endif()
