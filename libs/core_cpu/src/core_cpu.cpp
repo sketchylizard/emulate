@@ -1,4 +1,4 @@
-#include "core65xx/core65xx.h"
+#include "core_cpu/core_cpu.h"
 
 #include <algorithm>
 #include <array>
@@ -17,7 +17,7 @@
 using namespace Common;
 
 #if 0
-BusRequest Core65xx::nextOp(Core65xx& cpu, BusResponse response)
+BusRequest CoreCpu::nextOp(CoreCpu& cpu, BusResponse response)
 {
   assert(cpu.m_instruction);
 
@@ -32,7 +32,7 @@ BusRequest Core65xx::nextOp(Core65xx& cpu, BusResponse response)
     // Instruction complete, log the last instruction.
 
     cpu.m_instruction = nullptr;
-    cpu.m_action = &Core65xx::fetchNextOpcode;
+    cpu.m_action = &CoreCpu::fetchNextOpcode;
     return fetchNextOpcode(cpu, BusResponse{});
   }
 

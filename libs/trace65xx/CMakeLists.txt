@@ -6,4 +6,4 @@ add_library(trace65xx STATIC
 )
 
 target_include_directories(trace65xx PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_link_libraries(trace65xx PUBLIC core65xx)
+target_link_libraries(trace65xx PUBLIC core_cpu)

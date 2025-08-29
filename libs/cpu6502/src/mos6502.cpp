@@ -250,7 +250,7 @@ static Common::BusRequest pha(State& cpu, Common::BusResponse /*response*/)
 {
   cpu.next = [](State& cpu1, Common::BusResponse /*response1*/)
   {
-    // todo cpu1.next = &Core65xx::nextOp;
+    // todo cpu1.next = &CoreCpu::nextOp;
     cpu1.lo = cpu1.sp--;
     cpu1.hi = 0x01;
     return Common::BusRequest::Write(Common::MakeAddress(cpu1.lo, cpu1.hi), cpu1.a);

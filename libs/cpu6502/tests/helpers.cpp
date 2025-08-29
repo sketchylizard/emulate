@@ -10,17 +10,7 @@
 
 using State = cpu6502::State;
 
-namespace Common
-{
-
-std::ostream& operator<<(std::ostream& os, Common::Address addr)
-{
-  os << std::hex << std::setfill('0') << std::setw(4) << static_cast<int>(addr);
-  return os;
-}
-}  // namespace Common
-
-bool execute(State& state, std::span<const State::Microcode> microcode, std::span<const Cycle> cycles)
+bool execute(State& state, std::span<const State::Microcode> microcode, std::span<const Common::Cycle> cycles)
 {
   state.next = nullptr;
   size_t microcodeIndex = 0;

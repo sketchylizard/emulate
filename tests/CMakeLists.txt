@@ -11,6 +11,6 @@ if(BUILD_TESTING)
     KlausFunctional.h
   )
 
-  target_link_libraries(integrationTest PRIVATE core65xx cpu6502 common Catch2::Catch2WithMain incbin::incbin)
+  target_link_libraries(integrationTest PRIVATE core_cpu cpu6502 common Catch2::Catch2WithMain incbin::incbin)
   target_include_directories(integrationTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 endif()

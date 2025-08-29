@@ -101,6 +101,8 @@ constexpr Address operator""_addr(unsigned long long value) noexcept
   return Address{static_cast<uint16_t>(value)};
 }
 
+std::ostream& operator<<(std::ostream& os, Common::Address addr);
+
 }  // namespace Common
 
 // Specialize formatter for Address and Control

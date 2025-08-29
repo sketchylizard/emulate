@@ -53,9 +53,14 @@ constexpr bool operator!(Control value) noexcept
 
 struct BusRequest
 {
-  Address address;
-  Byte data;
-  Control control;
+  Address address = Address{0};
+  Byte data = 0;
+  Control control = Control::None;
+
+  constexpr explicit operator bool() const noexcept
+  {
+    return address != Address{0} || data != 0 || control != Control::None;
+  }
 
   constexpr bool isRead() const noexcept
   {
@@ -108,6 +113,14 @@ constexpr bool IsSamePage(Address lhs, Address rhs) noexcept
 {
   return (static_cast<uint16_t>(lhs) & 0xFF00) == (static_cast<uint16_t>(rhs) & 0xFF00);
 }
+
+// Testing helper. A Cycle represents one clock cycle of the CPU, including the input data (from
+// memory or external device) and the expected bus request output.
+struct Cycle
+{
+  Common::Byte input;  // Input data for this cycle
+  Common::BusRequest expected;  // Expected bus request output
+};
 
 }  // namespace Common
 

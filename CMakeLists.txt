@@ -16,7 +16,7 @@ option(CMAKE_COMPILE_WARNING_AS_ERROR
   "Treat all compiler warnings as errors" ON)
 
 add_subdirectory(libs/common)
-add_subdirectory(libs/core65xx)
+add_subdirectory(libs/core_cpu)
 add_subdirectory(libs/cpu6502)
 
 # add_subdirectory(libs/isa-wdc65c02)

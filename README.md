@@ -37,10 +37,10 @@ EmuLate/
 │       │   └── common
 │       ├── src
 │       └── test
-├── Core65xx
+├── CoreCpu
 │   ├── CMakeLists.txt
 │   ├── include
-│   │   └── Core65xx
+│   │   └── CoreCpu
 │   ├── src
 │   └── test
 ```
