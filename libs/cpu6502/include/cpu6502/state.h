@@ -44,10 +44,10 @@ struct State
 
   struct Instruction
   {
-    Common::Byte opcode;
-    const char* mnemonic;
+    Common::Byte opcode = 0;
+    const char* mnemonic = "???";
     AddressModeType addressMode = AddressModeType::Implied;
-    Microcode ops[7];  // sequence of microcode functions to execute
+    Microcode ops[7] = {};  // sequence of microcode functions to execute
   };
 
   // Flag helpers

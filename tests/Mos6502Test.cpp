@@ -15,8 +15,6 @@
 
 using namespace Common;
 
-#if 0
-
 struct Mapping
 {
   Address start;
@@ -237,6 +235,8 @@ private:
 
   std::span<Mapping> m_mappings;
 };
+
+#if 0
 
 TEST_CASE("Core65xx: Functional_tests", "[.]")
 {

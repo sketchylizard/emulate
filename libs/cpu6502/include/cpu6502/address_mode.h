@@ -96,10 +96,10 @@ struct AddressMode
     return Common::BusRequest::Read(Common::MakeAddress(cpu.lo, 0x00));
   }
 
-  static Common::BusRequest rel(State& cpu, Common::BusResponse response);
-  static Common::BusRequest rel1(State& cpu, Common::BusResponse response);
-
   static constexpr State::Microcode immediate[] = {  //
+      &AddressMode::requestOperandLow};
+
+  static constexpr State::Microcode relative[] = {  //
       &AddressMode::requestOperandLow};
 
   static constexpr State::Microcode zeroPage[] = {  //
@@ -147,7 +147,7 @@ struct AddressMode
       case AddressMode::Indirect: throw std::out_of_range("Not implemented yet");
       case AddressMode::IndirectZpX: throw std::out_of_range("Not implemented yet");
       case AddressMode::IndirectZpY: throw std::out_of_range("Not implemented yet");
-      case AddressMode::Relative: throw std::out_of_range("Not implemented yet");
+      case AddressMode::Relative: return relative;
     }
     throw std::out_of_range("Unknown addressing mode");
   }

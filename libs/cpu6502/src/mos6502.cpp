@@ -189,49 +189,6 @@ static Common::BusRequest jmpIndirect(State& cpu, Common::BusResponse /*response
   return Common::BusRequest::Read(cpu.pc++);
 }
 
-// Specific branch instruction implementations
-#if 0
-static Common::BusRequest bpl(State& cpu, Common::BusResponse response)
-{
-  return branch<State::Flag::Negative, false>(cpu, response);  // Branch if N=0
-}
-
-static Common::BusRequest bmi(State& cpu, Common::BusResponse response)
-{
-  return branch<State::Flag::Negative, true>(cpu, response);  // Branch if N=1
-}
-
-static Common::BusRequest bcc(State& cpu, Common::BusResponse response)
-{
-  return branch<State::Flag::Carry, false>(cpu, response);  // Branch if C=0
-}
-
-static Common::BusRequest bcs(State& cpu, Common::BusResponse response)
-{
-  return branch<State::Flag::Carry, true>(cpu, response);  // Branch if C=1
-}
-
-static Common::BusRequest bne(State& cpu, Common::BusResponse response)
-{
-  return branch<State::Flag::Zero, false>(cpu, response);  // Branch if Z=0
-}
-
-static Common::BusRequest beq(State& cpu, Common::BusResponse response)
-{
-  return branch<State::Flag::Zero, true>(cpu, response);  // Branch if Z=1
-}
-
-static Common::BusRequest bvc(State& cpu, Common::BusResponse response)
-{
-  return branch<State::Flag::Overflow, false>(cpu, response);  // Branch if V=0
-}
-
-static Common::BusRequest bvs(State& cpu, Common::BusResponse response)
-{
-  return branch<State::Flag::Overflow, true>(cpu, response);  // Branch if V=1
-}
-#endif
-
 template<Common::Byte State::* reg>
   requires(reg != &State::a)
 static Common::BusRequest increment(State& cpu, Common::BusResponse /*response*/)
@@ -325,6 +282,7 @@ static Common::BusRequest pla(State& cpu, Common::BusResponse /*response*/)
 
 namespace
 {
+
 using InstructionTable = std::array<State::Instruction, 256>;
 
 template<State::AddressModeType mode>
@@ -371,14 +329,9 @@ constexpr void add(Common::Byte opcode, const char* mnemonic, std::initializer_l
 static constexpr auto c_instructions = []()
 {
   std::array<Instruction, 256> table{};
-  // Fill with default NOPs or empty instructions
-  for (size_t i = 0; i < 256; ++i)
-  {
-    table[i].mnemonic = "???";
-    table[i].opcode = static_cast<Common::Byte>(i);
-  }
 
   using AM = State::AddressModeType;
+  using Flag = State::Flag;
 
   // Insert actual instructions by opcode
   // add(0x00, "BRK", table, {brk<false>});
@@ -420,13 +373,13 @@ static constexpr auto c_instructions = []()
   add<AM::AbsoluteX>(0xBC, "LDY", {load<&State::y>}, table);
 
   // Flag operations
-  add<AM::Implied>(0x18, "CLC", {flagOp<State::Flag::Carry, false>}, table);
-  add<AM::Implied>(0x38, "SEC", {flagOp<State::Flag::Carry, true>}, table);
-  add<AM::Implied>(0x58, "CLI", {flagOp<State::Flag::Interrupt, false>}, table);
-  add<AM::Implied>(0x78, "SEI", {flagOp<State::Flag::Interrupt, true>}, table);
-  add<AM::Implied>(0xB8, "CLV", {flagOp<State::Flag::Overflow, false>}, table);
-  add<AM::Implied>(0xD8, "CLD", {flagOp<State::Flag::Decimal, false>}, table);
-  add<AM::Implied>(0xF8, "SED", {flagOp<State::Flag::Decimal, true>}, table);
+  add<AM::Implied>(0x18, "CLC", {flagOp<Flag::Carry, false>}, table);
+  add<AM::Implied>(0x38, "SEC", {flagOp<Flag::Carry, true>}, table);
+  add<AM::Implied>(0x58, "CLI", {flagOp<Flag::Interrupt, false>}, table);
+  add<AM::Implied>(0x78, "SEI", {flagOp<Flag::Interrupt, true>}, table);
+  add<AM::Implied>(0xB8, "CLV", {flagOp<Flag::Overflow, false>}, table);
+  add<AM::Implied>(0xD8, "CLD", {flagOp<Flag::Decimal, false>}, table);
+  add<AM::Implied>(0xF8, "SED", {flagOp<Flag::Decimal, true>}, table);
 
   // STA variations
   add<AM::ZeroPage>(0x85, "STA", {store<&State::a>}, table);
@@ -451,14 +404,14 @@ static constexpr auto c_instructions = []()
   add<AM::Implied>(0x6C, "JMP", {jmpIndirect}, table);
 
   // Branch instructions
-  // add<AM::Relative>(0xD0, "BNE", {bne}, table);
-  // add<AM::Relative>(0xF0, "BEQ", {beq}, table);
-  // add<AM::Relative>(0x10, "BPL", {bpl}, table);
-  // add<AM::Relative>(0x30, "BMI", {bmi}, table);
-  // add<AM::Relative>(0x90, "BCC", {bcc}, table);
-  // add<AM::Relative>(0xB0, "BCS", {bcs}, table);
-  // add<AM::Relative>(0x50, "BVC", {bvc}, table);
-  // add<AM::Relative>(0x70, "BVS", {bvs}, table);
+  add<AM::Relative>(0xD0, "BNE", {branch<Flag::Zero, false>}, table);
+  add<AM::Relative>(0xF0, "BEQ", {branch<Flag::Zero, true>}, table);
+  add<AM::Relative>(0x10, "BPL", {branch<Flag::Negative, false>}, table);
+  add<AM::Relative>(0x30, "BMI", {branch<Flag::Negative, true>}, table);
+  add<AM::Relative>(0x90, "BCC", {branch<Flag::Carry, false>}, table);
+  add<AM::Relative>(0xB0, "BCS", {branch<Flag::Carry, true>}, table);
+  add<AM::Relative>(0x50, "BVC", {branch<Flag::Overflow, false>}, table);
+  add<AM::Relative>(0x70, "BVS", {branch<Flag::Overflow, true>}, table);
 
   // Increment and Decrement instructions
   add<AM::Implied>(0xE8, "INX", {increment<&State::x>}, table);
