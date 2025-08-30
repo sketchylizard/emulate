@@ -1,4 +1,6 @@
+#include <array>
 #include <catch2/catch_test_macros.hpp>
+#include <initializer_list>
 #include <iomanip>
 #include <iostream>
 #include <span>
@@ -6,29 +8,41 @@
 #include <string_view>
 #include <vector>
 
+#include "common/Bus.h"
 #include "common/address.h"
 #include "common/address_string_maker.h"
+#include "common/microcode.h"
 #include "common/microcode_pump.h"
 
 using namespace Common;
 
+// In common/test_helpers.h or wherever you put the test utilities
+// Helper function for readable output
+std::ostream& operator<<(std::ostream& os, const BusRequest& value)
+{
+  if (value.isSync())
+  {
+    os << std::format("Bus read(${:04x})", value.address);
+  }
+  else if (value.isRead())
+  {
+    os << std::format("Bus read(${:04x})", value.address);
+  }
+  else if (value.isWrite())
+  {
+    os << std::format("Bus write(${:04x}, ${:02x})", value.address, value.data);
+  }
+  os << "NONE";
+  return os;
+}
+
+
+// CPU state
 struct TestState
 {
-  using Microcode = Common::BusRequest (*)(TestState&, Common::BusResponse response);
-
-  struct Instruction
-  {
-    Common::Byte opcode = 0;
-    const char* mnemonic = "???";
-    Microcode ops[7] = {};  // sequence of microcode functions to execute
-  };
-
-  Common::Address pc{0};
+  Address pc{0};
   Byte a = 0;
   Byte x = 0;
-
-  // Next microcode action to perform, or null if none
-  Microcode next = nullptr;
 
   // Test tracking variables
   std::vector<std::string> executionTrace;
@@ -36,190 +50,295 @@ struct TestState
   int step2Called = 0;
   int step3Called = 0;
   bool scheduledCalled = false;
+};
 
-  void reset()
+struct TestCpuDefinition : MicrocodeDefinition<TestState, BusResponse, BusRequest>
+{
+  static constexpr int c_maxOps = 10;
+
+  // We only have one opcode for testing
+  static Byte opcode;
+  static std::pair<Microcode*, Microcode*> microcodes;
+
+  static Response fetchNextOpcode(State& state, BusResponse) noexcept
   {
-    executionTrace.clear();
-    step1Called = step2Called = step3Called = 0;
-    scheduledCalled = false;
+    return {BusRequest::Fetch(state.pc++)};
+  }
+
+  static std::pair<Microcode*, Microcode*> decodeOpcode(Common::Byte incomingOpcode) noexcept
+  {
+    return incomingOpcode == opcode ? microcodes : std::pair{nullptr, nullptr};
   }
 };
 
+Common::Byte TestCpuDefinition::opcode;
+std::pair<TestCpuDefinition::Microcode*, TestCpuDefinition::Microcode*> TestCpuDefinition::microcodes;
+
+
+using State = TestCpuDefinition::State;
+using Microcode = TestCpuDefinition::Microcode;
+using BusRequest = TestCpuDefinition::BusRequest;
+using BusResponse = TestCpuDefinition::BusResponse;
+using MicrocodeResponse = TestCpuDefinition::Response;
+
+using namespace Common;
+
 // Test microcode functions
-namespace TestMicrocode
-{
-
-Common::BusRequest requestOperand(TestState& state, Common::BusResponse /*response*/)
-{
-  state.executionTrace.push_back("requestOperand");
-  return Common::BusRequest::Read(state.pc++);
-}
-
-Common::BusRequest step1(TestState& state, Common::BusResponse /*response*/)
+auto step1 = [](TestState& state, BusResponse /*response*/) -> TestCpuDefinition::Response
 {
   state.step1Called++;
   state.executionTrace.push_back("step1");
-  return Common::BusRequest::Read(0x1000_addr);
-}
+  return {BusRequest::Read(state.pc), nullptr};
+};
 
-Common::BusRequest step2(TestState& state, Common::BusResponse /*response*/)
+auto step2 = [](TestState& state, BusResponse /*response*/) -> TestCpuDefinition::Response
 {
   state.step2Called++;
   state.executionTrace.push_back("step2");
-  return Common::BusRequest::Read(0x2000_addr);
-}
+  return {BusRequest::Read(state.pc), nullptr};
+};
 
-Common::BusRequest step3(TestState& state, Common::BusResponse /*response*/)
+auto step3 = [](TestState& state, BusResponse /*response*/) -> TestCpuDefinition::Response
 {
   state.step3Called++;
   state.executionTrace.push_back("step3");
-  return Common::BusRequest::Read(0x3000_addr);
-}
+  return {BusRequest::Read(state.pc), nullptr};
+};
 
-Common::BusRequest scheduledStep(TestState& state, Common::BusResponse /*response*/)
+auto scheduledStep = [](TestState& state, BusResponse /*response*/) -> TestCpuDefinition::Response
 {
   state.scheduledCalled = true;
-  state.executionTrace.push_back("scheduledStep");
-  return Common::BusRequest::Read(0x5000_addr);
-}
+  state.executionTrace.push_back("scheduled");
+  return {BusRequest::Read(state.pc), nullptr};
+};
 
-Common::BusRequest scheduleNext(TestState& state, Common::BusResponse /*response*/)
+// Test fixture to set up microcode arrays
+class MicrocodePumpTestFixture
 {
-  state.executionTrace.push_back("scheduleNext");
-  state.next = &scheduledStep;
-  return Common::BusRequest::Read(0x4000_addr);
-}
+public:
+  std::array<TestCpuDefinition::Microcode, TestCpuDefinition::c_maxOps> microcodeArray;
+  TestState state;
+  MicrocodePump<TestCpuDefinition> pump;
 
-Common::BusRequest loadA(TestState& state, Common::BusResponse response)
-{
-  state.a = response.data;
-  state.executionTrace.push_back("loadA");
-  return Common::BusRequest{};  // No more bus activity
-}
-}  // namespace TestMicrocode
-
-// In common/test_helpers.h or wherever you put the test utilities
-// Helper function for readable output
-std::string formatBusRequest(const Common::BusRequest& request)
-{
-  std::ostringstream oss;
-  oss << std::hex << std::setfill('0');
-
-  if (request.isRead())
+  void setupMicrocodes(std::initializer_list<TestCpuDefinition::Microcode> ops)
   {
-    oss << "READ($" << request.address << ")";
-    if (request.isSync())
-      oss << " SYNC";
-  }
-  else if (request.isWrite())
-  {
-    oss << "WRITE($" << request.address << ", $" << std::setw(2) << static_cast<int>(request.data) << ")";
-  }
-  else
-  {
-    oss << "NONE";
+    microcodeArray.fill(nullptr);
+    size_t i = 0;
+    for (auto op : ops)
+    {
+      microcodeArray[i++] = op;
+    }
+    TestCpuDefinition::microcodes = {microcodeArray.data(), microcodeArray.data() + ops.size()};
   }
 
-  return oss.str();
-}
-
-// In common/test_helpers.h
-template<typename CpuType>
-bool execute(CpuType& cpu, Common::Byte input, Common::BusRequest expected)
-{
-  Common::BusRequest actual = cpu.tick(Common::BusResponse{input});
-
-  if (actual != expected)
+  void resetState()
   {
-    UNSCOPED_INFO("Cycle mismatch:");
-    UNSCOPED_INFO("  Expected: " << formatBusRequest(expected));
-    UNSCOPED_INFO("  Actual:   " << formatBusRequest(actual));
-    UNSCOPED_INFO("  Input:    $" << std::hex << std::setfill('0') << std::setw(2) << static_cast<int>(input));
-    return false;
+    state = TestState{};
+  }
+};
+
+TEST_CASE_METHOD(MicrocodePumpTestFixture, "MicrocodePump startup behavior")
+{
+  SECTION("First tick issues opcode fetch")
+  {
+    TestCpuDefinition::opcode = 0x42;
+    setupMicrocodes({step1});
+
+    auto request = pump.tick(state, BusResponse{0x00});
+
+    REQUIRE(request.isSync());  // Should be a fetch (SYNC) request
+    REQUIRE(request.address == 0_addr);
+    REQUIRE(state.pc == 1_addr);  // PC should be incremented by fetchNextOpcode
+    REQUIRE(pump.microcodeCount() == 1);
   }
 
-  return true;
-}
-
-TEST_CASE("MicrocodePump basic execution", "[corecpu]")
-{
-  // Create instruction table
-  std::array<TestState::Instruction, 256> instructions{};
-
-  // Define a test instruction with 3 steps
-  instructions[0x42] = {
-      .opcode = 0x42, .mnemonic = "TEST", .ops = {&TestMicrocode::step1, &TestMicrocode::step2, &TestMicrocode::step3}};
-
-  MicrocodePump<TestState> cpu{instructions};
-  TestState& state = cpu.getState();
-  state.pc = 0x8000_addr;
-  state.reset();
-
-  SECTION("Execute complete instruction")
+  SECTION("Second tick decodes and executes first microcode")
   {
-    // Cycle 1: Fetch opcode
-    CHECK(execute(cpu, 0x00, Common::BusRequest::Fetch(0x8000_addr)));
-    CHECK(state.pc == 0x8001_addr);  // PC should increment
+    TestCpuDefinition::opcode = 0x42;
+    setupMicrocodes({step1});
 
-    // Cycle 2: Decode opcode 0x42 and execute step1
-    CHECK(execute(cpu, 0x42, Common::BusRequest::Read(0x1000_addr)));  // step1's address
-    CHECK(state.step1Called == 1);
+    // First tick - fetch
+    [[maybe_unused]] auto response = pump.tick(state, BusResponse{0x00});
 
-    // Cycle 3: Execute step2
-    CHECK(execute(cpu, 0x00, Common::BusRequest::Read(0x2000_addr)));  // step2's address
-    CHECK(state.step2Called == 1);
+    // Second tick - decode and execute
+    [[maybe_unused]] auto request = pump.tick(state, BusResponse{0x42});  // Send the opcode
 
-    // Cycle 4: Execute step3
-    CHECK(execute(cpu, 0x00, Common::BusRequest::Read(0x3000_addr)));  // step3's address
-    CHECK(state.step3Called == 1);
-
-    // Cycle 5: Instruction complete, fetch next opcode
-    CHECK(execute(cpu, 0x00, Common::BusRequest::Fetch(0x8001_addr)));
-
-    // Verify execution order
-    std::vector<std::string> expected = {"step1", "step2", "step3"};
-    CHECK(state.executionTrace == expected);
+    REQUIRE(state.step1Called == 1);
+    REQUIRE(state.executionTrace == std::vector<std::string>{"step1"});
+    REQUIRE(pump.microcodeCount() == 2);
   }
 }
 
-TEST_CASE("MicrocodePump scheduled microcode", "[corecpu]")
+TEST_CASE_METHOD(MicrocodePumpTestFixture, "Multi-step instruction execution")
 {
-  std::array<TestState::Instruction, 256> instructions{};
+  SECTION("Three-step instruction executes in order")
+  {
+    TestCpuDefinition::opcode = 0x55;
+    setupMicrocodes({step1, step2, step3});
 
-  instructions[0x43] = {.opcode = 0x43, .mnemonic = "SCHED", .ops = {&TestMicrocode::scheduleNext, &TestMicrocode::step2}};
+    // Fetch cycle
+    [[maybe_unused]] auto request = pump.tick(state, BusResponse{0x00});
 
-  MicrocodePump<TestState> cpu{instructions};
-  TestState& state = cpu.getState();
-  state.reset();
+    // Decode and execute step1
+    request = pump.tick(state, BusResponse{0x55});
 
-  // Fetch and decode instruction
-  static_cast<void>(cpu.tick(Common::BusResponse{0x00}));
-  static_cast<void>(cpu.tick(Common::BusResponse{0x43}));  // Execute scheduleNext
+    // Execute step2
+    request = pump.tick(state, BusResponse{0x00});
 
-  // Next tick should execute scheduled microcode, not step2
-  [[maybe_unused]] auto request = cpu.tick(Common::BusResponse{0x00});
-  CHECK(state.scheduledCalled);
-  CHECK(state.step2Called == 0);  // step2 should be skipped
+    // Execute step3
+    request = pump.tick(state, BusResponse{0x00});
 
-  // After scheduled completes, should continue with step2
-  static_cast<void>(cpu.tick(Common::BusResponse{0x00}));
-  CHECK(state.step2Called == 1);
+    REQUIRE(state.step1Called == 1);
+    REQUIRE(state.step2Called == 1);
+    REQUIRE(state.step3Called == 1);
+    REQUIRE(state.executionTrace == std::vector<std::string>{"step1", "step2", "step3"});
+    REQUIRE(pump.microcodeCount() == 4);
+  }
+
+  SECTION("After instruction completes, fetches next opcode")
+  {
+    TestCpuDefinition::opcode = 0x55;
+    setupMicrocodes({step1});
+
+    Address initialPc = state.pc;
+
+    // Complete first instruction
+    [[maybe_unused]] auto request = pump.tick(state, BusResponse{0x00});  // Fetch
+    request = pump.tick(state, BusResponse{0x55});  // Execute step1
+
+    // Next tick should fetch again
+    request = pump.tick(state, BusResponse{0x00});
+
+    REQUIRE(request.isSync());
+    REQUIRE(state.pc == initialPc + 2);  // Should have incremented twice
+  }
 }
 
-TEST_CASE("MicrocodePump instruction with data processing", "[corecpu]")
+TEST_CASE_METHOD(MicrocodePumpTestFixture, "Microcode injection")
 {
-  std::array<TestState::Instruction, 256> instructions{};
+  auto injectingStep = [](TestState& state, BusResponse /*response*/) -> TestCpuDefinition::Response
+  {
+    state.executionTrace.push_back("injecting");
+    return {BusRequest::Read(state.pc), scheduledStep};  // Inject scheduledStep
+  };
 
-  instructions[0x44] = {.opcode = 0x44, .mnemonic = "LOAD", .ops = {&TestMicrocode::requestOperand, &TestMicrocode::loadA}};
+  SECTION("Injected microcode executes before next instruction step")
+  {
+    TestCpuDefinition::opcode = 0x77;
+    setupMicrocodes({injectingStep, step2});
 
-  MicrocodePump<TestState> cpu{instructions};
-  TestState& state = cpu.getState();
-  state.reset();
+    // Fetch and decode
+    [[maybe_unused]] auto request = pump.tick(state, BusResponse{0x00});
+    request = pump.tick(state, BusResponse{0x77});  // Execute injectingStep (injects scheduledStep)
 
-  CHECK(execute(cpu, 0x00, Common::BusRequest::Fetch(0x0000_addr)));  // Fetch opcode
-  CHECK(execute(cpu, 0x44, Common::BusRequest::Read(0x0001_addr)));  // Return opcode / request operand
-  CHECK(execute(cpu, 0x99, Common::BusRequest::Fetch(0x0002_addr)));  // Return data to load / next opcode fetch
+    // Next tick should execute injected step, not step2
+    request = pump.tick(state, BusResponse{0x00});
 
-  CHECK(state.a == 0x99);
-  CHECK(state.executionTrace == std::vector<std::string>{"requestOperand", "loadA"});
+    // Then step2 should execute
+    request = pump.tick(state, BusResponse{0x00});
+
+    REQUIRE(state.scheduledCalled == true);
+    REQUIRE(state.step2Called == 1);
+    REQUIRE(state.executionTrace == std::vector<std::string>{"injecting", "scheduled", "step2"});
+  }
+
+  SECTION("Multiple injections queue properly")
+  {
+    auto doubleInjectingStep = [](TestState& state, BusResponse /*response*/) -> TestCpuDefinition::Response
+    {
+      state.executionTrace.push_back("double_injecting");
+      // Return injection that will inject again
+      return {BusRequest::Read(state.pc), +[](TestState& state1, BusResponse) -> TestCpuDefinition::Response
+          {
+            state1.executionTrace.push_back("first_injected");
+            return {BusRequest::Read(state1.pc), scheduledStep};  // Chain another injection
+          }};
+    };
+
+    TestCpuDefinition::opcode = 0x88;
+    setupMicrocodes({doubleInjectingStep});
+
+    [[maybe_unused]] auto request = pump.tick(state, BusResponse{0x00});  // Fetch
+    request = pump.tick(state, BusResponse{0x88});  // Execute doubleInjectingStep
+    request = pump.tick(state, BusResponse{0x00});  // Execute first injection
+    request = pump.tick(state, BusResponse{0x00});  // Execute second injection
+
+    REQUIRE(state.executionTrace == std::vector<std::string>{"double_injecting", "first_injected", "scheduled"});
+  }
+}
+
+TEST_CASE_METHOD(MicrocodePumpTestFixture, "Unknown opcode handling")
+{
+  TestCpuDefinition::opcode = 0x42;  // Only recognize this opcode
+  setupMicrocodes({step1});
+
+  // Fetch
+  auto request1 = pump.tick(state, BusResponse{0x00});
+  REQUIRE(request1.isSync());
+
+  // Decode unknown opcode - should be no-op, immediately fetch next
+  auto request2 = pump.tick(state, BusResponse{0x99});  // Unknown opcode
+
+  REQUIRE(request2.isSync());  // Should immediately fetch next opcode
+  REQUIRE(state.executionTrace.empty());  // No steps executed
+  REQUIRE(state.step1Called == 0);  // step1 should not have been called
+  REQUIRE(pump.microcodeCount() == 2);  // Two microcode operations: fetch + fetch again
+}
+
+TEST_CASE_METHOD(MicrocodePumpTestFixture, "Empty instruction handling")
+{
+  TestCpuDefinition::opcode = 0x42;
+  setupMicrocodes({});  // No microcodes
+
+  // Fetch
+  [[maybe_unused]] auto request = pump.tick(state, BusResponse{0x00});
+
+  // Decode empty instruction - should immediately fetch next
+  request = pump.tick(state, BusResponse{0x42});
+
+  REQUIRE(request.isSync());  // Should fetch next opcode immediately
+  REQUIRE(state.executionTrace.empty());  // No steps executed
+}
+
+TEST_CASE_METHOD(MicrocodePumpTestFixture, "Microcode counter accuracy")
+{
+  TestCpuDefinition::opcode = 0x42;
+  setupMicrocodes({step1, step2});
+
+  REQUIRE(pump.microcodeCount() == 0);
+
+  [[maybe_unused]] auto request = pump.tick(state, BusResponse{0x00});  // Fetch
+  REQUIRE(pump.microcodeCount() == 1);
+
+  request = pump.tick(state, BusResponse{0x42});  // Decode + step1
+  REQUIRE(pump.microcodeCount() == 2);
+
+  request = pump.tick(state, BusResponse{0x00});  // step2
+  REQUIRE(pump.microcodeCount() == 3);
+
+  request = pump.tick(state, BusResponse{0x00});  // Next fetch
+  REQUIRE(pump.microcodeCount() == 4);
+}
+
+TEST_CASE_METHOD(MicrocodePumpTestFixture, "State isolation")
+{
+  TestCpuDefinition::opcode = 0x42;
+  setupMicrocodes({step1});
+
+  TestState state1, state2;
+  state1.pc = 0x1000_addr;
+  state1.a = 0x11;
+
+  state2.pc = 0x2000_addr;
+  state2.a = 0x22;
+
+  // Same pump, different states
+  [[maybe_unused]] auto request = pump.tick(state1, BusResponse{0x00});
+  request = pump.tick(state2, BusResponse{0x00});
+
+  REQUIRE(state1.pc == 0x1001_addr);
+  REQUIRE(state1.a == 0x11);
+
+  REQUIRE(state2.pc == 0x2001_addr);
+  REQUIRE(state2.a == 0x22);
 }
