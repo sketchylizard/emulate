@@ -11,7 +11,7 @@
 #include "common/address.h"
 #include "common/hex.h"
 #include "common/memory.h"
-#include "core_cpu/core_cpu.h"
+#include "common/microcode_pump.h"
 
 using namespace Common;
 

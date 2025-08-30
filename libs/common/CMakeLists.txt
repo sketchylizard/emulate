@@ -6,6 +6,8 @@ add_library(common STATIC
   include/common/Bus.h
   include/common/hex.h
   include/common/memory.h
+  include/common/microcode_pump.h
+  src/microcode_pump.cpp
   src/address.cpp
   src/Bus.cpp
   src/hex.cpp
@@ -17,6 +19,8 @@ target_include_directories(common PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 if(BUILD_TESTING)
   add_executable(commonTest
     test/address_test.cpp
+    test/memory_test.cpp
+    test/microcode_pump_test.cpp
   )
 
   target_link_libraries(commonTest PRIVATE common Catch2::Catch2WithMain util)

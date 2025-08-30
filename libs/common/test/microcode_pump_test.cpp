@@ -8,7 +8,7 @@
 
 #include "common/address.h"
 #include "common/address_string_maker.h"
-#include "core_cpu/core_cpu.h"
+#include "common/microcode_pump.h"
 
 using namespace Common;
 
