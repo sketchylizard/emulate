@@ -4,8 +4,8 @@
 #include <span>
 #include <string_view>
 
-#include "common/Bus.h"
 #include "common/address.h"
+#include "common/bus.h"
 #include "cpu6502/state.h"
 
 namespace cpu6502

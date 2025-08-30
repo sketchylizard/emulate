@@ -3,9 +3,9 @@
 #include <catch2/catch_all.hpp>
 #include <iomanip>
 
-#include "common/Bus.h"
 #include "common/address.h"
 #include "common/address_string_maker.h"
+#include "common/bus.h"
 #include "cpu6502/state.h"
 
 using State = cpu6502::State;

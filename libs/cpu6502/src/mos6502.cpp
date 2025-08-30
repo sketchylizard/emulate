@@ -1,7 +1,7 @@
 #include "cpu6502/mos6502.h"
 
-#include "common/Bus.h"
 #include "common/address.h"
+#include "common/bus.h"
 #include "cpu6502/address_mode.h"
 #include "cpu6502/state.h"
 

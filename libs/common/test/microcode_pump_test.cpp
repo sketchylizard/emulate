@@ -8,9 +8,9 @@
 #include <string_view>
 #include <vector>
 
-#include "common/Bus.h"
 #include "common/address.h"
 #include "common/address_string_maker.h"
+#include "common/bus.h"
 #include "common/microcode.h"
 #include "common/microcode_pump.h"
 

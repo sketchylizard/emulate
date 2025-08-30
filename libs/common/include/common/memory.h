@@ -7,8 +7,8 @@
 #include <string>
 #include <vector>
 
-#include "common/Bus.h"
 #include "common/address.h"
+#include "common/bus.h"
 
 namespace Common
 {

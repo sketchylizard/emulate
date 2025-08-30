@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <span>
 
-#include "common/Bus.h"
+#include "common/bus.h"
 #include "cpu6502/state.h"
 
 namespace cpu6502

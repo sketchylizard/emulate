@@ -2,8 +2,8 @@
 
 #include <span>
 
-#include "common/Bus.h"
 #include "common/address.h"
+#include "common/bus.h"
 #include "cpu6502/state.h"
 
 // Execute a sequence of microcode functions against a series of cycles, verifying

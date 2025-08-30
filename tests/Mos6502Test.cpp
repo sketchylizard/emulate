@@ -7,8 +7,8 @@
 #include <vector>  // for std::variant
 
 #include "KlausFunctional.h"
-#include "common/Bus.h"
 #include "common/address.h"
+#include "common/bus.h"
 #include "common/hex.h"
 #include "common/memory.h"
 #include "common/microcode_pump.h"
