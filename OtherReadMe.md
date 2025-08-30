@@ -64,7 +64,7 @@ struct Instruction
 - Decent tests for 6502 addressing modes
 - Many opcodes defined but not well tested
 - Working on CoreCPU class with tick() function and instruction sequencing
-- Added null state to BusRequest for instruction completion signaling. CoreCpu interprets a null bus request as a request to fetch the next opcode and will insert a fetch into the stream.
+- Added null state to BusRequest for instruction completion signaling. MicrocodePump interprets a null bus request as a request to fetch the next opcode and will insert a fetch into the stream.
 
 ## Next Steps:
 

@@ -26,24 +26,7 @@ EmuLate is a multi-system emulator focused on the legendary 6502 microprocessor 
 
 EmuLate is designed with modularity in mind:
 
-```
-EmuLate/
-.
-├── CMakeLists.txt
-├── libs
-│   └── common
-│       ├── CMakeLists.txt
-│       ├── include
-│       │   └── common
-│       ├── src
-│       └── test
-├── CoreCpu
-│   ├── CMakeLists.txt
-│   ├── include
-│   │   └── CoreCpu
-│   ├── src
-│   └── test
-```
+TBD
 
 ## 🎮 Why EmuLate?
 

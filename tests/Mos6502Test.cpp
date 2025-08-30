@@ -238,7 +238,7 @@ private:
 
 #if 0
 
-TEST_CASE("CoreCpu: Functional_tests", "[.]")
+TEST_CASE("MicrocodePump: Functional_tests", "[.]")
 {
   auto runTest = []()
   {
@@ -247,7 +247,7 @@ TEST_CASE("CoreCpu: Functional_tests", "[.]")
     std::vector<Byte> ram(data.begin(), data.end());  // 64 KiB RAM initialized to zero
     Mapping memory{Address{0x0000}, Address{0xFFFF}, std::span<Byte>(ram)};
 
-    CoreCpu cpu(mos6502::GetInstructions());
+    MicrocodePump cpu(mos6502::GetInstructions());
 
     auto programStart = Address{0x0400};
 

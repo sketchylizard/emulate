@@ -141,7 +141,7 @@ bool execute(CpuType& cpu, Common::Byte input, Common::BusRequest expected)
   return true;
 }
 
-TEST_CASE("CoreCpu basic execution", "[corecpu]")
+TEST_CASE("MicrocodePump basic execution", "[corecpu]")
 {
   // Create instruction table
   std::array<TestState::Instruction, 256> instructions{};
@@ -150,7 +150,7 @@ TEST_CASE("CoreCpu basic execution", "[corecpu]")
   instructions[0x42] = {
       .opcode = 0x42, .mnemonic = "TEST", .ops = {&TestMicrocode::step1, &TestMicrocode::step2, &TestMicrocode::step3}};
 
-  CoreCpu<TestState> cpu{instructions};
+  MicrocodePump<TestState> cpu{instructions};
   TestState& state = cpu.getState();
   state.pc = 0x8000_addr;
   state.reset();
@@ -182,13 +182,13 @@ TEST_CASE("CoreCpu basic execution", "[corecpu]")
   }
 }
 
-TEST_CASE("CoreCpu scheduled microcode", "[corecpu]")
+TEST_CASE("MicrocodePump scheduled microcode", "[corecpu]")
 {
   std::array<TestState::Instruction, 256> instructions{};
 
   instructions[0x43] = {.opcode = 0x43, .mnemonic = "SCHED", .ops = {&TestMicrocode::scheduleNext, &TestMicrocode::step2}};
 
-  CoreCpu<TestState> cpu{instructions};
+  MicrocodePump<TestState> cpu{instructions};
   TestState& state = cpu.getState();
   state.reset();
 
@@ -206,13 +206,13 @@ TEST_CASE("CoreCpu scheduled microcode", "[corecpu]")
   CHECK(state.step2Called == 1);
 }
 
-TEST_CASE("CoreCpu instruction with data processing", "[corecpu]")
+TEST_CASE("MicrocodePump instruction with data processing", "[corecpu]")
 {
   std::array<TestState::Instruction, 256> instructions{};
 
   instructions[0x44] = {.opcode = 0x44, .mnemonic = "LOAD", .ops = {&TestMicrocode::requestOperand, &TestMicrocode::loadA}};
 
-  CoreCpu<TestState> cpu{instructions};
+  MicrocodePump<TestState> cpu{instructions};
   TestState& state = cpu.getState();
   state.reset();
 

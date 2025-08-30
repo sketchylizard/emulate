@@ -13,7 +13,7 @@
 #include "common/address.h"
 
 template<typename CpuState>
-class CoreCpu
+class MicrocodePump
 {
 public:
   using Address = Common::Address;
@@ -28,7 +28,7 @@ public:
   using InstructionCallback = void (*)(const CpuState& state, uint8_t opcode);
   using TrapCallback = bool (*)(const CpuState& state, Address address);  // Return true to halt
 
-  explicit CoreCpu(InstructionTable instructions) noexcept;
+  explicit MicrocodePump(InstructionTable instructions) noexcept;
 
   [[nodiscard]] BusRequest tick(BusResponse response) noexcept;
 
@@ -79,14 +79,14 @@ private:
 };
 
 template<typename CpuState>
-CoreCpu<CpuState>::CoreCpu(InstructionTable instructions) noexcept
+MicrocodePump<CpuState>::MicrocodePump(InstructionTable instructions) noexcept
   : m_instructions(instructions)
 {
-  m_state.next = &CoreCpu::fetchNextOpcode;
+  m_state.next = &MicrocodePump::fetchNextOpcode;
 }
 
 template<typename CpuState>
-typename CpuState::Microcode CoreCpu<CpuState>::getNext(BusResponse response) noexcept
+typename CpuState::Microcode MicrocodePump<CpuState>::getNext(BusResponse response) noexcept
 {
   // If last request was SYNC, we're receiving an opcode - decode it
   if (m_lastBusRequest.isSync())
@@ -121,7 +121,7 @@ typename CpuState::Microcode CoreCpu<CpuState>::getNext(BusResponse response) no
 }
 
 template<typename CpuState>
-Common::BusRequest CoreCpu<CpuState>::tick(Common::BusResponse response) noexcept
+Common::BusRequest MicrocodePump<CpuState>::tick(Common::BusResponse response) noexcept
 {
   ++m_tickCount;
 
@@ -153,19 +153,19 @@ Common::BusRequest CoreCpu<CpuState>::tick(Common::BusResponse response) noexcep
 }
 
 template<typename CpuState>
-inline uint64_t CoreCpu<CpuState>::tickCount() const noexcept
+inline uint64_t MicrocodePump<CpuState>::tickCount() const noexcept
 {
   return m_tickCount;
 }
 
 template<typename CpuState>
-Common::BusRequest CoreCpu<CpuState>::fetchNextOpcode(CpuState& cpu, Common::BusResponse /*response*/)
+Common::BusRequest MicrocodePump<CpuState>::fetchNextOpcode(CpuState& cpu, Common::BusResponse /*response*/)
 {
   return Common::BusRequest::Fetch(cpu.pc++);
 }
 
 template<typename CpuState>
-Common::BusRequest CoreCpu<CpuState>::decodeOpcode(CpuState& cpu, Common::BusResponse response)
+Common::BusRequest MicrocodePump<CpuState>::decodeOpcode(CpuState& cpu, Common::BusResponse response)
 {
   // Decode opcode
   Byte opcode = response.data;
@@ -180,31 +180,31 @@ Common::BusRequest CoreCpu<CpuState>::decodeOpcode(CpuState& cpu, Common::BusRes
 }
 
 template<typename CpuState>
-const CpuState& CoreCpu<CpuState>::getState() const noexcept
+const CpuState& MicrocodePump<CpuState>::getState() const noexcept
 {
   return m_state;
 }
 
 template<typename CpuState>
-CpuState& CoreCpu<CpuState>::getState() noexcept
+CpuState& MicrocodePump<CpuState>::getState() noexcept
 {
   return m_state;
 }
 
 template<typename CpuState>
-void CoreCpu<CpuState>::setCycleCallback(CycleCallback callback) noexcept
+void MicrocodePump<CpuState>::setCycleCallback(CycleCallback callback) noexcept
 {
   m_onCycle = callback;
 }
 
 template<typename CpuState>
-void CoreCpu<CpuState>::setInstructionCallback(InstructionCallback callback) noexcept
+void MicrocodePump<CpuState>::setInstructionCallback(InstructionCallback callback) noexcept
 {
   m_onInstructionStart = callback;
 }
 
 template<typename CpuState>
-void CoreCpu<CpuState>::setTrapCallback(TrapCallback callback) noexcept
+void MicrocodePump<CpuState>::setTrapCallback(TrapCallback callback) noexcept
 {
   m_onTrap = callback;
 }
