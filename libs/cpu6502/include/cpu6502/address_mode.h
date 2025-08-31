@@ -4,6 +4,8 @@
 #include <span>
 
 #include "common/bus.h"
+#include "common/microcode.h"
+#include "cpu6502/cpu6502_types.h"
 #include "cpu6502/state.h"
 
 namespace cpu6502
@@ -31,25 +33,22 @@ struct AddressMode
 
   // Define some microcode functions for addressing modes
 
-  // Performs a fetch of the next opcode from the PC and increments the PC.
-  static Common::BusRequest requestOpcode(State& cpu, Common::BusResponse response);
-
   // Makes a request to read the low byte of an address from the PC and increments the PC.
-  static Common::BusRequest requestOperandLow(State& cpu, Common::BusResponse response);
+  static MicrocodeResponse requestOperandLow(State& cpu, Common::BusResponse response);
 
   // Stores the incoming low byte into the operand and makes a request to read
   // the high byte from the PC, and increments the PC.
-  static Common::BusRequest requestOperandHigh(State& cpu, Common::BusResponse response);
+  static MicrocodeResponse requestOperandHigh(State& cpu, Common::BusResponse response);
 
   // Stores the incoming hi byte into the operand and makes a request to read
   // from the effective address.
-  static Common::BusRequest requestEffectiveAddress(State& cpu, Common::BusResponse response);
+  static MicrocodeResponse requestEffectiveAddress(State& cpu, Common::BusResponse response);
 
   // Stores the incoming hi byte into the operand and adjusts the low byte by the given index register.
   // If there is overflow, it sets up the next action to fix the page boundary crossing. Either way,
   // it will make a request to read from the effective address (it just might be the wrong one).
   template<Common::Byte State::* reg>
-  static Common::BusRequest requestEffectiveAddressIndexed(State& cpu, Common::BusResponse response)
+  static MicrocodeResponse requestEffectiveAddressIndexed(State& cpu, Common::BusResponse response)
   {
     // The incoming response data is the high byte of the address
     cpu.hi = response.data;
@@ -66,72 +65,72 @@ struct AddressMode
     if ((temp & 0xff00) != 0)
     {
       // Page crossing - need extra cycle
-      cpu.next = [](State& cpu1, Common::BusResponse /*response*/)
+      auto fixupCycle = [](State& cpu1, Common::BusResponse /*response*/) -> MicrocodeResponse
       {
         // We already have the correct effectiveAddr from requestEffectiveAddressIndexed
-        return Common::BusRequest::Read(Common::MakeAddress(cpu1.lo, cpu1.hi));
+        return {BusRequest::Read(Common::MakeAddress(cpu1.lo, cpu1.hi)), nullptr};
       };
 
       ++cpu.hi;
 
       // Read wrong address first
-      return Common::BusRequest::Read(effectiveAddr);
+      return {BusRequest::Read(effectiveAddr), fixupCycle};
     }
 
     // Read correct address
-    return Common::BusRequest::Read(effectiveAddr);
+    return {BusRequest::Read(effectiveAddr)};
   }
 
   // Stores the incoming data into the lo byte and makes a request to read from the zero page
   // address.
-  static Common::BusRequest requestZeroPageAddress(State& cpu, Common::BusResponse response);
+  static MicrocodeResponse requestZeroPageAddress(State& cpu, Common::BusResponse response);
 
   template<Common::Byte State::* reg>
-  static Common::BusRequest requestZeroPageAddressIndexed(State& cpu, Common::BusResponse response)
+  static MicrocodeResponse requestZeroPageAddressIndexed(State& cpu, Common::BusResponse response)
   {
     // The incoming response data is the low byte of the address (the high byte is always 0)
     cpu.lo = response.data + (cpu.*reg);
 
     // Always stays in zero page (hi = 0)
-    return Common::BusRequest::Read(Common::MakeAddress(cpu.lo, 0x00));
+    return {BusRequest::Read(Common::MakeAddress(cpu.lo, 0x00))};
   }
 
-  static constexpr State::Microcode immediate[] = {  //
+  static constexpr Microcode immediate[] = {  //
       &AddressMode::requestOperandLow};
 
-  static constexpr State::Microcode relative[] = {  //
+  static constexpr Microcode relative[] = {  //
       &AddressMode::requestOperandLow};
 
-  static constexpr State::Microcode zeroPage[] = {  //
+  static constexpr Microcode zeroPage[] = {  //
       &requestOperandLow,  //
       &requestZeroPageAddress};
 
-  static constexpr State::Microcode zeroPageX[] = {  //
+  static constexpr Microcode zeroPageX[] = {  //
       &AddressMode::requestOperandLow,  //
       &AddressMode::requestZeroPageAddressIndexed<&State::x>};
 
-  static constexpr State::Microcode zeroPageY[] = {  //
+  static constexpr Microcode zeroPageY[] = {  //
       &AddressMode::requestOperandLow,  //
       &AddressMode::requestZeroPageAddressIndexed<&State::y>};
 
-  static constexpr State::Microcode absolute[] = {  //
+  static constexpr Microcode absolute[] = {  //
       &requestOperandLow,  //
       &requestOperandHigh,  //
       &requestEffectiveAddress};
 
-  static constexpr State::Microcode absoluteX[] = {  //
+  static constexpr Microcode absoluteX[] = {  //
       &requestOperandLow,  //
       &requestOperandHigh,  //
       &requestEffectiveAddressIndexed<&State::x>};
 
-  static constexpr State::Microcode absoluteY[] = {  //
+  static constexpr Microcode absoluteY[] = {  //
       &requestOperandLow,  //
       &requestOperandHigh,  //
       &requestEffectiveAddressIndexed<&State::y>};
 
   // Helper function to get addressing mode microcode
   template<Type mode>
-  static constexpr std::span<const State::Microcode> getAddressingOps()
+  static constexpr std::span<const Microcode> getAddressingOps()
   {
     switch (mode)
     {

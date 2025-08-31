@@ -12,7 +12,7 @@ namespace cpu6502
 
 // Evaluate condition and decide whether to branch
 template<State::Flag flag, bool condition>
-static Common::BusRequest branch(State& cpu, Common::BusResponse /*response*/)
+static MicrocodeResponse branch(State& cpu, Common::BusResponse /*response*/)
 {
   // Check if the flag matches the desired condition
   bool flagSet = cpu.has(flag);
@@ -21,12 +21,12 @@ static Common::BusRequest branch(State& cpu, Common::BusResponse /*response*/)
   if (!shouldBranch)
   {
     // Branch not taken - 2 cycles total, we're done
-    return BusRequest::Read(cpu.pc);  // ????
+    return MicrocodeResponse{};
   }
   else
   {
     // Branch taken - continue to step 1
-    cpu.next = [](State& cpu1, Common::BusResponse /*response1*/)
+    auto branchTakenPenalty = [](State& cpu1, Common::BusResponse /*response1*/) -> MicrocodeResponse
     {
       int8_t offset = static_cast<int8_t>(cpu1.lo);
 
@@ -41,12 +41,12 @@ static Common::BusRequest branch(State& cpu, Common::BusResponse /*response*/)
       {
         // No page boundary crossed - 3 cycles total, we're done
         // PC is already correct
-        return BusRequest::Read(cpu1.pc);  // ????
+        return MicrocodeResponse{};
       }
       else
       {
         // Page boundary crossed - need step 2 for fixup
-        cpu1.next = [](State& cpu2, Common::BusResponse /*response2*/)
+        auto pageBoundryCrossedPenalty = [](State& cpu2, Common::BusResponse /*response2*/) -> MicrocodeResponse
         {
           // Apply the carry/borrow to the high byte
           if (cpu2.lo & 0x80)
@@ -60,34 +60,34 @@ static Common::BusRequest branch(State& cpu, Common::BusResponse /*response*/)
             cpu2.pc += 0x100;
           }
           // 4 cycles total, we're done
-          return Common::BusRequest::Read(cpu2.pc);  // Dummy read to consume cycle
+          return {BusRequest::Read(cpu2.pc)};  // Dummy read to consume cycle
         };
-        return Common::BusRequest::Read(cpu1.pc);  // Dummy read to consume cycle
+        return {BusRequest::Read(cpu1.pc), pageBoundryCrossedPenalty};  // Dummy read to consume cycle
       }
     };
-    return BusRequest::Read(cpu.pc);
+    return {BusRequest::Read(cpu.pc), branchTakenPenalty};
   }
 }
 
 template<Common::Byte State::* reg>
-static Common::BusRequest load(State& cpu, Common::BusResponse response)
+static MicrocodeResponse load(State& cpu, Common::BusResponse response)
 {
   // This is a generic load operation for A, X, or Y registers.
 
   auto data = (cpu.*reg) = response.data;
   cpu.setZN(data);
-  return BusRequest::Read(cpu.pc);  // ??? this is wrong
+  return MicrocodeResponse{};
 }
 
 template<Common::Byte State::* reg>
-static Common::BusRequest store(State& cpu, Common::BusResponse /*response*/)
+static MicrocodeResponse store(State& cpu, Common::BusResponse /*response*/)
 {
   // This is a generic store operation for A, X, or Y registers.
 
-  return BusRequest::Write(Common::MakeAddress(cpu.lo, cpu.hi), (cpu.*reg));
+  return {BusRequest::Write(Common::MakeAddress(cpu.lo, cpu.hi), (cpu.*reg))};
 }
 
-static Common::BusRequest adc(State& cpu, Common::BusResponse response)
+static MicrocodeResponse adc(State& cpu, Common::BusResponse response)
 {
   assert(cpu.has(State::Flag::Decimal) == false);  // BCD mode not supported
 
@@ -103,111 +103,105 @@ static Common::BusRequest adc(State& cpu, Common::BusResponse response)
   cpu.setZN(result);
 
   cpu.a = result;
-  return BusRequest::Read(cpu.pc);  // ???? this is wrong Somehow we need to signal completion
+  return MicrocodeResponse{};
 }
 
 template<State::Flag Flag, bool Set>
-static Common::BusRequest flagOp(State& cpu, Common::BusResponse /*response*/)
+static MicrocodeResponse flagOp(State& cpu, Common::BusResponse /*response*/)
 {
   cpu.set(Flag, Set);
-  return BusRequest::Read(cpu.pc);  // ??? this is wrong
+  return MicrocodeResponse{};
 }
 
 
-static Common::BusRequest txs(State& cpu, Common::BusResponse /*response*/)
+static MicrocodeResponse txs(State& cpu, Common::BusResponse /*response*/)
 {
   cpu.sp = cpu.x;
-  return BusRequest::Read(cpu.pc);  // ??? this is wrong
+  return MicrocodeResponse{};
 }
 
-static Common::BusRequest ora(State& cpu, Common::BusResponse response)
+static MicrocodeResponse ora(State& cpu, Common::BusResponse response)
 {
   // Perform OR with accumulator
   cpu.a |= response.data;
   cpu.set(State::Flag::Zero, cpu.a == 0);  // Set zero flag
   cpu.set(State::Flag::Negative, cpu.a & 0x80);  // Set negative flag
-  return BusRequest::Read(cpu.pc);  // ??? this is wrong
+  return MicrocodeResponse{};
 }
 
-static Common::BusRequest jmpAbsolute2(State& cpu, Common::BusResponse response)
+static MicrocodeResponse jmpAbsolute2(State& cpu, Common::BusResponse response)
 {
   // Step 2
   cpu.hi = response.data;
   cpu.pc = Common::MakeAddress(cpu.lo, cpu.hi);
-  return BusRequest::Read(cpu.pc);  // ??? this is wrong
+  return MicrocodeResponse{};
 }
 
-static Common::BusRequest jmpAbsolute1(State& cpu, Common::BusResponse response)
+static MicrocodeResponse jmpAbsolute1(State& cpu, Common::BusResponse response)
 {
   cpu.lo = response.data;
 
-  cpu.next = jmpAbsolute2;
-  return Common::BusRequest::Read(cpu.pc++);  // Fetch high byte
+  return {BusRequest::Read(cpu.pc++), jmpAbsolute2};  // Fetch high byte
 }
 
-static Common::BusRequest jmpAbsolute(State& cpu, Common::BusResponse /*response*/)
+static MicrocodeResponse jmpAbsolute(State& cpu, Common::BusResponse /*response*/)
 {
-  cpu.next = jmpAbsolute1;
-  return Common::BusRequest::Read(cpu.pc++);  // Fetch low byte
+  return {BusRequest::Read(cpu.pc++), jmpAbsolute1};  // Fetch low byte
 }
 
-static Common::BusRequest jmpIndirect4(State& cpu, Common::BusResponse response)
+static MicrocodeResponse jmpIndirect4(State& cpu, Common::BusResponse response)
 {
   cpu.hi = response.data;
   cpu.pc = Common::MakeAddress(cpu.lo, cpu.hi);
-  return BusRequest::Read(cpu.pc);  // ??? this is wrong
+  return MicrocodeResponse{};
 }
 
-static Common::BusRequest jmpIndirect3(State& cpu, Common::BusResponse response)
+static MicrocodeResponse jmpIndirect3(State& cpu, Common::BusResponse response)
 {
   cpu.lo = response.data;
 
   // 6502 bug: high byte read wraps within the *same* page as ptr
   cpu.hi = 0;  // this is wrong
-  cpu.next = jmpIndirect4;
-  return BusRequest::Read(Common::MakeAddress(cpu.lo, cpu.hi));  // read target high (buggy wrap)
+  return {BusRequest::Read(Common::MakeAddress(cpu.lo, cpu.hi)), jmpIndirect4};  // read target high (buggy wrap)
 }
 
-static Common::BusRequest jmpIndirect2(State& cpu, Common::BusResponse response)
+static MicrocodeResponse jmpIndirect2(State& cpu, Common::BusResponse response)
 {
   cpu.hi = response.data;
-  cpu.next = jmpIndirect3;
-  return BusRequest::Read(Common::MakeAddress(cpu.lo, cpu.hi));  // Read target low byte
+  return {BusRequest::Read(Common::MakeAddress(cpu.lo, cpu.hi)), jmpIndirect3};  // Read target low byte
 }
 
-static Common::BusRequest jmpIndirect1(State& cpu, Common::BusResponse response)
+static MicrocodeResponse jmpIndirect1(State& cpu, Common::BusResponse response)
 {
   cpu.lo = response.data;
-  cpu.next = jmpIndirect2;
-  return BusRequest::Read(cpu.pc++);  // fetch ptr high
+  return {BusRequest::Read(cpu.pc++), jmpIndirect2};  // fetch ptr high
 }
 
-static Common::BusRequest jmpIndirect(State& cpu, Common::BusResponse /*response*/)
+static MicrocodeResponse jmpIndirect(State& cpu, Common::BusResponse /*response*/)
 {
-  cpu.next = jmpIndirect1;
   // Fetch indirect address low byte
-  return Common::BusRequest::Read(cpu.pc++);
+  return {BusRequest::Read(cpu.pc++), jmpIndirect1};
 }
 
 template<Common::Byte State::* reg>
   requires(reg != &State::a)
-static Common::BusRequest increment(State& cpu, Common::BusResponse /*response*/)
+static MicrocodeResponse increment(State& cpu, Common::BusResponse /*response*/)
 {
   // Handle increment operation for X or Y registers
   auto& r = (cpu.*reg);
   ++r;
   cpu.setZN(r);
-  return BusRequest::Read(cpu.pc);  // ??? this is wrong
+  return MicrocodeResponse{};
 }
 
 template<Common::Byte State::* reg>
   requires(reg != &State::a)
-static Common::BusRequest decrement(State& cpu, Common::BusResponse /*response*/)
+static MicrocodeResponse decrement(State& cpu, Common::BusResponse /*response*/)
 {
   auto& r = (cpu.*reg);
   --r;
   cpu.setZN(r);
-  return BusRequest::Read(cpu.pc);  // ??? this is wrong
+  return MicrocodeResponse{};
 }
 
 static bool subtractWithBorrow(Byte& reg, Byte value) noexcept
@@ -219,61 +213,61 @@ static bool subtractWithBorrow(Byte& reg, Byte value) noexcept
 }
 
 template<Common::Byte State::* reg>
-static Common::BusRequest compare(State& cpu, Common::BusResponse response)
+static MicrocodeResponse compare(State& cpu, Common::BusResponse response)
 {
   auto r = (cpu.*reg);
   bool borrow = subtractWithBorrow(r, response.data);
   cpu.set(State::Flag::Carry, !borrow);
   cpu.setZN(r);
-  return BusRequest::Read(cpu.pc);  // ??? this is wrong
+  return MicrocodeResponse{};
 }
 
 template<Common::Byte State::* src, Common::Byte State::* dst>
   requires(src != dst)
-static Common::BusRequest transfer(State& cpu, Common::BusResponse /*response*/)
+static MicrocodeResponse transfer(State& cpu, Common::BusResponse /*response*/)
 {
   auto s = (cpu.*src);
   auto& d = (cpu.*dst);
   d = s;
   cpu.setZN(d);
-  return BusRequest::Read(cpu.pc);  // ??? this is wrong
+  return MicrocodeResponse{};
 }
 
-static Common::BusRequest eor(State& cpu, Common::BusResponse response)
+static MicrocodeResponse eor(State& cpu, Common::BusResponse response)
 {
   cpu.a ^= response.data;  // A ← A ⊕ M
   cpu.setZN(cpu.a);
-  return BusRequest::Read(cpu.pc);  // ??? this is wrong
+  return MicrocodeResponse{};
 }
 
-static Common::BusRequest pha(State& cpu, Common::BusResponse /*response*/)
+static MicrocodeResponse pha(State& cpu, Common::BusResponse /*response*/)
 {
-  cpu.next = [](State& cpu1, Common::BusResponse /*response1*/)
+  auto extraCycle = [](State& cpu1, Common::BusResponse /*response1*/) -> MicrocodeResponse
   {
-    // todo cpu1.next = &MicrocodePump::nextOp;
     cpu1.lo = cpu1.sp--;
     cpu1.hi = 0x01;
-    return Common::BusRequest::Write(Common::MakeAddress(cpu1.lo, cpu1.hi), cpu1.a);
+    auto effectiveAddress = Common::MakeAddress(cpu1.lo, cpu1.hi);
+    return {Common::BusRequest::Write(effectiveAddress, cpu1.a)};
   };
-  return Common::BusRequest::Read(cpu.pc);  // Dummy read to consume cycle
+  return {BusRequest::Read(cpu.pc), extraCycle};  // Dummy read to consume cycle
 }
 
-static Common::BusRequest pla(State& cpu, Common::BusResponse /*response*/)
+static MicrocodeResponse pla(State& cpu, Common::BusResponse /*response*/)
 {
-  cpu.next = [](State& cpu1, Common::BusResponse /*response1*/)
+  auto extraCycle1 = [](State& cpu1, Common::BusResponse /*response1*/) -> MicrocodeResponse
   {
-    cpu1.next = [](State& cpu2, Common::BusResponse response2)
+    auto extraCycle2 = [](State& cpu2, Common::BusResponse response2) -> MicrocodeResponse
     {
       cpu2.a = response2.data;
       cpu2.setZN(cpu2.a);
-      return BusRequest::Read(cpu2.pc);  // ??? this is wrong
+      return MicrocodeResponse{};
     };
     cpu1.lo = cpu1.sp;
     cpu1.hi = 0x01;
-    return Common::BusRequest::Write(Common::MakeAddress(cpu1.lo, cpu1.hi), cpu1.a);
+    return {Common::BusRequest::Write(Common::MakeAddress(cpu1.lo, cpu1.hi), cpu1.a), extraCycle2};
   };
   cpu.sp++;
-  return Common::BusRequest::Read(cpu.pc);  // Dummy read to consume cycle
+  return {BusRequest::Read(cpu.pc), extraCycle1};  // Dummy read to consume cycle
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -283,14 +277,14 @@ static Common::BusRequest pla(State& cpu, Common::BusResponse /*response*/)
 namespace
 {
 
-using InstructionTable = std::array<State::Instruction, 256>;
+using InstructionTable = std::array<Instruction, 256>;
 
 template<State::AddressModeType mode>
-constexpr void add(Common::Byte opcode, const char* mnemonic, std::initializer_list<const State::Microcode> operations,
+constexpr void add(Common::Byte opcode, const char* mnemonic, std::initializer_list<const Microcode> operations,
     InstructionTable& table)
 {
   // Get the addressing mode microcode based on template parameter
-  std::span<const State::Microcode> addressingOps = AddressMode::getAddressingOps<mode>();
+  std::span<const Microcode> addressingOps = AddressMode::getAddressingOps<mode>();
 
   // Check total size at compile time
   constexpr size_t maxOps = sizeof(Instruction::ops) / sizeof(Instruction::ops[0]);
@@ -463,9 +457,15 @@ static constexpr auto c_instructions = []()
   return table;
 }(/* immediate execution */);
 
-std::span<const Instruction, 256> mos6502::GetInstructions() noexcept
+BusRequest mos6502::fetchNextOpcode(State& state) noexcept
 {
-  return c_instructions;
+  return BusRequest::Fetch(state.pc++);
+}
+
+std::pair<Microcode*, Microcode*> mos6502::decode(uint8_t opcode) noexcept
+{
+  const Instruction& instr = c_instructions[opcode];
+  return {const_cast<Microcode*>(instr.ops), const_cast<Microcode*>(instr.ops) + sizeof(instr.ops) / sizeof(instr.ops[0])};
 }
 
 }  // namespace cpu6502

@@ -1,12 +1,7 @@
 #pragma once
 
 #include "common/address.h"
-
-namespace Common
-{
-struct BusRequest;
-struct BusResponse;
-}  // namespace Common
+#include "common/bus.h"
 
 namespace cpu6502
 {
@@ -25,13 +20,6 @@ struct State
     Negative = 0x80,
   };
 
-  //! State functions should accept a bus response from the previous clock tick and return a new bus
-  //! request for the new state. It can insert extra cycles into the instruction stream by setting
-  //! the 'next' member to another function. If 'next' is null, the operation is complete and the
-  //! next instruction will be taken from the instruction stream, or a new instruction will be
-  //! fetched.
-  using Microcode = Common::BusRequest (*)(State&, Common::BusResponse response);
-
   // clang-format off
   enum class AddressModeType : uint8_t {
     Implied, Accumulator, Immediate, 
@@ -41,14 +29,6 @@ struct State
     Relative
   };
   // clang-format on
-
-  struct Instruction
-  {
-    Common::Byte opcode = 0;
-    const char* mnemonic = "???";
-    AddressModeType addressMode = AddressModeType::Implied;
-    Microcode ops[7] = {};  // sequence of microcode functions to execute
-  };
 
   // Flag helpers
   [[nodiscard]] constexpr bool has(Flag f) const noexcept;
@@ -65,13 +45,7 @@ struct State
 
   Common::Byte hi = 0;
   Common::Byte lo = 0;
-
-  Microcode next = nullptr;  // next microcode function to execute, nullptr indicates "move to next instruction"
-
-  bool operator==(const State& other) const noexcept = default;
 };
-
-using Instruction = State::Instruction;
 
 constexpr bool State::has(Flag f) const noexcept
 {

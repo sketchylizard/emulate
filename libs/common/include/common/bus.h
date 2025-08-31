@@ -13,12 +13,12 @@ namespace Common
 enum class Control : uint8_t
 {
   None = 0,
-  Interrupt = 1 << 0,
-  NonMaskableInterrupt = 1 << 1,
-  Ready = 1 << 2,
-  Reset = 1 << 3,
-  Read = 1 << 4,
-  Sync = 1 << 5,
+  Interrupt = 0b1000'0001,
+  NonMaskableInterrupt = 0b1000'0010,
+  Ready = 0b1000'0100,
+  Reset = 0b1000'1000,
+  Read = 0b1001'0000,
+  Sync = 0b1010'0000,
 };
 
 constexpr Control& operator|=(Control& lhs, Control rhs) noexcept
@@ -59,7 +59,7 @@ struct BusRequest
 
   constexpr explicit operator bool() const noexcept
   {
-    return address != Address{0} || data != 0 || control != Control::None;
+    return (static_cast<uint8_t>(control) & 0b1000'0000) != 0;
   }
 
   constexpr bool isRead() const noexcept

@@ -13,17 +13,10 @@
 using namespace Common;
 using namespace cpu6502;
 
-TEST_CASE("requestOpcode", "[addressing]")
+static bool operator==(const State& lhs, const State& rhs) noexcept
 {
-  State cpu{.pc = 0x8000_addr};
-
-  auto request = AddressMode::requestOpcode(cpu, BusResponse{});
-  CHECK(request.address == 0x8000_addr);
-  CHECK(request.isRead());
-  CHECK(request.isSync());
-
-  // Only the PC should be incremented
-  CHECK(cpu == State{.pc = 0x8001_addr});
+  return lhs.pc == rhs.pc && lhs.a == rhs.a && lhs.x == rhs.x && lhs.y == rhs.y && lhs.sp == rhs.sp && lhs.p == rhs.p &&
+         lhs.hi == rhs.hi && lhs.lo == rhs.lo;
 }
 
 TEST_CASE("requestOperandLow", "[addressing]")
@@ -31,12 +24,10 @@ TEST_CASE("requestOperandLow", "[addressing]")
   State cpu{.pc = 0x8001_addr, .hi = 0xFF, .lo = 0xEE};  // Set hi/lo to ensure they are changed
 
   auto request = AddressMode::requestOperandLow(cpu, BusResponse{});
-  CHECK(request.address == 0x8001_addr);
-  CHECK(request.isRead());
-  CHECK_FALSE(request.isSync());
+  CHECK(request.request == BusRequest::Read(0x8001_addr));
 
   // Only the PC should be incremented
-  CHECK(cpu == State{.pc = 0x8002_addr});
+  CHECK((cpu == State{.pc = 0x8002_addr}));
 }
 
 TEST_CASE("requestOperandHigh", "[addressing]")
@@ -44,12 +35,10 @@ TEST_CASE("requestOperandHigh", "[addressing]")
   State cpu{.pc = 0x8002_addr};
 
   auto request = AddressMode::requestOperandHigh(cpu, BusResponse{0x34});
-  CHECK(request.address == 0x8002_addr);
-  CHECK(request.isRead());
-  CHECK_FALSE(request.isSync());
+  CHECK(request.request == BusRequest::Read(0x8002_addr));
 
   // Only the PC, and the lo byte should be set
-  CHECK(cpu == State{.pc = 0x8003_addr, .lo = 0x34});
+  CHECK((cpu == State{.pc = 0x8003_addr, .lo = 0x34}));
 }
 
 TEST_CASE("requestEffectiveAddress", "[addressing]")
@@ -57,12 +46,10 @@ TEST_CASE("requestEffectiveAddress", "[addressing]")
   State cpu{.pc = 0x8003_addr, .lo = 0x34};
 
   auto request = AddressMode::requestEffectiveAddress(cpu, BusResponse{0x12});
-  CHECK(request.address == 0x1234_addr);
-  CHECK(request.isRead());
-  CHECK_FALSE(request.isSync());
+  CHECK(request.request == BusRequest::Read(0x1234_addr));
 
   // Only the PC, the lo byte, and the hi byte should be set
-  CHECK(cpu == State{.pc = 0x8003_addr, .hi = 0x12, .lo = 0x34});
+  CHECK((cpu == State{.pc = 0x8003_addr, .hi = 0x12, .lo = 0x34}));
 }
 
 // Helper to select register for template test case
@@ -84,13 +71,11 @@ TEMPLATE_TEST_CASE("requestEffectiveAddressIndexed", "[addressing]", XReg, YReg)
     (cpu.*reg) = 0x01;
 
     auto request = AddressMode::requestEffectiveAddressIndexed<reg>(cpu, BusResponse{0x12});
-    CHECK(request.address == 0x1235_addr);
-    CHECK(request.isRead());
-    CHECK_FALSE(request.isSync());
+    CHECK(request.request == BusRequest::Read(0x1235_addr));
 
     State expected{.pc = 0x8003_addr, .hi = 0x12, .lo = 0x35};
     (expected.*reg) = 0x01;
-    CHECK(cpu == expected);
+    CHECK((cpu == expected));
   }
 
   SECTION("Page boundary crossing - forward overflow")
@@ -101,19 +86,16 @@ TEMPLATE_TEST_CASE("requestEffectiveAddressIndexed", "[addressing]", XReg, YReg)
     auto request = AddressMode::requestEffectiveAddressIndexed<reg>(cpu, BusResponse{0x12});
 
     // Should read from wrong address first (0x127F instead of 0x137F)
-    CHECK(request.address == 0x127F_addr);
-    CHECK(request.isRead());
-    CHECK_FALSE(request.isSync());
+    CHECK(request.request == BusRequest::Read(0x127F_addr));
+    CHECK(request.injection != nullptr);  // Page boundary fix scheduled
 
     // Hi byte should be corrected for next cycle, lo byte updated
     CHECK(cpu.hi == 0x13);  // Corrected from 0x12 to 0x13
     CHECK(cpu.lo == 0x7F);  // 0x80 + 0xFF = 0x17F, low byte = 0x7F
-    CHECK(cpu.next != nullptr);  // Page boundary fix scheduled
 
     // Test the lambda that fixes page boundary
-    auto nextRequest = cpu.next(cpu, BusResponse{0x00});  // Dummy response
-    CHECK(nextRequest.address == 0x137F_addr);  // Correct address
-    CHECK(nextRequest.isRead());
+    auto nextRequest = request.injection(cpu, BusResponse{0x00});  // Dummy response
+    CHECK(nextRequest.request == BusRequest::Read(0x137F_addr));  // Correct address
   }
 
   SECTION("Page boundary crossing - maximum offset")
@@ -124,13 +106,12 @@ TEMPLATE_TEST_CASE("requestEffectiveAddressIndexed", "[addressing]", XReg, YReg)
     auto request = AddressMode::requestEffectiveAddressIndexed<reg>(cpu, BusResponse{0x12});
 
     // Should read from wrong address first (0x12FE instead of 0x13FE)
-    CHECK(request.address == 0x12FE_addr);
-    CHECK(request.isRead());
+    CHECK(request.request == BusRequest::Read(0x12FE_addr));
+    CHECK(request.injection != nullptr);  // Page boundary fix scheduled
 
     // Hi byte corrected, lo byte wrapped
     CHECK(cpu.hi == 0x13);  // Corrected from 0x12 to 0x13
     CHECK(cpu.lo == 0xFE);  // 0xFF + 0xFF = 0x1FE, low byte = 0xFE
-    CHECK(cpu.next != nullptr);
   }
 
   SECTION("No page boundary crossing - near boundary")
@@ -141,13 +122,12 @@ TEMPLATE_TEST_CASE("requestEffectiveAddressIndexed", "[addressing]", XReg, YReg)
     auto request = AddressMode::requestEffectiveAddressIndexed<reg>(cpu, BusResponse{0x12});
 
     // Should read correct address immediately (no overflow)
-    CHECK(request.address == 0x12FF_addr);
-    CHECK(request.isRead());
+    CHECK(request.request == BusRequest::Read(0x12FF_addr));
+    CHECK(request.injection == nullptr);
 
     // No correction needed
     CHECK(cpu.hi == 0x12);  // Unchanged
     CHECK(cpu.lo == 0xFF);  // 0x80 + 0x7F = 0xFF
-    CHECK(cpu.next == nullptr);  // No extra cycle needed
   }
 }
 
@@ -230,12 +210,10 @@ TEST_CASE("requestZeroPageAddress", "[addressing]")
 {
   State cpu{.hi = 0x00};  // Hi byte should already be 0 from requestOperandLow
   auto request = AddressMode::requestZeroPageAddress(cpu, BusResponse{0x42});
-  CHECK(request.address == 0x0042_addr);  // Zero page address formed from response
-  CHECK(request.isRead());
-  CHECK_FALSE(request.isSync());
+  CHECK(request.request == BusRequest::Read(0x0042_addr));  // Zero page address formed from response
 
   // Lo byte should be set from response data
-  CHECK(cpu == State{.hi = 0x00, .lo = 0x42});
+  CHECK((cpu == State{.hi = 0x00, .lo = 0x42}));
 }
 
 TEMPLATE_TEST_CASE("requestZeroPageAddressIndexed", "[addressing]", XReg, YReg)
@@ -248,13 +226,11 @@ TEMPLATE_TEST_CASE("requestZeroPageAddressIndexed", "[addressing]", XReg, YReg)
     (cpu.*reg) = 0x10;
 
     auto request = AddressMode::requestZeroPageAddressIndexed<reg>(cpu, BusResponse{0x80});
-    CHECK(request.address == 0x0090_addr);  // $80 + $10 = $90
-    CHECK(request.isRead());
-    CHECK_FALSE(request.isSync());
+    CHECK(request.request == BusRequest::Read(0x0090_addr));  // $80 + $10 = $90
 
     State expected{.hi = 0x00, .lo = 0x90};
     (expected.*reg) = 0x10;
-    CHECK(cpu == expected);
+    CHECK((cpu == expected));
   }
 
   SECTION("Overflow wraps within zero page")
@@ -263,13 +239,11 @@ TEMPLATE_TEST_CASE("requestZeroPageAddressIndexed", "[addressing]", XReg, YReg)
     (cpu.*reg) = 0x10;
 
     auto request = AddressMode::requestZeroPageAddressIndexed<reg>(cpu, BusResponse{0xF8});
-    CHECK(request.address == 0x0008_addr);  // $F8 + $10 = $108, wraps to $08
-    CHECK(request.isRead());
-    CHECK_FALSE(request.isSync());
+    CHECK(request.request == BusRequest::Read(0x0008_addr));  // $F8 + $10 = $108, wraps to $08
 
     State expected{.hi = 0x00, .lo = 0x08};
     (expected.*reg) = 0x10;
-    CHECK(cpu == expected);
+    CHECK((cpu == expected));
   }
 
   SECTION("Maximum overflow")
@@ -278,13 +252,11 @@ TEMPLATE_TEST_CASE("requestZeroPageAddressIndexed", "[addressing]", XReg, YReg)
     (cpu.*reg) = 0xFF;
 
     auto request = AddressMode::requestZeroPageAddressIndexed<reg>(cpu, BusResponse{0xFF});
-    CHECK(request.address == 0x00FE_addr);  // $FF + $FF = $1FE, wraps to $FE
-    CHECK(request.isRead());
-    CHECK_FALSE(request.isSync());
+    CHECK(request.request == BusRequest::Read(0x00FE_addr));  // $FF + $FF = $1FE, wraps to $FE
 
     State expected{.hi = 0x00, .lo = 0xFE};
     (expected.*reg) = 0xFF;
-    CHECK(cpu == expected);
+    CHECK((cpu == expected));
   }
 
   SECTION("No offset - register is zero")
@@ -293,12 +265,11 @@ TEMPLATE_TEST_CASE("requestZeroPageAddressIndexed", "[addressing]", XReg, YReg)
     (cpu.*reg) = 0x00;
 
     auto request = AddressMode::requestZeroPageAddressIndexed<reg>(cpu, BusResponse{0x42});
-    CHECK(request.address == 0x0042_addr);  // $42 + $00 = $42
-    CHECK(request.isRead());
+    CHECK(request.request == BusRequest::Read(0x0042_addr));  // $42 + $00 = $42
 
     State expected{.hi = 0x00, .lo = 0x42};
     (expected.*reg) = 0x00;
-    CHECK(cpu == expected);
+    CHECK((cpu == expected));
   }
 }
 
@@ -401,7 +372,7 @@ TEMPLATE_TEST_CASE("Zero page indexed addressing mode complete sequence", "[addr
 
     State expected{.pc = 0x8002_addr, .hi = 0x00, .lo = 0x45};
     (expected.*reg) = 0x05;
-    CHECK(cpu == expected);
+    CHECK((cpu == expected));
   }
 
   SECTION("Zero page indexed with wrapping")
@@ -418,7 +389,7 @@ TEMPLATE_TEST_CASE("Zero page indexed addressing mode complete sequence", "[addr
 
     State expected{.pc = 0x8002_addr, .hi = 0x00, .lo = 0x08};
     (expected.*reg) = 0x10;
-    CHECK(cpu == expected);
+    CHECK((cpu == expected));
   }
 
   SECTION("Zero page indexed maximum wrapping")
@@ -436,7 +407,7 @@ TEMPLATE_TEST_CASE("Zero page indexed addressing mode complete sequence", "[addr
 
     State expected{.pc = 0x8002_addr, .hi = 0x00, .lo = 0xFE};
     (expected.*reg) = 0xFF;
-    CHECK(cpu == expected);
+    CHECK((cpu == expected));
   }
 
   SECTION("Zero page indexed with register=0 (no offset)")
@@ -453,7 +424,7 @@ TEMPLATE_TEST_CASE("Zero page indexed addressing mode complete sequence", "[addr
 
     State expected{.pc = 0x8002_addr, .hi = 0x00, .lo = 0x42};
     (expected.*reg) = 0x00;
-    CHECK(cpu == expected);
+    CHECK((cpu == expected));
   }
 
   SECTION("Zero page indexed edge case - wrapping to start of zero page")
@@ -471,7 +442,7 @@ TEMPLATE_TEST_CASE("Zero page indexed addressing mode complete sequence", "[addr
 
     State expected{.pc = 0x8002_addr, .hi = 0x00, .lo = 0x00};
     (expected.*reg) = 0x01;
-    CHECK(cpu == expected);
+    CHECK((cpu == expected));
   }
 
   SECTION("Sequential zero page indexed operations")
@@ -499,7 +470,7 @@ TEMPLATE_TEST_CASE("Zero page indexed addressing mode complete sequence", "[addr
 
     State expected{.pc = 0x8002_addr, .hi = 0x00, .lo = 0x22};
     (expected.*reg) = 0x02;
-    CHECK(cpu == expected);
+    CHECK((cpu == expected));
   }
 }
 
