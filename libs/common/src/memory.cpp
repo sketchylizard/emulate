@@ -26,7 +26,7 @@ std::vector<Byte> LoadFile(const std::string_view& filename) noexcept
   return buffer;
 }
 
-void Load(RamSpan memory, const std::string& filename, Address start_addr)
+void Load(std::span<Byte> memory, const std::string& filename, Address start_addr)
 {
   std::ifstream file(filename, std::ios::binary);
   if (!file)

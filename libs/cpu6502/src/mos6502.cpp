@@ -457,15 +457,120 @@ static constexpr auto c_instructions = []()
   return table;
 }(/* immediate execution */);
 
-BusRequest mos6502::fetchNextOpcode(State& state) noexcept
+mos6502::Response mos6502::fetchNextOpcode(State& state, BusResponse) noexcept
 {
-  return BusRequest::Fetch(state.pc++);
+  return {BusRequest::Fetch(state.pc++)};
 }
 
-std::pair<Microcode*, Microcode*> mos6502::decode(uint8_t opcode) noexcept
+std::pair<Microcode*, Microcode*> mos6502::decodeOpcode(uint8_t opcode) noexcept
 {
   const Instruction& instr = c_instructions[opcode];
   return {const_cast<Microcode*>(instr.ops), const_cast<Microcode*>(instr.ops) + sizeof(instr.ops) / sizeof(instr.ops[0])};
+}
+
+void mos6502::disassemble(
+    const State& state, Address correctedPc, std::span<const Byte, 3> bytes, std::span<char, 80> buffer) noexcept
+{
+  const Byte opcode = bytes[0];
+  const Instruction& instr = c_instructions[opcode];
+
+  // Start building the output string
+  std::string result;
+
+  // PC (4 hex characters)
+  result += std::format("{:04X} ", static_cast<uint16_t>(correctedPc));
+
+  // Opcode bytes - show actual bytes used by this instruction
+  result += std::format("{:02X}", opcode);
+
+  // Determine how many operand bytes this instruction uses
+  size_t operandBytes = 0;
+  switch (instr.addressMode)
+  {
+    case State::AddressModeType::Implied:
+    case State::AddressModeType::Accumulator: operandBytes = 0; break;
+    case State::AddressModeType::Immediate:
+    case State::AddressModeType::ZeroPage:
+    case State::AddressModeType::ZeroPageX:
+    case State::AddressModeType::ZeroPageY:
+    case State::AddressModeType::Relative: operandBytes = 1; break;
+    case State::AddressModeType::Absolute:
+    case State::AddressModeType::AbsoluteX:
+    case State::AddressModeType::AbsoluteY:
+    case State::AddressModeType::Indirect: operandBytes = 2; break;
+    case State::AddressModeType::IndirectZpX:
+    case State::AddressModeType::IndirectZpY: operandBytes = 1; break;
+  }
+
+  // Add operand bytes
+  for (size_t i = 1; i <= operandBytes && i < 3; ++i)
+  {
+    result += std::format(" {:02X}", bytes[i]);
+  }
+
+  // Pad to fixed column width (PC + 4 spaces + up to 6 chars for bytes + spaces)
+  while (result.length() < 13)
+  {
+    result += " ";
+  }
+
+  // Mnemonic
+  result += instr.mnemonic;
+  result += " ";
+
+  // Operand formatting based on addressing mode
+  switch (instr.addressMode)
+  {
+    case State::AddressModeType::Implied:
+    case State::AddressModeType::Accumulator:
+      // No operand
+      break;
+
+    case State::AddressModeType::Immediate: result += std::format("#${:02X}", bytes[1]); break;
+
+    case State::AddressModeType::ZeroPage: result += std::format("${:02X}", bytes[1]); break;
+
+    case State::AddressModeType::ZeroPageX: result += std::format("${:02X},X", bytes[1]); break;
+
+    case State::AddressModeType::ZeroPageY: result += std::format("${:02X},Y", bytes[1]); break;
+
+    case State::AddressModeType::Absolute:
+      result += std::format("${:02X}{:02X}", bytes[2], bytes[1]);  // Little endian
+      break;
+
+    case State::AddressModeType::AbsoluteX: result += std::format("${:02X}{:02X},X", bytes[2], bytes[1]); break;
+
+    case State::AddressModeType::AbsoluteY: result += std::format("${:02X}{:02X},Y", bytes[2], bytes[1]); break;
+
+    case State::AddressModeType::Indirect: result += std::format("(${:02X}{:02X})", bytes[2], bytes[1]); break;
+
+    case State::AddressModeType::IndirectZpX: result += std::format("(${:02X},X)", bytes[1]); break;
+
+    case State::AddressModeType::IndirectZpY: result += std::format("(${:02X}),Y", bytes[1]); break;
+
+    case State::AddressModeType::Relative:
+    {
+      // Calculate target address for branch
+      int32_t offset = static_cast<int8_t>(bytes[1]);
+      int32_t target = static_cast<int32_t>(state.pc) + 2 + offset;  // PC + instruction length + offset
+      result += std::format("${:04X}", target);
+    }
+    break;
+  }
+
+  // Pad to fixed column before registers
+  while (result.length() < 32)
+  {
+    result += " ";
+  }
+
+  // Add registers: A, X, Y, SP, P
+  result += std::format("A:{:02X} X:{:02X} Y:{:02X} SP:{:02X} P:{:02X}", state.a, state.x, state.y, state.sp, state.p);
+
+  // Copy to output buffer, ensuring null termination
+  size_t copyLen = std::min(result.length(), buffer.size() - 1);
+  std::copy_n(result.begin(), copyLen, buffer.begin());
+  buffer[copyLen] = '\0';
 }
 
 }  // namespace cpu6502

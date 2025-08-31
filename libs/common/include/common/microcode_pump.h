@@ -61,7 +61,7 @@ typename CpuDefinition::Microcode MicrocodePump<CpuDefinition>::getNextMicrocode
   }
 
   // Priority 3: Execute from current microcode sequence
-  if (m_currentBegin != m_currentEnd)
+  if (m_currentBegin != m_currentEnd && *m_currentBegin != nullptr)
   {
     auto op = *m_currentBegin;
     ++m_currentBegin;

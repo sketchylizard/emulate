@@ -15,9 +15,12 @@ namespace cpu6502
 struct mos6502 : CpuDefinition
 {
 
-  static BusRequest fetchNextOpcode(State& state) noexcept;
+  static Response fetchNextOpcode(State& state, BusResponse) noexcept;
 
-  static std::pair<Microcode*, Microcode*> decode(uint8_t opcode) noexcept;
+  static std::pair<Microcode*, Microcode*> decodeOpcode(uint8_t opcode) noexcept;
+
+  static void disassemble(const State& state, Common::Address correctedPc, std::span<const Common::Byte, 3> bytes,
+      std::span<char, 80> buffer) noexcept;
 };
 
 }  // namespace cpu6502

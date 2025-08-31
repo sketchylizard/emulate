@@ -1,10 +1,16 @@
+#include "cpu6502/mos6502.h"
+
 #include <bitset>
 #include <catch2/catch_test_macros.hpp>
-#include <cstddef>  // for std::byte
-#include <cstdint>  // for std::uint8_t
-#include <utility>  // for std::pair
-#include <variant>  // for std::variant
-#include <vector>  // for std::variant
+#include <cstddef>
+#include <cstdint>
+#include <format>
+#include <iostream>
+#include <span>
+#include <stdexcept>
+#include <utility>
+#include <variant>
+#include <vector>
 
 #include "KlausFunctional.h"
 #include "common/address.h"
@@ -15,244 +21,27 @@
 
 using namespace Common;
 
-struct Mapping
-{
-  Address start;
-  Address end;
-  std::variant<RamSpan, RomSpan> span;
-
-  // Constructors
-  Mapping(Address start_addr, Address end_addr, RamSpan ram)
-    : start(start_addr)
-    , end(end_addr)
-    , span(ram)
-  {
-  }
-
-  Mapping(Address start_addr, Address end_addr, RomSpan rom)
-    : start(start_addr)
-    , end(end_addr)
-    , span(rom)
-  {
-  }
-
-  // Convenience constructor - deduce end from start + span size
-  Mapping(Address start_addr, RamSpan ram)
-    : start(start_addr)
-    , end(start_addr + static_cast<uint16_t>(ram.size() - 1))
-    , span(ram)
-  {
-  }
-
-  Mapping(Address start_addr, RomSpan rom)
-    : start(start_addr)
-    , end(start_addr + static_cast<uint16_t>(rom.size() - 1))
-    , span(rom)
-  {
-  }
-
-  bool Contains(Address addr) const
-  {
-    return addr >= start && addr <= end;
-  }
-
-  size_t GetOffset(Address addr) const
-  {
-    return static_cast<size_t>(addr - start);
-  }
-
-  bool IsWritable() const
-  {
-    return std::holds_alternative<RamSpan>(span);
-  }
-
-  // Direct access methods
-  Byte& operator[](Address addr)
-  {
-    if (!Contains(addr))
-    {
-      throw std::out_of_range("Address not in mapping range");
-    }
-
-    size_t offset = GetOffset(addr);
-    return std::visit(
-        [offset](auto& s) -> Byte&
-        {
-          using T = std::decay_t<decltype(s)>;
-          if constexpr (std::is_same_v<T, RamSpan>)
-          {
-            return s[offset];
-          }
-          else
-          {
-            throw std::runtime_error("Attempt to get writable reference to ROM");
-          }
-        },
-        span);
-  }
-
-  Byte operator[](Address addr) const
-  {
-    if (!Contains(addr))
-    {
-      throw std::out_of_range("Address not in mapping range");
-    }
-
-    size_t offset = GetOffset(addr);
-    return std::visit([offset](const auto& s) -> Byte { return s[offset]; }, span);
-  }
-
-  Byte Read(Address addr) const
-  {
-    if (!Contains(addr))
-    {
-      throw std::out_of_range("Address not in mapping range");
-    }
-
-    size_t offset = GetOffset(addr);
-    return std::visit([offset](const auto& s) -> Byte { return s[offset]; }, span);
-  }
-
-  void Write(Address addr, Byte value)
-  {
-    if (!Contains(addr) || !IsWritable())
-    {
-      throw std::out_of_range("Address not in mapping range");
-    }
-
-    size_t offset = GetOffset(addr);
-    std::get<RamSpan>(span)[offset] = value;
-  }
-
-  std::optional<BusResponse> Tick(const BusRequest& input)
-  {
-    if (!Contains(input.address))
-    {
-      return std::nullopt;  // Not our address
-    }
-
-    if (input.isRead())
-    {
-      size_t offset = GetOffset(input.address);
-      Byte data = std::visit([offset](const auto& s) -> Byte { return s[offset]; }, span);
-      return BusResponse{data, 0};  // Return data, no control flags
-    }
-    else if (input.isWrite() && IsWritable())
-    {
-      size_t offset = GetOffset(input.address);
-      std::get<RamSpan>(span)[offset] = input.data;
-      return BusResponse{0, 0};  // Write acknowledged
-    }
-
-    return std::nullopt;  // Unknown operation
-  }
-};
-
-class SimpleMemoryMap
-{
-public:
-  SimpleMemoryMap(std::span<Mapping> mappings)
-    : m_mappings(mappings)
-  {
-  }
-
-  // Non-const operator[] - returns reference for read/write access
-  Byte& operator[](Address addr)
-  {
-    if (auto* mapping = FindWriteable(addr))
-    {
-      return (*mapping)[addr];
-    }
-    throw std::runtime_error(
-        "Attempt to get writable reference to ROM at address " + std::to_string(static_cast<uint16_t>(addr)));
-  }
-
-  // Const operator[] - returns value for read-only access
-  Byte operator[](Address addr) const
-  {
-    if (const auto* mapping = Find(addr))
-    {
-      return (*mapping)[addr];
-    }
-    throw std::out_of_range("Address " + std::to_string(static_cast<uint16_t>(addr)) + " is not mapped");
-  }
-
-  Byte Read(Address addr) const
-  {
-    if (const auto* mapping = Find(addr))
-    {
-      return (*mapping)[addr];
-    }
-    throw std::out_of_range("Address " + std::to_string(static_cast<uint16_t>(addr)) + " is not mapped");
-  }
-
-  void Write(Address addr, Byte value)
-  {
-    if (auto* mapping = FindWriteable(addr))
-    {
-      (*mapping)[addr] = value;
-      return;
-    }
-    throw std::out_of_range("Address " + std::to_string(static_cast<uint16_t>(addr)) + " is not writable");
-  }
-
-  std::optional<BusResponse> Tick(const BusRequest& input)
-  {
-    for (auto& mapping : m_mappings)
-    {
-      if (auto response = mapping.Tick(input))
-      {
-        return response;  // First mapping that handles the address wins
-      }
-    }
-    return std::nullopt;  // Address not mapped to any component
-  }
-
-private:
-  const Mapping* Find(Address addr) const
-  {
-    for (const auto& mapping : m_mappings)
-    {
-      if (mapping.Contains(addr))
-      {
-        return &mapping;
-      }
-    }
-    return nullptr;
-  }
-
-  Mapping* FindWriteable(Address addr)
-  {
-    for (auto& mapping : m_mappings)
-    {
-      if (mapping.Contains(addr) && std::holds_alternative<RamSpan>(mapping.span))
-      {
-        return &mapping;
-      }
-    }
-    return nullptr;
-  }
-
-  std::span<Mapping> m_mappings;
-};
-
-#if 0
-
 TEST_CASE("MicrocodePump: Functional_tests", "[.]")
 {
+
   auto runTest = []()
   {
     auto data = Klaus__6502_functional_test::data();  // Ensure the data is linked in
 
-    std::vector<Byte> ram(data.begin(), data.end());  // 64 KiB RAM initialized to zero
-    Mapping memory{Address{0x0000}, Address{0xFFFF}, std::span<Byte>(ram)};
+    Byte memory[0x10000] = {};
 
-    MicrocodePump cpu(mos6502::GetInstructions());
+    std::ranges::copy(data, memory);
+
+    MemoryDevice memDevice(memory);
+
+    MicrocodePump<cpu6502::mos6502> executionPipeline;
+
+    cpu6502::State cpu;
 
     auto programStart = Address{0x0400};
 
     // Set the reset vector to 0x0400
-    cpu.regs.pc = programStart;
+    cpu.pc = programStart;
 
     BusRequest request;
     BusResponse response;
@@ -261,21 +50,24 @@ TEST_CASE("MicrocodePump: Functional_tests", "[.]")
     breakpoints.set(static_cast<size_t>(0x05a7));
     breakpoints.set(static_cast<size_t>(0x0594));
 
+    char buffer[80];
+
     try
     {
       Address lastInstructionStart{0xFFFF};
 
       for (;;)
       {
+        Common::Byte* opcode = &memory[static_cast<size_t>(cpu.pc)];
+        std::span<Common::Byte, 3> bytes{opcode, 3};
+        cpu6502::mos6502::disassemble(cpu, request.address, bytes, buffer);
+        std::cout << buffer << '\n';
+
         do
         {
-          request = cpu.Tick(response);
+          request = executionPipeline.tick(cpu, response);
 
-          auto newResponse = memory.Tick(request);
-          if (newResponse)
-          {
-            response = *newResponse;
-          }
+          response = memDevice.tick(request);
         } while (!request.isSync());
 
         // We are at an instruction boundary. This is a good place to check for infinite loops or breakpoints.
@@ -314,5 +106,3 @@ TEST_CASE("MicrocodePump: Functional_tests", "[.]")
   };
   CHECK(runTest() == true);
 }
-
-#endif

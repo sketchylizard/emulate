@@ -5,6 +5,7 @@
 #include <ranges>
 #include <span>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include "common/address.h"
@@ -13,108 +14,165 @@
 namespace Common
 {
 
-//! RAM is just a writable span of bytes
-using RamSpan = std::span<Byte>;
-
-//! ROM is a read-only span of bytes
-using RomSpan = std::span<const Byte>;
-
 // Load file into memory
 std::vector<Byte> LoadFile(const std::string_view& filename) noexcept;
 
 // Load file into memory span. You cannot load into a RomSpan, but you can write into a block of
 // bytes and then create a RomSpan over it, presenting a read-only view of the data.
-void Load(RamSpan memory, const std::string& filename, Address start_addr = Address{0});
+void Load(std::span<Byte> memory, const std::string& filename, Address start_addr = Address{0});
 
-
-namespace bus_concepts
-{
-
-// Concept for anything that can be read from using operator[]
+//! A Bus device that uses a contiguous range (array, vector, span, etc) as backing storage. The
+//! range can be of Byte or const Byte, allowing for RAM-like (read/write) or ROM-like (read-only)
+//! behavior.
 template<typename T>
-concept Readable = std::ranges::random_access_range<T> && requires(const T& t, size_t addr) {
-  { t[addr] } -> std::convertible_to<Common::Byte>;
-};
-
-// Concept for anything that can be written to using operator[]
-template<typename T>
-concept Writable = requires(T& t, Common::Address addr, Common::Byte value) {
-  { t[addr] } -> std::convertible_to<Common::Byte&>;
-  { t[addr] = value } -> std::convertible_to<Common::Byte&>;
-};
-
-// Combined concept - something that's at least readable
-template<typename T>
-concept MemoryLike = Readable<T>;
-
-template<typename T>
-concept ByteSpan = std::same_as<T, std::span<Byte>> || std::same_as<T, std::span<const Byte>>;
-
-}  // namespace bus_concepts
-
-template<bus_concepts::MemoryLike T>
+  requires std::same_as<T, Common::Byte> || std::same_as<T, const Common::Byte>
 class MemoryDevice
 {
 public:
-  // Conditional storage type: value for spans, reference for others
-  using storage_type = std::conditional_t<bus_concepts::ByteSpan<T>, T, T&>;
+  using ValueType = T;
+  using ReferenceType = T&;
 
-  // Constructor for span types (store by value)
-  constexpr explicit MemoryDevice(T span, Address baseAddress = Address{0})
-    requires bus_concepts::ByteSpan<T>
-    : m_storage(span)
-    , m_base_address(static_cast<size_t>(baseAddress))
+  // Check if the range allows writes (reference type is non-const)
+  static constexpr bool isWritable = !std::is_const_v<std::remove_reference_t<ReferenceType>>;
+
+  template<typename R>
+    requires std::ranges::contiguous_range<R> && std::same_as<std::ranges::range_value_t<R>, Byte>
+  explicit constexpr MemoryDevice(R&& range, Address baseAddress = Address{0}) noexcept
+    : m_memory(std::span{range})
+    , m_baseAddress(static_cast<size_t>(baseAddress))
   {
   }
 
-  // Constructor for non-span types (store by reference)
-  constexpr explicit MemoryDevice(T& ref, Address baseAddress = Address{0})
-    requires(!bus_concepts::ByteSpan<T>)
-    : m_storage(ref)
-    , m_base_address(static_cast<size_t>(baseAddress))
+  // For const ranges (ROM-like behavior)
+  template<typename R>
+    requires std::ranges::contiguous_range<R> && std::same_as<std::ranges::range_value_t<R>, const Byte>
+  explicit constexpr MemoryDevice(R&& range, Address baseAddress = Address{0}) noexcept
+    : m_memory(reinterpret_cast<const Byte*>(std::ranges::data(range)), std::ranges::size(range))
+    , m_baseAddress(static_cast<size_t>(baseAddress))
   {
   }
 
-  constexpr Address baseAddress() const noexcept
+  constexpr BusResponse tick(BusRequest req) noexcept
   {
-    return Address{static_cast<uint16_t>(m_base_address)};
-  }
-  constexpr size_t size() const noexcept
-  {
-    return m_storage.size();
-  }
-
-  Common::BusResponse tick(Common::BusRequest req) noexcept
-  {
-    // Calculate offset from base address
-    size_t offset = static_cast<size_t>(req.address) - m_base_address;
-
-    if (req.isRead())
+    // Calculate offset into the backing array
+    size_t busAddress = static_cast<uint16_t>(req.address);
+    if (busAddress < m_baseAddress)
     {
-      Common::Byte data = m_storage[offset];
-      return {data, true};
+      return {0x00, true};  // Address below our range
     }
-    else if (req.isWrite())
+
+    size_t offset = busAddress - m_baseAddress;
+    if (offset >= m_memory.size())
     {
-      // Only handle writes if the storage is writable
-      if constexpr (bus_concepts::Writable<T>)
+      return {0x00, true};  // Address above our range
+    }
+
+    if (req.isWrite())
+    {
+      if constexpr (isWritable)
       {
-        m_storage[offset] = req.data;
+        m_memory[offset] = req.data;
         return {req.data, true};
       }
       else
       {
-        // ROM - silently ignore writes
-        return {0x00, true};
+        // Write to ROM - ignore the write but return the existing data
+        return {m_memory[offset], true};
       }
     }
+    else
+    {
+      // Read operation
+      return {m_memory[offset], true};
+    }
+  }
 
-    return {0x00, true};
+  // Constexpr size for compile-time bus mapping
+  constexpr size_t size() const noexcept
+  {
+    return m_memory.size();
+  }
+
+  constexpr Address baseAddress() const noexcept
+  {
+    return Address{static_cast<uint16_t>(m_baseAddress)};
+  }
+
+  constexpr Address startAddress() const noexcept
+  {
+    return Address{static_cast<uint16_t>(m_baseAddress)};
+  }
+
+  constexpr Address endAddress() const noexcept
+  {
+    return Address{static_cast<uint16_t>(m_baseAddress + m_memory.size() - 1)};
+  }
+
+  // Debug access to underlying memory
+  constexpr std::span<const Byte> data() const noexcept
+  {
+    if constexpr (isWritable)
+    {
+      return std::span<const Byte>{m_memory};
+    }
+    else
+    {
+      return m_memory;
+    }
+  }
+
+  // Writable access only if the underlying range is writable
+  constexpr std::span<Byte> data() noexcept
+    requires isWritable
+  {
+    return m_memory;
   }
 
 private:
-  storage_type m_storage;
-  size_t m_base_address;
+  std::span<ValueType> m_memory;
+  size_t m_baseAddress;
 };
+
+// Deduction guides to help with template argument deduction
+// template<std::ranges::contiguous_range R>
+// MemoryDevice(R&& range, Address baseAddress = Address{0}) -> MemoryDevice<std::remove_cvref_t<R>>;
+
+// For std::array
+template<typename T, std::size_t N>
+MemoryDevice(std::array<T, N>&, Address baseAddress = Address{0}) -> MemoryDevice<T>;
+
+// For std::vector
+template<typename T>
+MemoryDevice(std::vector<T>&, Address baseAddress = Address{0}) -> MemoryDevice<T>;
+
+// For C-style array
+template<typename T, std::size_t N>
+MemoryDevice(T (&)[N], Address baseAddress = Address{0}) -> MemoryDevice<T>;
+
+#if 0
+
+// Factory functions for common cases
+template<size_t N>
+constexpr auto makeRam(std::array<Byte, N>& array, size_t baseAddress = 0)
+{
+  return MemoryDevice{array, baseAddress};
+}
+
+template<size_t N>
+constexpr auto makeRom(const std::array<Byte, N>& array, size_t baseAddress = 0)
+{
+  return MemoryDevice{array, baseAddress};
+}
+
+constexpr auto makeRam(std::span<Byte> span, size_t baseAddress = 0)
+{
+  return MemoryDevice{span, baseAddress};
+}
+
+constexpr auto makeRom(std::span<const Byte> span, size_t baseAddress = 0)
+{
+  return MemoryDevice{span, baseAddress};
+}
+#endif
 
 }  // namespace Common

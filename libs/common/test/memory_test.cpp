@@ -20,7 +20,7 @@ TEST_CASE("Array backed memory device", "[memory]")
 
   std::vector<Byte> mem1;
   mem1.resize(0x100);
-  MemoryDevice<decltype(mem1)> device1(mem1, 0x2000_addr);
+  MemoryDevice device1(mem1, 0x2000_addr);
   CHECK(sizeof(device1) == sizeof(&mem1) + sizeof(size_t));  // Should be just a pointer and an address
 }
 
