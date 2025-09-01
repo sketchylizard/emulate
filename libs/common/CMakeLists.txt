@@ -4,12 +4,14 @@ add_library(common STATIC
   include/common/address_string_maker.h
   include/common/address.h
   include/common/bus.h
+  include/common/fixed_formatter.h
   include/common/hex.h
   include/common/memory.h
   include/common/microcode_pump.h
   src/microcode_pump.cpp
   src/address.cpp
   src/bus.cpp
+  src/fixed_formatter.cpp
   src/hex.cpp
   src/memory.cpp
 )

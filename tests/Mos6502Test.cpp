@@ -15,6 +15,7 @@
 #include "KlausFunctional.h"
 #include "common/address.h"
 #include "common/bus.h"
+#include "common/fixed_formatter.h"
 #include "common/hex.h"
 #include "common/memory.h"
 #include "common/microcode_pump.h"
@@ -65,8 +66,9 @@ TEST_CASE("MicrocodePump: Functional_tests", "[.]")
       // This is logging the **next** instruction to be executed.
       Common::Byte* opcode = &memory[static_cast<size_t>(request.address)];
       std::span<Common::Byte, 3> bytes{opcode, 3};
-      cpu6502::mos6502::disassemble(cpu, request.address, bytes, buffer);
-      std::cout << buffer << '\n';
+      FixedFormatter formatter(buffer);
+      formatter << std::pair{cpu, bytes};
+      std::cout << formatter.finalize() << "\n";
     };
 
     try

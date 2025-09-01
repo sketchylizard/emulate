@@ -2,6 +2,7 @@
 
 #include "common/address.h"
 #include "common/bus.h"
+#include "common/fixed_formatter.h"
 #include "cpu6502/address_mode.h"
 #include "cpu6502/state.h"
 
@@ -477,37 +478,11 @@ std::pair<Microcode*, Microcode*> mos6502::decodeOpcode(uint8_t opcode) noexcept
   return {const_cast<Microcode*>(instr.ops), const_cast<Microcode*>(instr.ops) + sizeof(instr.ops) / sizeof(instr.ops[0])};
 }
 
-static char* writeHex(Byte value, char* buffer)
+FixedFormatter& operator<<(FixedFormatter& formatter, std::pair<const State&, std::span<Common::Byte, 3>> stateAndBytes) noexcept
 {
-  static constexpr char hexDigits[] = "0123456789abcdef";
-  *buffer++ = hexDigits[(value >> 4) & 0x0F];
-  *buffer++ = hexDigits[value & 0x0F];
-  return buffer;
-}
 
-static char* writeHex(Address value, char* buffer)
-{
-  buffer = writeHex(static_cast<Byte>((static_cast<uint16_t>(value) >> 8) & 0xFF), buffer);
-  buffer = writeHex(static_cast<Byte>(static_cast<uint16_t>(value) & 0xFF), buffer);
-  return buffer;
-}
-
-static char* writeLiteral(const char* str, char* buffer)
-{
-  while (*str)
-  {
-    *buffer++ = *str++;
-  }
-  return buffer;
-}
-
-void mos6502::disassemble(
-    const State& state, Address correctedPc, std::span<const Byte, 3> bytes, std::span<char, 80> buffer) noexcept
-{
-  char* p = buffer.data();
-
-  p = writeHex(correctedPc, p);
-  p = writeLiteral(" : ", p);
+  const auto& [state, bytes] = stateAndBytes;
+  formatter << state.pc << " : ";
 
   const Byte opcode = bytes[0];
   const Instruction& instr = c_instructions[opcode];
@@ -517,16 +492,11 @@ void mos6502::disassemble(
   assert(operandBytes < std::size(bytes));
 
   // Add operand bytes
-  p = writeHex(bytes[0], p);  // opcode
-  p = writeLiteral(" ", p);
-  p = operandBytes > 0 ? writeHex(bytes[1], p) : writeLiteral("  ", p);
-  p = writeLiteral(" ", p);
-  p = operandBytes > 1 ? writeHex(bytes[2], p) : writeLiteral("  ", p);
-  p = writeLiteral(" ", p);
+  formatter << opcode << ' ';
+  (operandBytes > 0 ? (formatter << bytes[1]) : (formatter << "  ")) << ' ';
 
   // Mnemonic
-  p = writeLiteral(instr.mnemonic, p);
-  p = writeLiteral(" ", p);
+  formatter << instr.mnemonic << ' ';
 
   // Operand formatting based on addressing mode
   // The maximum length of the operand field is 7 characters (e.g. "$xxxx,X")
@@ -536,103 +506,47 @@ void mos6502::disassemble(
     case State::AddressModeType::Implied:
     case State::AddressModeType::Accumulator:
       // No operand
-      p = writeLiteral("       ", p);  // 7 spaces
+      formatter << "       ";  // 7 spaces
       break;
 
-    case State::AddressModeType::Immediate:
-      p = writeLiteral("#$", p);
-      p = writeHex(bytes[1], p);
-      p = writeLiteral("   ", p);  // pad to 7 characters
-      break;
-    case State::AddressModeType::ZeroPage:
-      p = writeLiteral("$", p);
-      p = writeHex(bytes[1], p);
-      p = writeLiteral("    ", p);  // pad to 7 characters
-      break;
-    case State::AddressModeType::ZeroPageX:
-      p = writeLiteral("$", p);
-      p = writeHex(bytes[1], p);
-      p = writeLiteral(",X", p);
-      p = writeLiteral("   ", p);  // pad to 7 characters
-      break;
-    case State::AddressModeType::ZeroPageY:
-      p = writeLiteral("$", p);
-      p = writeHex(bytes[1], p);
-      p = writeLiteral(",Y", p);
-      p = writeLiteral("   ", p);  // pad to 7 characters
-      break;
-    case State::AddressModeType::Absolute:
-      p = writeLiteral("$", p);
-      p = writeHex(bytes[2], p);
-      p = writeHex(bytes[1], p);  // Little endian
-      p = writeLiteral("  ", p);  // pad to 7 characters
-      break;
-    case State::AddressModeType::AbsoluteX:
-      p = writeLiteral("$", p);
-      p = writeHex(bytes[2], p);
-      p = writeHex(bytes[1], p);  // Little endian
-      p = writeLiteral(",X", p);
-      break;
-    case State::AddressModeType::AbsoluteY:
-      p = writeLiteral("$", p);
-      p = writeHex(bytes[2], p);
-      p = writeHex(bytes[1], p);  // Little endian
-      p = writeLiteral(",Y", p);
-      break;
-    case State::AddressModeType::Indirect:
-      p = writeLiteral("($", p);
-      p = writeHex(bytes[2], p);
-      p = writeHex(bytes[1], p);  // Little endian
-      p = writeLiteral(")", p);
-      break;
-    case State::AddressModeType::IndirectZpX:
-      p = writeLiteral("($", p);
-      p = writeHex(bytes[1], p);
-      p = writeLiteral(",X)", p);
-      break;
-    case State::AddressModeType::IndirectZpY:
-      p = writeLiteral("($", p);
-      p = writeHex(bytes[1], p);
-      p = writeLiteral("),Y", p);
-      break;
+    case State::AddressModeType::Immediate: formatter << "#$" << bytes[1] << "   "; break;
+    case State::AddressModeType::ZeroPage: formatter << "$" << bytes[1] << "    "; break;
+    case State::AddressModeType::ZeroPageX: formatter << "$" << bytes[1] << ",X   "; break;
+    case State::AddressModeType::ZeroPageY: formatter << "$" << bytes[1] << ",Y   "; break;
+    case State::AddressModeType::Absolute: formatter << "$" << bytes[2] << bytes[1] << "  "; break;
+    case State::AddressModeType::AbsoluteX: formatter << "$" << bytes[2] << bytes[1] << ",X"; break;
+    case State::AddressModeType::AbsoluteY: formatter << "$" << bytes[2] << bytes[1] << ",X"; break;
+    case State::AddressModeType::Indirect: formatter << "($" << bytes[2] << bytes[1] << ")"; break;
+    case State::AddressModeType::IndirectZpX: formatter << "($" << bytes[1] << ",X)"; break;
+    case State::AddressModeType::IndirectZpY: formatter << "($" << bytes[1] << "),Y"; break;
     case State::AddressModeType::Relative:
     {
       // Calculate target address for branch
       int32_t offset = static_cast<int8_t>(bytes[1]);
       int32_t target = static_cast<int32_t>(state.pc) + 2 + offset;  // PC + instruction length + offset
-      p = writeLiteral("$", p);
-      p = writeHex(static_cast<Address>(target), p);
-      p = writeLiteral("  ", p);  // pad to 7 characters
+      formatter << "$" << Address{static_cast<uint16_t>(target)} << "  ";
       break;
     }
   }
 
   // Add registers: A, X, Y, SP, P
-  p = writeLiteral("A:", p);
-  p = writeHex(state.a, p);
-  p = writeLiteral(" X:", p);
-  p = writeHex(state.x, p);
-  p = writeLiteral(" Y:", p);
-  p = writeHex(state.y, p);
-  p = writeLiteral(" SP:", p);
-  p = writeHex(state.sp, p);
-  p = writeLiteral(" P:", p);
-  p = writeHex(state.p, p);
+  formatter << "  A:" << state.a;
+  formatter << " X:" << state.x;
+  formatter << " Y:" << state.y;
+  formatter << " SP:" << state.sp;
+  formatter << " P:" << state.p;
+  formatter << ' ';
+  formatter << (state.has(State::Flag::Negative) ? 'N' : '-');
+  formatter << (state.has(State::Flag::Overflow) ? 'O' : '-');
+  formatter << '-';
+  formatter << '-';
+  formatter << (state.has(State::Flag::Break) ? 'B' : '-');
+  formatter << (state.has(State::Flag::Decimal) ? 'D' : '-');
+  formatter << (state.has(State::Flag::Interrupt) ? 'I' : '-');
+  formatter << (state.has(State::Flag::Zero) ? 'Z' : '-');
+  formatter << (state.has(State::Flag::Carry) ? 'C' : '-');
 
-  *p++ = ' ';
-  *p = 'N';
-  *p++ = state.has(State::Flag::Negative) ? 'N' : '-';
-  *p = 'V';
-  *p++ = state.has(State::Flag::Overflow) ? 'O' : '-';
-  *p++ = '-';
-  *p++ = '-';
-  *p++ = state.has(State::Flag::Break) ? 'B' : '-';
-  *p++ = state.has(State::Flag::Decimal) ? 'D' : '-';
-  *p++ = state.has(State::Flag::Interrupt) ? 'I' : '-';
-  *p++ = state.has(State::Flag::Zero) ? 'Z' : '-';
-  *p++ = state.has(State::Flag::Carry) ? 'C' : '-';
-
-  *p++ = '\0';
+  return formatter;
 }
 
 }  // namespace cpu6502

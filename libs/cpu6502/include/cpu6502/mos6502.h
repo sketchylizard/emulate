@@ -9,6 +9,11 @@
 #include "cpu6502/cpu6502_types.h"
 #include "cpu6502/state.h"
 
+namespace Common
+{
+class FixedFormatter;
+}
+
 namespace cpu6502
 {
 
@@ -18,9 +23,9 @@ struct mos6502 : CpuDefinition
   static Response fetchNextOpcode(State& state, BusResponse) noexcept;
 
   static std::pair<Microcode*, Microcode*> decodeOpcode(uint8_t opcode) noexcept;
-
-  static void disassemble(const State& state, Common::Address correctedPc, std::span<const Common::Byte, 3> bytes,
-      std::span<char, 80> buffer) noexcept;
 };
+
+Common::FixedFormatter& operator<<(
+    Common::FixedFormatter& formatter, std::pair<const State&, std::span<Common::Byte, 3>> stateAndBytes) noexcept;
 
 }  // namespace cpu6502
