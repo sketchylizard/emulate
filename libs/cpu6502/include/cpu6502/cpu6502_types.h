@@ -19,9 +19,34 @@ using MicrocodeResponse = CpuDefinition::Response;
 struct Instruction
 {
   Common::Byte opcode = 0;
-  const char* mnemonic = "???";
   State::AddressModeType addressMode = State::AddressModeType::Implied;
+  Common::Byte length = 1;  // total length in bytes (opcode + operands)
+  const char* mnemonic = "???";
   Microcode ops[7] = {};  // sequence of microcode functions to execute
+};
+
+//! Exception thrown when the CPU encounters a trap condition, such as a self-jump
+//! or self branch.
+class TrapException : public std::exception
+{
+public:
+  explicit TrapException(Common::Address trapAddress)
+    : m_address(trapAddress)
+  {
+  }
+
+  Common::Address address() const noexcept
+  {
+    return m_address;
+  }
+
+  const char* what() const noexcept override
+  {
+    return "CPU trap detected";
+  }
+
+private:
+  Common::Address m_address;
 };
 
 }  // namespace cpu6502

@@ -20,7 +20,7 @@ public:
 
   MicrocodePump() = default;
 
-  [[nodiscard]] BusRequest tick(State& state, BusResponse response) noexcept;
+  [[nodiscard]] BusRequest tick(State& state, BusResponse response);
   [[nodiscard]] uint64_t microcodeCount() const noexcept
   {
     return m_microcodeCount;
@@ -74,7 +74,7 @@ typename CpuDefinition::Microcode MicrocodePump<CpuDefinition>::getNextMicrocode
 }
 
 template<typename CpuDefinition>
-typename CpuDefinition::BusRequest MicrocodePump<CpuDefinition>::tick(State& state, BusResponse response) noexcept
+typename CpuDefinition::BusRequest MicrocodePump<CpuDefinition>::tick(State& state, BusResponse response)
 {
   ++m_microcodeCount;
 
@@ -84,8 +84,14 @@ typename CpuDefinition::BusRequest MicrocodePump<CpuDefinition>::tick(State& sta
   // Execute it
   auto [request, injection] = microcode(state, response);
 
+  if (!request && !injection)
+  {
+    // Previous instruction is done, we need to fetch next opcode
+    m_shouldDecode = true;  // Decode the response on next tick
+    return CpuDefinition::fetchNextOpcode(state, response).request;
+  }
+
   // Handle microcode injection (for page crossing penalties, etc.) If it's null then nothing to inject.
   m_injectedOp = injection;
-
   return request;
 }

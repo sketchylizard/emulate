@@ -98,9 +98,6 @@ struct AddressMode
   static constexpr Microcode immediate[] = {  //
       &AddressMode::requestOperandLow};
 
-  static constexpr Microcode relative[] = {  //
-      &AddressMode::requestOperandLow};
-
   static constexpr Microcode zeroPage[] = {  //
       &requestOperandLow,  //
       &requestZeroPageAddress};
@@ -146,7 +143,7 @@ struct AddressMode
       case AddressMode::Indirect: throw std::out_of_range("Not implemented yet");
       case AddressMode::IndirectZpX: throw std::out_of_range("Not implemented yet");
       case AddressMode::IndirectZpY: throw std::out_of_range("Not implemented yet");
-      case AddressMode::Relative: return relative;
+      case AddressMode::Relative: return {};  // Handled by opcode itself
     }
     throw std::out_of_range("Unknown addressing mode");
   }

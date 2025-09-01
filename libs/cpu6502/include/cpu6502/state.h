@@ -20,15 +20,26 @@ struct State
     Negative = 0x80,
   };
 
-  // clang-format off
-  enum class AddressModeType : uint8_t {
-    Implied, Accumulator, Immediate, 
-    ZeroPage, ZeroPageX, ZeroPageY, 
-    Absolute, AbsoluteX, AbsoluteY,
-    Indirect, IndirectZpX, IndirectZpY,
-    Relative
+  enum class AddressModeType : uint8_t
+  {
+    // The address mode value is designed so that the number of operand bytes can be determined by
+    // simple ranges. Dividing the ordinal number by 10 gives the number of operand bytes.
+    Implied = 0 * 10 + 0,
+    Accumulator = 0 * 10 + 1,
+
+    Immediate = 1 * 10 + 0,
+    ZeroPage = 1 * 10 + 1,
+    ZeroPageX = 1 * 10 + 2,
+    ZeroPageY = 1 * 10 + 3,
+    Relative = 1 * 10 + 4,
+    IndirectZpX = 1 * 10 + 5,
+    IndirectZpY = 1 * 10 + 6,
+
+    Absolute = 2 * 10 + 0,
+    AbsoluteX = 2 * 10 + 1,
+    AbsoluteY = 2 * 10 + 2,
+    Indirect = 2 * 10 + 3,
   };
-  // clang-format on
 
   // Flag helpers
   [[nodiscard]] constexpr bool has(Flag f) const noexcept;

@@ -47,56 +47,51 @@ TEST_CASE("MicrocodePump: Functional_tests", "[.]")
     BusResponse response;
 
     std::bitset<0x10000> breakpoints;
-    breakpoints.set(static_cast<size_t>(0x05a7));
-    breakpoints.set(static_cast<size_t>(0x0594));
+    breakpoints.set(static_cast<size_t>(0x056b));
 
     char buffer[80];
 
+    auto executeOneInstruction = [&]()
+    {
+      // Execute until we hit a sync (instruction boundary)
+      do
+      {
+        request = executionPipeline.tick(cpu, response);
+
+        response = memDevice.tick(request);
+      } while (!request.isSync());
+
+      // This is logging the **next** instruction to be executed.
+      Common::Byte* opcode = &memory[static_cast<size_t>(request.address)];
+      std::span<Common::Byte, 3> bytes{opcode, 3};
+      cpu6502::mos6502::disassemble(cpu, request.address, bytes, buffer);
+      std::cout << buffer << '\n';
+    };
+
     try
     {
-      Address lastInstructionStart{0xFFFF};
-
       for (;;)
       {
-        Common::Byte* opcode = &memory[static_cast<size_t>(cpu.pc)];
-        std::span<Common::Byte, 3> bytes{opcode, 3};
-        cpu6502::mos6502::disassemble(cpu, request.address, bytes, buffer);
-        std::cout << buffer << '\n';
+        executeOneInstruction();
 
-        do
-        {
-          request = executionPipeline.tick(cpu, response);
-
-          response = memDevice.tick(request);
-        } while (!request.isSync());
-
-        // We are at an instruction boundary. This is a good place to check for infinite loops or breakpoints.
-
-        if (request.address == lastInstructionStart)
-        {
-          // See if it is one of the known trap points
-          if (request.address == Klaus__6502_functional_test::success)
-          {
-            return true;  // Test passed
-          }
-          else if (std::ranges::find(Klaus__6502_functional_test::errors, request.address) !=
-                   std::end(Klaus__6502_functional_test::errors))
-          {
-            throw std::runtime_error(std::format("Test failed at address ${:04X}\n", request.address));
-          }
-          else
-          {
-            throw std::runtime_error(std::format("Infinite loop detected at address ${:04X}\n", request.address));
-          }
-        }
-        lastInstructionStart = request.address;
-
-        // See if the requested address is a breakpoint
+        // We are at an instruction boundary. This is a good place to check for breakpoints.
         if (breakpoints.test(static_cast<size_t>(request.address)))
         {
           std::cout << std::format("User breakpoint at address ${:04X}\n", request.address);
         }
       }
+    }
+    catch (const cpu6502::TrapException& e)
+    {
+      // See if it is one of the known trap points
+      auto trapAddress = e.address();
+
+      if (trapAddress == Klaus__6502_functional_test::success)
+      {
+        return true;  // Test passed
+      }
+      std::cerr << std::format("TrapException at address ${:04X}\n", static_cast<uint16_t>(trapAddress));
+      return false;
     }
     catch (const std::exception& e)
     {
