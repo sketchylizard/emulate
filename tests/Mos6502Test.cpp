@@ -47,6 +47,7 @@ TEST_CASE("MicrocodePump: Functional_tests", "[.]")
     BusResponse response;
 
     std::bitset<0x10000> breakpoints;
+    breakpoints.set(static_cast<size_t>(0x040b));
     breakpoints.set(static_cast<size_t>(0x056b));
 
     char buffer[80];

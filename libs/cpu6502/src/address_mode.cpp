@@ -24,11 +24,4 @@ MicrocodeResponse AddressMode::requestEffectiveAddress(State& cpu, BusResponse r
   return {BusRequest::Read(Common::MakeAddress(cpu.lo, cpu.hi))};
 }
 
-MicrocodeResponse AddressMode::requestZeroPageAddress(State& cpu, BusResponse response)
-{
-  // The incoming response data is the low byte of the address (the high byte is always 0)
-  cpu.lo = response.data;
-  return {BusRequest::Read(Common::MakeAddress(cpu.lo, 0x00))};
-}
-
 }  // namespace cpu6502

@@ -79,7 +79,7 @@ static MicrocodeResponse branchPageFixup(State& cpu, Common::BusResponse /*respo
     cpu.pc += 0x100;
   }
   // 4 cycles total, we're done
-  return {BusRequest::Read(cpu.pc)};  // Dummy read to consume cycle
+  return MicrocodeResponse{};
 }
 
 template<Common::Byte State::* reg>
@@ -142,7 +142,7 @@ static MicrocodeResponse ora(State& cpu, Common::BusResponse response)
   return MicrocodeResponse{};
 }
 
-static MicrocodeResponse jmpAbsolute2(State& cpu, Common::BusResponse response)
+static MicrocodeResponse jmpAbsolute(State& cpu, Common::BusResponse response)
 {
   // Step 2
   cpu.hi = response.data;
@@ -157,18 +157,6 @@ static MicrocodeResponse jmpAbsolute2(State& cpu, Common::BusResponse response)
 
   cpu.pc = newPC;
   return MicrocodeResponse{};
-}
-
-static MicrocodeResponse jmpAbsolute1(State& cpu, Common::BusResponse response)
-{
-  cpu.lo = response.data;
-
-  return {BusRequest::Read(cpu.pc++), jmpAbsolute2};  // Fetch high byte
-}
-
-static MicrocodeResponse jmpAbsolute(State& cpu, Common::BusResponse /*response*/)
-{
-  return {BusRequest::Read(cpu.pc++), jmpAbsolute1};  // Fetch low byte
 }
 
 static MicrocodeResponse jmpIndirect4(State& cpu, Common::BusResponse response)
@@ -301,12 +289,12 @@ namespace
 
 using InstructionTable = std::array<Instruction, 256>;
 
-template<State::AddressModeType mode>
+template<typename Mode>
 constexpr void add(Common::Byte opcode, const char* mnemonic, std::initializer_list<const Microcode> operations,
     InstructionTable& table)
 {
   // Get the addressing mode microcode based on template parameter
-  std::span<const Microcode> addressingOps = AddressMode::getAddressingOps<mode>();
+  std::span<const Microcode> addressingOps = Mode::ops;
 
   // Check total size at compile time
   constexpr size_t maxOps = sizeof(Instruction::ops) / sizeof(Instruction::ops[0]);
@@ -318,7 +306,7 @@ constexpr void add(Common::Byte opcode, const char* mnemonic, std::initializer_l
   Instruction& instr = table[opcode];
   instr.opcode = opcode;
   instr.mnemonic = mnemonic;
-  instr.addressMode = mode;
+  instr.addressMode = Mode::type;
 
   // Copy addressing microcode first
   size_t index = 0;
@@ -346,133 +334,132 @@ static constexpr auto c_instructions = []()
 {
   std::array<Instruction, 256> table{};
 
-  using AM = State::AddressModeType;
   using Flag = State::Flag;
 
   // Insert actual instructions by opcode
   // add(0x00, "BRK", table, {brk<false>});
 
-  add<AM::Implied>(0xEA, "NOP", {}, table);
+  add<Implied>(0xEA, "NOP", {}, table);
 
   // ADC instructions
-  add<AM::Immediate>(0x69, "ADC", {adc}, table);
-  add<AM::ZeroPage>(0x65, "ADC", {adc}, table);
-  add<AM::ZeroPageX>(0x75, "ADC", {adc}, table);
-  add<AM::Absolute>(0x6D, "ADC", {adc}, table);
-  add<AM::AbsoluteX>(0x7D, "ADC", {adc}, table);
-  add<AM::AbsoluteY>(0x79, "ADC", {adc}, table);
-  // add<AM::IndirectZpX>(0x61, "ADC", {adc}, table);
-  // add<AM::IndirectZpY>(0x71, "ADC", {adc}, table);
+  add<Immediate>(0x69, "ADC", {adc}, table);
+  add<ZeroPage<>>(0x65, "ADC", {adc}, table);
+  add<ZeroPage<&State::x>>(0x75, "ADC", {adc}, table);
+  add<Absolute<>>(0x6D, "ADC", {adc}, table);
+  add<Absolute<&State::x>>(0x7D, "ADC", {adc}, table);
+  add<Absolute<&State::y>>(0x79, "ADC", {adc}, table);
+  // add<IndirectZpX>(0x61, "ADC", {adc}, table);
+  // add<IndirectZpY>(0x71, "ADC", {adc}, table);
 
   // LDA instructions
-  add<AM::Immediate>(0xA9, "LDA", {load<&State::a>}, table);
-  add<AM::ZeroPage>(0xA5, "LDA", {load<&State::a>}, table);
-  add<AM::ZeroPageX>(0xB5, "LDA", {load<&State::a>}, table);
-  add<AM::Absolute>(0xAD, "LDA", {load<&State::a>}, table);
-  add<AM::AbsoluteX>(0xBD, "LDA", {load<&State::a>}, table);
-  add<AM::AbsoluteY>(0xB9, "LDA", {load<&State::a>}, table);
-  // add<AM::IndirectX>(0xA1, "LDA", {load<&State::a>}, table);
-  // add<AM::IndirectY>(0xB1, "LDA", {load<&State::a>}, table);
+  add<Immediate>(0xA9, "LDA", {load<&State::a>}, table);
+  add<ZeroPage<>>(0xA5, "LDA", {load<&State::a>}, table);
+  add<ZeroPage<&State::x>>(0xB5, "LDA", {load<&State::a>}, table);
+  add<Absolute<>>(0xAD, "LDA", {load<&State::a>}, table);
+  add<Absolute<&State::x>>(0xBD, "LDA", {load<&State::a>}, table);
+  add<Absolute<&State::y>>(0xB9, "LDA", {load<&State::a>}, table);
+  // add<IndirectX>(0xA1, "LDA", {load<&State::a>}, table);
+  // add<IndirectY>(0xB1, "LDA", {load<&State::a>}, table);
 
   // LDX instructions
-  add<AM::Immediate>(0xA2, "LDX", {load<&State::x>}, table);
-  add<AM::ZeroPage>(0xA6, "LDX", {load<&State::x>}, table);
-  add<AM::ZeroPageY>(0xB6, "LDX", {load<&State::x>}, table);
-  add<AM::Absolute>(0xAE, "LDX", {load<&State::x>}, table);
-  add<AM::AbsoluteY>(0xBE, "LDX", {load<&State::x>}, table);
+  add<Immediate>(0xA2, "LDX", {load<&State::x>}, table);
+  add<ZeroPage<>>(0xA6, "LDX", {load<&State::x>}, table);
+  add<ZeroPage<&State::y>>(0xB6, "LDX", {load<&State::x>}, table);
+  add<Absolute<>>(0xAE, "LDX", {load<&State::x>}, table);
+  add<Absolute<&State::y>>(0xBE, "LDX", {load<&State::x>}, table);
 
   // LDY instructions
-  add<AM::Immediate>(0xA0, "LDY", {load<&State::y>}, table);
-  add<AM::ZeroPage>(0xA4, "LDY", {load<&State::y>}, table);
-  add<AM::ZeroPageX>(0xB4, "LDY", {load<&State::y>}, table);
-  add<AM::Absolute>(0xAC, "LDY", {load<&State::y>}, table);
-  add<AM::AbsoluteX>(0xBC, "LDY", {load<&State::y>}, table);
+  add<Immediate>(0xA0, "LDY", {load<&State::y>}, table);
+  add<ZeroPage<>>(0xA4, "LDY", {load<&State::y>}, table);
+  add<ZeroPage<&State::x>>(0xB4, "LDY", {load<&State::y>}, table);
+  add<Absolute<>>(0xAC, "LDY", {load<&State::y>}, table);
+  add<Absolute<&State::x>>(0xBC, "LDY", {load<&State::y>}, table);
 
   // Flag operations
-  add<AM::Implied>(0x18, "CLC", {flagOp<Flag::Carry, false>}, table);
-  add<AM::Implied>(0x38, "SEC", {flagOp<Flag::Carry, true>}, table);
-  add<AM::Implied>(0x58, "CLI", {flagOp<Flag::Interrupt, false>}, table);
-  add<AM::Implied>(0x78, "SEI", {flagOp<Flag::Interrupt, true>}, table);
-  add<AM::Implied>(0xB8, "CLV", {flagOp<Flag::Overflow, false>}, table);
-  add<AM::Implied>(0xD8, "CLD", {flagOp<Flag::Decimal, false>}, table);
-  add<AM::Implied>(0xF8, "SED", {flagOp<Flag::Decimal, true>}, table);
+  add<Implied>(0x18, "CLC", {flagOp<Flag::Carry, false>}, table);
+  add<Implied>(0x38, "SEC", {flagOp<Flag::Carry, true>}, table);
+  add<Implied>(0x58, "CLI", {flagOp<Flag::Interrupt, false>}, table);
+  add<Implied>(0x78, "SEI", {flagOp<Flag::Interrupt, true>}, table);
+  add<Implied>(0xB8, "CLV", {flagOp<Flag::Overflow, false>}, table);
+  add<Implied>(0xD8, "CLD", {flagOp<Flag::Decimal, false>}, table);
+  add<Implied>(0xF8, "SED", {flagOp<Flag::Decimal, true>}, table);
 
   // STA variations
-  add<AM::ZeroPage>(0x85, "STA", {store<&State::a>}, table);
-  add<AM::ZeroPageX>(0x95, "STA", {store<&State::a>}, table);
-  add<AM::Absolute>(0x8D, "STA", {store<&State::a>}, table);
-  add<AM::AbsoluteX>(0x9D, "STA", {store<&State::a>}, table);
-  add<AM::AbsoluteY>(0x99, "STA", {store<&State::a>}, table);
-  // add<AM::IndirectZpX>(0x81, "STA", {store<&State::a>}, table);
-  // add<AM::IndirectZpY>(0x91, "STA", {store<&State::a>}, table);
+  add<ZeroPage<>>(0x85, "STA", {store<&State::a>}, table);
+  add<ZeroPage<&State::x>>(0x95, "STA", {store<&State::a>}, table);
+  add<Absolute<>>(0x8D, "STA", {store<&State::a>}, table);
+  add<Absolute<&State::x>>(0x9D, "STA", {store<&State::a>}, table);
+  add<Absolute<&State::y>>(0x99, "STA", {store<&State::a>}, table);
+  // add<IndirectZpX>(0x81, "STA", {store<&State::a>}, table);
+  // add<IndirectZpY>(0x91, "STA", {store<&State::a>}, table);
 
   // ORA variations
-  // add<AM::IndirectZpX>(0x01, "ORA", {ora}, table);
-  add<AM::ZeroPage>(0x05, "ORA", {ora}, table);
-  add<AM::Absolute>(0x0D, "ORA", {ora}, table);
-  // add<AM::IndirectZpY>(0x11, "ORA", {ora}, table);
-  add<AM::ZeroPageX>(0x15, "ORA", {ora}, table);
-  add<AM::AbsoluteY>(0x19, "ORA", {ora}, table);
-  add<AM::AbsoluteX>(0x1D, "ORA", {ora}, table);
+  // add<IndirectZpX>(0x01, "ORA", {ora}, table);
+  add<ZeroPage<>>(0x05, "ORA", {ora}, table);
+  add<Absolute<>>(0x0D, "ORA", {ora}, table);
+  // add<IndirectZpY>(0x11, "ORA", {ora}, table);
+  add<ZeroPage<&State::x>>(0x15, "ORA", {ora}, table);
+  add<Absolute<&State::y>>(0x19, "ORA", {ora}, table);
+  add<Absolute<&State::x>>(0x1D, "ORA", {ora}, table);
 
-  // JMP Absolute and JMP Indirect
-  add<AM::Implied>(0x4C, "JMP", {jmpAbsolute}, table);
-  add<AM::Implied>(0x6C, "JMP", {jmpIndirect}, table);
+  // JMP Absolute<> and JMP Indirect
+  add<Absolute<>>(0x4C, "JMP", {jmpAbsolute}, table);
+  add<Implied>(0x6C, "JMP", {jmpIndirect}, table);
 
   // Branch instructions
-  add<AM::Relative>(0xD0, "BNE", {branch<Flag::Zero, false>}, table);
-  add<AM::Relative>(0xF0, "BEQ", {branch<Flag::Zero, true>}, table);
-  add<AM::Relative>(0x10, "BPL", {branch<Flag::Negative, false>}, table);
-  add<AM::Relative>(0x30, "BMI", {branch<Flag::Negative, true>}, table);
-  add<AM::Relative>(0x90, "BCC", {branch<Flag::Carry, false>}, table);
-  add<AM::Relative>(0xB0, "BCS", {branch<Flag::Carry, true>}, table);
-  add<AM::Relative>(0x50, "BVC", {branch<Flag::Overflow, false>}, table);
-  add<AM::Relative>(0x70, "BVS", {branch<Flag::Overflow, true>}, table);
+  add<Relative>(0xD0, "BNE", {branch<Flag::Zero, false>}, table);
+  add<Relative>(0xF0, "BEQ", {branch<Flag::Zero, true>}, table);
+  add<Relative>(0x10, "BPL", {branch<Flag::Negative, false>}, table);
+  add<Relative>(0x30, "BMI", {branch<Flag::Negative, true>}, table);
+  add<Relative>(0x90, "BCC", {branch<Flag::Carry, false>}, table);
+  add<Relative>(0xB0, "BCS", {branch<Flag::Carry, true>}, table);
+  add<Relative>(0x50, "BVC", {branch<Flag::Overflow, false>}, table);
+  add<Relative>(0x70, "BVS", {branch<Flag::Overflow, true>}, table);
 
   // Increment and Decrement instructions
-  add<AM::Implied>(0xE8, "INX", {increment<&State::x>}, table);
-  add<AM::Implied>(0xC8, "INY", {increment<&State::y>}, table);
-  add<AM::Implied>(0xCA, "DEX", {decrement<&State::x>}, table);
-  add<AM::Implied>(0x88, "DEY", {decrement<&State::y>}, table);
+  add<Implied>(0xE8, "INX", {increment<&State::x>}, table);
+  add<Implied>(0xC8, "INY", {increment<&State::y>}, table);
+  add<Implied>(0xCA, "DEX", {decrement<&State::x>}, table);
+  add<Implied>(0x88, "DEY", {decrement<&State::y>}, table);
 
   // CMP — Compare Accumulator
-  add<AM::Immediate>(0xC9, "CMP", {compare<&State::a>}, table);
-  add<AM::ZeroPage>(0xC5, "CMP", {compare<&State::a>}, table);
-  add<AM::ZeroPageX>(0xD5, "CMP", {compare<&State::a>}, table);
-  add<AM::Absolute>(0xCD, "CMP", {compare<&State::a>}, table);
-  add<AM::AbsoluteX>(0xDD, "CMP", {compare<&State::a>}, table);
-  add<AM::AbsoluteY>(0xD9, "CMP", {compare<&State::a>}, table);
-  // add<AM::IndirectZpX>(0xC1, "CMP", {compare<&State::a>}, table);
-  // add<AM::IndirectZpY>(0xD1, "CMP", {compare<&State::a>}, table);
+  add<Immediate>(0xC9, "CMP", {compare<&State::a>}, table);
+  add<ZeroPage<>>(0xC5, "CMP", {compare<&State::a>}, table);
+  add<ZeroPage<&State::x>>(0xD5, "CMP", {compare<&State::a>}, table);
+  add<Absolute<>>(0xCD, "CMP", {compare<&State::a>}, table);
+  add<Absolute<&State::x>>(0xDD, "CMP", {compare<&State::a>}, table);
+  add<Absolute<&State::y>>(0xD9, "CMP", {compare<&State::a>}, table);
+  // add<IndirectZpX>(0xC1, "CMP", {compare<&State::a>}, table);
+  // add<IndirectZpY>(0xD1, "CMP", {compare<&State::a>}, table);
 
   // CPX — Compare X Register
-  add<AM::Immediate>(0xE0, "CPX", {compare<&State::x>}, table);
-  add<AM::ZeroPage>(0xE4, "CPX", {compare<&State::x>}, table);
-  add<AM::Absolute>(0xEC, "CPX", {compare<&State::x>}, table);
+  add<Immediate>(0xE0, "CPX", {compare<&State::x>}, table);
+  add<ZeroPage<>>(0xE4, "CPX", {compare<&State::x>}, table);
+  add<Absolute<>>(0xEC, "CPX", {compare<&State::x>}, table);
 
   // CPY — Compare Y Register
-  add<AM::Immediate>(0xC0, "CPY", {compare<&State::y>}, table);
-  add<AM::ZeroPage>(0xC4, "CPY", {compare<&State::y>}, table);
-  add<AM::Absolute>(0xCC, "CPY", {compare<&State::y>}, table);
+  add<Immediate>(0xC0, "CPY", {compare<&State::y>}, table);
+  add<ZeroPage<>>(0xC4, "CPY", {compare<&State::y>}, table);
+  add<Absolute<>>(0xCC, "CPY", {compare<&State::y>}, table);
 
-  add<AM::Implied>(0x98, "TYA", {transfer<&State::y, &State::a>}, table);
-  add<AM::Implied>(0xA8, "TAY", {transfer<&State::a, &State::y>}, table);
-  add<AM::Implied>(0x8A, "TXA", {transfer<&State::x, &State::a>}, table);
-  add<AM::Implied>(0xAA, "TAX", {transfer<&State::a, &State::x>}, table);
-  add<AM::Implied>(0x9A, "TXS", {txs}, table);
-  add<AM::Implied>(0xBA, "TSX", {transfer<&State::sp, &State::x>}, table);
+  add<Implied>(0x98, "TYA", {transfer<&State::y, &State::a>}, table);
+  add<Implied>(0xA8, "TAY", {transfer<&State::a, &State::y>}, table);
+  add<Implied>(0x8A, "TXA", {transfer<&State::x, &State::a>}, table);
+  add<Implied>(0xAA, "TAX", {transfer<&State::a, &State::x>}, table);
+  add<Implied>(0x9A, "TXS", {txs}, table);
+  add<Implied>(0xBA, "TSX", {transfer<&State::sp, &State::x>}, table);
 
-  add<AM::Immediate>(0x49, "EOR", {eor}, table);
-  add<AM::ZeroPage>(0x45, "EOR", {eor}, table);
-  add<AM::ZeroPageX>(0x55, "EOR", {eor}, table);
-  add<AM::Absolute>(0x4D, "EOR", {eor}, table);
-  add<AM::AbsoluteX>(0x5D, "EOR", {eor}, table);
-  add<AM::AbsoluteY>(0x59, "EOR", {eor}, table);
-  // add<AM::IndirectZpX>(0x41, "EOR", {eor}, table);
-  // add<AM::IndirectZpY>(0x51, "EOR", {eor}, table);
+  add<Immediate>(0x49, "EOR", {eor}, table);
+  add<ZeroPage<>>(0x45, "EOR", {eor}, table);
+  add<ZeroPage<&State::x>>(0x55, "EOR", {eor}, table);
+  add<Absolute<>>(0x4D, "EOR", {eor}, table);
+  add<Absolute<&State::x>>(0x5D, "EOR", {eor}, table);
+  add<Absolute<&State::y>>(0x59, "EOR", {eor}, table);
+  // add<IndirectZpX>(0x41, "EOR", {eor}, table);
+  // add<IndirectZpY>(0x51, "EOR", {eor}, table);
 
-  add<AM::Implied>(0x48, "PHA", {pha}, table);
-  add<AM::Implied>(0x68, "PLA", {pla}, table);
+  add<Implied>(0x48, "PHA", {pha}, table);
+  add<Implied>(0x68, "PLA", {pla}, table);
 
   // Add more instructions as needed
 

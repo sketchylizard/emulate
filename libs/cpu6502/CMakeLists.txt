@@ -18,6 +18,7 @@ if(BUILD_TESTING)
 
   add_executable(cpu6502Test
     tests/address_mode_test.cpp
+    tests/mos6502_test.cpp
     tests/helpers.cpp
     tests/helpers.h
   )
