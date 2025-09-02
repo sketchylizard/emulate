@@ -404,7 +404,7 @@ static constexpr auto c_instructions = []()
   add<Absolute<&State::x>>(0x1D, "ORA", {ora}, table);
 
   // JMP Absolute<> and JMP Indirect
-  add<Absolute<>>(0x4C, "JMP", {jmpAbsolute}, table);
+  add<AbsoluteJmp>(0x4C, "JMP", {jmpAbsolute}, table);
   add<Implied>(0x6C, "JMP", {jmpIndirect}, table);
 
   // Branch instructions

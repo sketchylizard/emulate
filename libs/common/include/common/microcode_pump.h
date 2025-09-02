@@ -21,9 +21,15 @@ public:
   MicrocodePump() = default;
 
   [[nodiscard]] BusRequest tick(State& state, BusResponse response);
+
   [[nodiscard]] uint64_t microcodeCount() const noexcept
   {
     return m_microcodeCount;
+  }
+
+  [[nodiscard]] uint64_t cyclesSinceLastFetch() const noexcept
+  {
+    return m_cyclesSinceLastFetch;
   }
 
 private:
@@ -37,6 +43,7 @@ private:
   Microcode* m_currentBegin = nullptr;  // Current position in microcode sequence
   Microcode* m_currentEnd = nullptr;  // End of current microcode sequence
 
+  uint8_t m_cyclesSinceLastFetch = 0;  // Number of cycles since the last fetch operation.
   bool m_shouldDecode = false;  // Flag: decode on next tick
 };
 
@@ -54,6 +61,7 @@ typename CpuDefinition::Microcode MicrocodePump<CpuDefinition>::getNextMicrocode
   // Priority 2: Decode if flagged from previous cycle
   if (m_shouldDecode)
   {
+    m_cyclesSinceLastFetch = 0;
     m_shouldDecode = false;
     auto [begin, end] = CpuDefinition::decodeOpcode(response.data);
     m_currentBegin = begin;
@@ -76,10 +84,11 @@ typename CpuDefinition::Microcode MicrocodePump<CpuDefinition>::getNextMicrocode
 template<typename CpuDefinition>
 typename CpuDefinition::BusRequest MicrocodePump<CpuDefinition>::tick(State& state, BusResponse response)
 {
-  ++m_microcodeCount;
-
   // Get next microcode to execute
   auto microcode = getNextMicrocode(response);
+
+  ++m_microcodeCount;
+  ++m_cyclesSinceLastFetch;
 
   // Execute it
   auto [request, injection] = microcode(state, response);

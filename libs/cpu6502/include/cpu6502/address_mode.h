@@ -52,7 +52,7 @@ struct Immediate : AddressMode
   static constexpr auto type = AddressMode::Type::Immediate;
 
   static constexpr const Microcode ops[] = {
-      &requestOperandLow  //
+      &requestOperandLow,
   };
 };
 
@@ -63,10 +63,26 @@ struct ZeroPage : AddressMode
   {
     // The incoming response data is the low byte of the address (the high byte is always 0)
     cpu.lo = response.data;
+
+    Microcode extraStep = nullptr;
+
     if constexpr (reg != nullptr)
     {
-      cpu.lo = static_cast<Common::Byte>((cpu.lo + (cpu.*reg)) & 0xFF);
+      // If the register is not null, schedule another step to adjust the low byte by the index
+      // register.
+      extraStep = &requestAddressAfterIndexing;
     }
+
+    return {BusRequest::Read(Common::MakeAddress(cpu.lo, 0x00)), extraStep};
+  }
+
+  static MicrocodeResponse requestAddressAfterIndexing(State& cpu, Common::BusResponse /*response*/)
+  {
+    // If this function is called, it means we need to adjust the low byte by the index register.
+    assert(reg != nullptr);
+
+    // Add the index register to the low byte, wrapping around within the zero page.
+    cpu.lo = static_cast<Common::Byte>((cpu.lo + (cpu.*reg)) & 0xFF);
 
     // Always stays in zero page (hi = 0)
     return {BusRequest::Read(Common::MakeAddress(cpu.lo, 0x00))};
@@ -80,8 +96,8 @@ struct ZeroPage : AddressMode
   // clang-format on
 
   static constexpr const Microcode ops[] = {
-      &requestOperandLow,
-      &requestAddress,
+      &requestOperandLow, &requestAddress,
+      // requestAddressAfterIndexing is added conditionally if reg != nullptr
   };
 };
 
@@ -139,6 +155,16 @@ struct Absolute
       &AddressMode::requestOperandLow,
       &AddressMode::requestOperandHigh,
       &requestAddress,
+  };
+};
+
+struct AbsoluteJmp
+{
+  static constexpr auto type = State::AddressModeType::Absolute;
+
+  static constexpr const Microcode ops[] = {
+      &AddressMode::requestOperandLow,
+      &AddressMode::requestOperandHigh,
   };
 };
 

@@ -38,7 +38,7 @@ std::ostream& operator<<(std::ostream& os, const BusRequest& value)
 }
 }  // namespace Common
 
-TEST_CASE("LDA Immediate")
+TEST_CASE("LDA Immediate", "[load][immediate]")
 {
   MicrocodePump<mos6502> pump;
   State cpu;
@@ -54,10 +54,10 @@ TEST_CASE("LDA Immediate")
   CHECK(cpu.a == 0x42);  // A register should be loaded
   CHECK(cpu.has(State::Flag::Zero) == false);  // Zero flag should be clear
   CHECK(cpu.has(State::Flag::Negative) == false);  // Negative flag should be clear
-  CHECK(pump.microcodeCount() == 3);  // Three microcode operations executed
+  CHECK(pump.cyclesSinceLastFetch() == 2);
 }
 
-TEST_CASE("LDA Zero Page")
+TEST_CASE("LDA Zero Page", "[load][zeropage]")
 {
   MicrocodePump<mos6502> pump;
   State cpu;
@@ -77,10 +77,10 @@ TEST_CASE("LDA Zero Page")
   CHECK(cpu.a == 0x33);  // A register should be loaded
   CHECK(cpu.has(State::Flag::Zero) == false);  // Zero flag should be clear
   CHECK(cpu.has(State::Flag::Negative) == false);  // Negative flag should be clear
-  CHECK(pump.microcodeCount() == 4);  // Four microcode operations executed
+  CHECK(pump.cyclesSinceLastFetch() == 3);
 }
 
-TEST_CASE("LDA Zero Page,X")
+TEST_CASE("LDA Zero Page,X", "[load][zeropage][indexed]")
 {
   MicrocodePump<mos6502> pump;
   State cpu;
@@ -93,6 +93,9 @@ TEST_CASE("LDA Zero Page,X")
   CHECK(request == BusRequest::Read(1_addr));
 
   request = pump.tick(cpu, BusResponse{0x80});  // Zero page base address
+  CHECK(request == BusRequest::Read(0x80_addr));  // $80 read from address before indexing
+
+  request = pump.tick(cpu, BusResponse{0xEE});  // Random data from wrong address
   CHECK(request == BusRequest::Read(0x85_addr));  // $80 + X($05) = $85, stays in zero page
 
   request = pump.tick(cpu, BusResponse{0x77});  // Data at $0085
@@ -101,10 +104,10 @@ TEST_CASE("LDA Zero Page,X")
   CHECK(cpu.a == 0x77);  // A register should be loaded
   CHECK(cpu.has(State::Flag::Zero) == false);  // Zero flag should be clear
   CHECK(cpu.has(State::Flag::Negative) == false);  // Negative flag should be clear
-  CHECK(pump.microcodeCount() == 4);  // Four microcode operations executed
+  CHECK(pump.cyclesSinceLastFetch() == 4);
 }
 
-TEST_CASE("LDA Zero Page,X wraparound")
+TEST_CASE("LDA Zero Page,X wraparound", "[load][zeropage][indexed]")
 {
   MicrocodePump<mos6502> pump;
   State cpu;
@@ -117,6 +120,9 @@ TEST_CASE("LDA Zero Page,X wraparound")
   CHECK(request == BusRequest::Read(1_addr));
 
   request = pump.tick(cpu, BusResponse{0x80});  // Zero page base address
+  CHECK(request == BusRequest::Read(0x80_addr));  // $80 read before adding X
+
+  request = pump.tick(cpu, BusResponse{0x23});  // Random data from wrong address
   CHECK(request == BusRequest::Read(0x10_addr));  // $80 + X($90) = $110, wraps to $10
 
   request = pump.tick(cpu, BusResponse{0x88});  // Data at $0010
@@ -125,10 +131,10 @@ TEST_CASE("LDA Zero Page,X wraparound")
   CHECK(cpu.a == 0x88);  // A register should be loaded
   CHECK(cpu.has(State::Flag::Zero) == false);  // Zero flag should be clear
   CHECK(cpu.has(State::Flag::Negative) == true);  // Negative flag should be set
-  CHECK(pump.microcodeCount() == 4);  // Four microcode operations executed
+  CHECK(pump.cyclesSinceLastFetch() == 4);
 }
 
-TEST_CASE("LDA Absolute")
+TEST_CASE("LDA Absolute", "[load][absolute]")
 {
   MicrocodePump<mos6502> pump;
   State cpu;
@@ -151,10 +157,10 @@ TEST_CASE("LDA Absolute")
   CHECK(cpu.a == 0x99);  // A register should be loaded
   CHECK(cpu.has(State::Flag::Zero) == false);  // Zero flag should be clear
   CHECK(cpu.has(State::Flag::Negative) == true);  // Negative flag should be set
-  CHECK(pump.microcodeCount() == 5);  // Five microcode operations executed
+  CHECK(pump.cyclesSinceLastFetch() == 4);
 }
 
-TEST_CASE("LDA Absolute,X (no page crossing)")
+TEST_CASE("LDA Absolute,X (no page crossing)", "[load][absolute][indexed]")
 {
   MicrocodePump<mos6502> pump;
   State cpu;
@@ -178,10 +184,10 @@ TEST_CASE("LDA Absolute,X (no page crossing)")
   CHECK(cpu.a == 0x00);  // A register should be loaded
   CHECK(cpu.has(State::Flag::Zero) == true);  // Zero flag should be set
   CHECK(cpu.has(State::Flag::Negative) == false);  // Negative flag should be clear
-  CHECK(pump.microcodeCount() == 5);  // Five microcode operations executed
+  CHECK(pump.cyclesSinceLastFetch() == 4);
 }
 
-TEST_CASE("LDA Absolute,X (with page crossing)")
+TEST_CASE("LDA Absolute,X (with page crossing)", "[load][absolute][indexed]")
 {
   MicrocodePump<mos6502> pump;
   State cpu;
@@ -209,10 +215,10 @@ TEST_CASE("LDA Absolute,X (with page crossing)")
   CHECK(cpu.a == 0xAA);  // A register should be loaded
   CHECK(cpu.has(State::Flag::Zero) == false);  // Zero flag should be clear
   CHECK(cpu.has(State::Flag::Negative) == true);  // Negative flag should be set
-  CHECK(pump.microcodeCount() == 6);  // Six microcode operations executed (extra cycle for page cross)
+  CHECK(pump.cyclesSinceLastFetch() == 5);
 }
 
-TEST_CASE("LDA Absolute,Y (no page crossing)")
+TEST_CASE("LDA Absolute,Y (no page crossing)", "[load][absolute][indexed]")
 {
   MicrocodePump<mos6502> pump;
   State cpu;
@@ -236,10 +242,10 @@ TEST_CASE("LDA Absolute,Y (no page crossing)")
   CHECK(cpu.a == 0x66);  // A register should be loaded
   CHECK(cpu.has(State::Flag::Zero) == false);  // Zero flag should be clear
   CHECK(cpu.has(State::Flag::Negative) == false);  // Negative flag should be clear
-  CHECK(pump.microcodeCount() == 5);  // Five microcode operations executed
+  CHECK(pump.cyclesSinceLastFetch() == 4);
 }
 
-TEST_CASE("LDA flag behavior with zero result")
+TEST_CASE("LDA flag behavior with zero result", "[load][immediate][flags]")
 {
   MicrocodePump<mos6502> pump;
   State cpu;
@@ -256,10 +262,10 @@ TEST_CASE("LDA flag behavior with zero result")
   CHECK(cpu.a == 0x00);  // A register should be loaded with zero
   CHECK(cpu.has(State::Flag::Zero) == true);  // Zero flag should be set
   CHECK(cpu.has(State::Flag::Negative) == false);  // Negative flag should be clear
-  CHECK(pump.microcodeCount() == 3);  // Three microcode operations executed
+  CHECK(pump.cyclesSinceLastFetch() == 2);
 }
 
-TEST_CASE("LDA flag behavior with negative result")
+TEST_CASE("LDA flag behavior with negative result", "[load][immediate][flags]")
 {
   MicrocodePump<mos6502> pump;
   State cpu;
@@ -276,7 +282,7 @@ TEST_CASE("LDA flag behavior with negative result")
   CHECK(cpu.a == 0x80);  // A register should be loaded
   CHECK(cpu.has(State::Flag::Zero) == false);  // Zero flag should be clear
   CHECK(cpu.has(State::Flag::Negative) == true);  // Negative flag should be set
-  CHECK(pump.microcodeCount() == 3);  // Three microcode operations executed
+  CHECK(pump.cyclesSinceLastFetch() == 2);
 }
 
 TEST_CASE("NOP", "[implied]")
@@ -303,7 +309,7 @@ TEST_CASE("NOP", "[implied]")
   CHECK(cpu.y == 0x55);
   CHECK(cpu.sp == 0xFE);
   CHECK(cpu.p == 0xA5);
-  CHECK(pump.microcodeCount() == 2);  // Two microcode operations executed
+  CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
 }
 
 TEST_CASE("CLC - Clear Carry Flag", "[implied]")
@@ -319,7 +325,7 @@ TEST_CASE("CLC - Clear Carry Flag", "[implied]")
   CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
 
   CHECK(cpu.has(State::Flag::Carry) == false);  // Carry flag should be clear
-  CHECK(pump.microcodeCount() == 2);  // Two microcode operations executed
+  CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
 }
 
 TEST_CASE("SEC - Set Carry Flag", "[implied]")
@@ -335,7 +341,7 @@ TEST_CASE("SEC - Set Carry Flag", "[implied]")
   CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
 
   CHECK(cpu.has(State::Flag::Carry) == true);  // Carry flag should be set
-  CHECK(pump.microcodeCount() == 2);  // Two microcode operations executed
+  CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
 }
 
 TEST_CASE("CLI - Clear Interrupt Flag", "[implied]")
@@ -351,7 +357,7 @@ TEST_CASE("CLI - Clear Interrupt Flag", "[implied]")
   CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
 
   CHECK(cpu.has(State::Flag::Interrupt) == false);  // Interrupt flag should be clear
-  CHECK(pump.microcodeCount() == 2);  // Two microcode operations executed
+  CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
 }
 
 TEST_CASE("SEI - Set Interrupt Flag", "[implied]")
@@ -367,7 +373,7 @@ TEST_CASE("SEI - Set Interrupt Flag", "[implied]")
   CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
 
   CHECK(cpu.has(State::Flag::Interrupt) == true);  // Interrupt flag should be set
-  CHECK(pump.microcodeCount() == 2);  // Two microcode operations executed
+  CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
 }
 
 TEST_CASE("CLV - Clear Overflow Flag", "[implied]")
@@ -383,7 +389,7 @@ TEST_CASE("CLV - Clear Overflow Flag", "[implied]")
   CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
 
   CHECK(cpu.has(State::Flag::Overflow) == false);  // Overflow flag should be clear
-  CHECK(pump.microcodeCount() == 2);  // Two microcode operations executed
+  CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
 }
 
 TEST_CASE("CLD - Clear Decimal Flag", "[implied]")
@@ -399,7 +405,7 @@ TEST_CASE("CLD - Clear Decimal Flag", "[implied]")
   CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
 
   CHECK(cpu.has(State::Flag::Decimal) == false);  // Decimal flag should be clear
-  CHECK(pump.microcodeCount() == 2);  // Two microcode operations executed
+  CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
 }
 
 TEST_CASE("SED - Set Decimal Flag", "[implied]")
@@ -415,7 +421,7 @@ TEST_CASE("SED - Set Decimal Flag", "[implied]")
   CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
 
   CHECK(cpu.has(State::Flag::Decimal) == true);  // Decimal flag should be set
-  CHECK(pump.microcodeCount() == 2);  // Two microcode operations executed
+  CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
 }
 
 TEST_CASE("INX - Increment X Register", "[implied]")
@@ -433,7 +439,7 @@ TEST_CASE("INX - Increment X Register", "[implied]")
   CHECK(cpu.x == 0x80);  // X should be incremented
   CHECK(cpu.has(State::Flag::Zero) == false);  // Zero flag should be clear
   CHECK(cpu.has(State::Flag::Negative) == true);  // Negative flag should be set (0x80 has bit 7 set)
-  CHECK(pump.microcodeCount() == 2);  // Two microcode operations executed
+  CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
 }
 
 TEST_CASE("INX - Zero Result", "[implied]")
@@ -451,7 +457,7 @@ TEST_CASE("INX - Zero Result", "[implied]")
   CHECK(cpu.x == 0x00);  // X should wrap to zero
   CHECK(cpu.has(State::Flag::Zero) == true);  // Zero flag should be set
   CHECK(cpu.has(State::Flag::Negative) == false);  // Negative flag should be clear
-  CHECK(pump.microcodeCount() == 2);  // Two microcode operations executed
+  CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
 }
 
 TEST_CASE("INY - Increment Y Register", "[implied]")
@@ -469,7 +475,7 @@ TEST_CASE("INY - Increment Y Register", "[implied]")
   CHECK(cpu.y == 0x43);  // Y should be incremented
   CHECK(cpu.has(State::Flag::Zero) == false);  // Zero flag should be clear
   CHECK(cpu.has(State::Flag::Negative) == false);  // Negative flag should be clear
-  CHECK(pump.microcodeCount() == 2);  // Two microcode operations executed
+  CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
 }
 
 TEST_CASE("DEX - Decrement X Register", "[implied]")
@@ -487,7 +493,7 @@ TEST_CASE("DEX - Decrement X Register", "[implied]")
   CHECK(cpu.x == 0x00);  // X should be decremented to zero
   CHECK(cpu.has(State::Flag::Zero) == true);  // Zero flag should be set
   CHECK(cpu.has(State::Flag::Negative) == false);  // Negative flag should be clear
-  CHECK(pump.microcodeCount() == 2);  // Two microcode operations executed
+  CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
 }
 
 TEST_CASE("DEX - Underflow", "[implied]")
@@ -505,7 +511,7 @@ TEST_CASE("DEX - Underflow", "[implied]")
   CHECK(cpu.x == 0xFF);  // X should underflow to 0xFF
   CHECK(cpu.has(State::Flag::Zero) == false);  // Zero flag should be clear
   CHECK(cpu.has(State::Flag::Negative) == true);  // Negative flag should be set
-  CHECK(pump.microcodeCount() == 2);  // Two microcode operations executed
+  CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
 }
 
 TEST_CASE("DEY - Decrement Y Register", "[implied]")
@@ -523,7 +529,7 @@ TEST_CASE("DEY - Decrement Y Register", "[implied]")
   CHECK(cpu.y == 0x7F);  // Y should be decremented
   CHECK(cpu.has(State::Flag::Zero) == false);  // Zero flag should be clear
   CHECK(cpu.has(State::Flag::Negative) == false);  // Negative flag should be clear
-  CHECK(pump.microcodeCount() == 2);  // Two microcode operations executed
+  CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
 }
 
 TEST_CASE("TAX - Transfer A to X", "[implied]")
@@ -543,7 +549,7 @@ TEST_CASE("TAX - Transfer A to X", "[implied]")
   CHECK(cpu.a == 0x99);  // A should be unchanged
   CHECK(cpu.has(State::Flag::Zero) == false);  // Zero flag should be clear
   CHECK(cpu.has(State::Flag::Negative) == true);  // Negative flag should be set
-  CHECK(pump.microcodeCount() == 2);  // Two microcode operations executed
+  CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
 }
 
 TEST_CASE("TAY - Transfer A to Y", "[implied]")
@@ -563,7 +569,7 @@ TEST_CASE("TAY - Transfer A to Y", "[implied]")
   CHECK(cpu.a == 0x00);  // A should be unchanged
   CHECK(cpu.has(State::Flag::Zero) == true);  // Zero flag should be set
   CHECK(cpu.has(State::Flag::Negative) == false);  // Negative flag should be clear
-  CHECK(pump.microcodeCount() == 2);  // Two microcode operations executed
+  CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
 }
 
 TEST_CASE("TXA - Transfer X to A", "[implied]")
@@ -583,7 +589,7 @@ TEST_CASE("TXA - Transfer X to A", "[implied]")
   CHECK(cpu.x == 0x42);  // X should be unchanged
   CHECK(cpu.has(State::Flag::Zero) == false);  // Zero flag should be clear
   CHECK(cpu.has(State::Flag::Negative) == false);  // Negative flag should be clear
-  CHECK(pump.microcodeCount() == 2);  // Two microcode operations executed
+  CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
 }
 
 TEST_CASE("TYA - Transfer Y to A", "[implied]")
@@ -603,7 +609,7 @@ TEST_CASE("TYA - Transfer Y to A", "[implied]")
   CHECK(cpu.y == 0x80);  // Y should be unchanged
   CHECK(cpu.has(State::Flag::Zero) == false);  // Zero flag should be clear
   CHECK(cpu.has(State::Flag::Negative) == true);  // Negative flag should be set
-  CHECK(pump.microcodeCount() == 2);  // Two microcode operations executed
+  CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
 }
 
 TEST_CASE("TXS - Transfer X to Stack Pointer", "[implied]")
@@ -622,7 +628,7 @@ TEST_CASE("TXS - Transfer X to Stack Pointer", "[implied]")
   CHECK(cpu.sp == 0xFE);  // SP should equal X
   CHECK(cpu.x == 0xFE);  // X should be unchanged
   // TXS does NOT affect flags
-  CHECK(pump.microcodeCount() == 2);  // Two microcode operations executed
+  CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
 }
 
 TEST_CASE("TSX - Transfer Stack Pointer to X", "[implied]")
@@ -642,7 +648,7 @@ TEST_CASE("TSX - Transfer Stack Pointer to X", "[implied]")
   CHECK(cpu.sp == 0x00);  // SP should be unchanged
   CHECK(cpu.has(State::Flag::Zero) == true);  // Zero flag should be set
   CHECK(cpu.has(State::Flag::Negative) == false);  // Negative flag should be clear
-  CHECK(pump.microcodeCount() == 2);  // Two microcode operations executed
+  CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
 }
 
 TEST_CASE("BEQ - Branch taken (Zero flag set)", "[branch][relative]")
@@ -662,7 +668,7 @@ TEST_CASE("BEQ - Branch taken (Zero flag set)", "[branch][relative]")
   CHECK(request == BusRequest::Fetch(0x1007_addr));  // PC(1002) + offset(5) = 1007
 
   CHECK(cpu.pc == 0x1008_addr);  // PC should be at branch target
-  CHECK(pump.microcodeCount() == 3);  // Three cycles for branch taken, same page
+  CHECK(pump.cyclesSinceLastFetch() == 3);  // Three cycles for branch taken, same page
 }
 
 TEST_CASE("BEQ - Branch not taken (Zero flag clear)", "[branch][relative]")
@@ -679,7 +685,7 @@ TEST_CASE("BEQ - Branch not taken (Zero flag clear)", "[branch][relative]")
   CHECK(request == BusRequest::Fetch(0x1002_addr));  // PC should advance normally
 
   CHECK(cpu.pc == 0x1003_addr);  // PC should be after branch instruction
-  CHECK(pump.microcodeCount() == 2);  // Only TWO cycles for branch not taken
+  CHECK(pump.cyclesSinceLastFetch() == 2);  // Only TWO cycles for branch not taken
 }
 
 TEST_CASE("BNE - Branch taken (Zero flag clear)", "[branch][relative]")
@@ -697,7 +703,7 @@ TEST_CASE("BNE - Branch taken (Zero flag clear)", "[branch][relative]")
 
   // Branch to self is caught by trap detection
   CHECK_THROWS(pump.tick(cpu, BusResponse{0xFE}));
-  CHECK(pump.microcodeCount() == 3);  // Three cycles for branch taken, same page
+  CHECK(pump.cyclesSinceLastFetch() == 3);  // Three cycles for branch taken, same page
 }
 
 TEST_CASE("BNE - Branch not taken (Zero flag set)", "[branch][relative]")
@@ -715,7 +721,7 @@ TEST_CASE("BNE - Branch not taken (Zero flag set)", "[branch][relative]")
   CHECK(request == BusRequest::Fetch(0x2002_addr));
 
   CHECK(cpu.pc == 0x2003_addr);  // PC should be after branch instruction
-  CHECK(pump.microcodeCount() == 2);  // Only TWO cycles for branch not taken
+  CHECK(pump.cyclesSinceLastFetch() == 2);  // Only TWO cycles for branch not taken
 }
 
 TEST_CASE("BPL - Branch taken (Negative flag clear)", "[branch][relative]")
@@ -735,7 +741,7 @@ TEST_CASE("BPL - Branch taken (Negative flag clear)", "[branch][relative]")
   CHECK(request == BusRequest::Fetch(0x3012_addr));  // PC(3002) + offset(16) = 3012
 
   CHECK(cpu.pc == 0x3013_addr);  // PC should be at branch target
-  CHECK(pump.microcodeCount() == 3);  // Three cycles for branch taken, same page
+  CHECK(pump.cyclesSinceLastFetch() == 3);  // Three cycles for branch taken, same page
 }
 
 TEST_CASE("BMI - Branch taken (Negative flag set), page crossing", "[branch][relative]")
@@ -760,7 +766,7 @@ TEST_CASE("BMI - Branch taken (Negative flag set), page crossing", "[branch][rel
   CHECK(request == BusRequest::Fetch(0x3FF2_addr));  // PC(4002) + offset(-16) = 3FF2
 
   CHECK(cpu.pc == 0x3FF3_addr);  // PC should be at branch target
-  CHECK(pump.microcodeCount() == 4);  // Three cycles for branch taken, cross page
+  CHECK(pump.cyclesSinceLastFetch() == 4);  // Three cycles for branch taken, cross page
 }
 
 TEST_CASE("BCC - Branch taken (Carry flag clear)", "[branch][relative]")
@@ -780,7 +786,7 @@ TEST_CASE("BCC - Branch taken (Carry flag clear)", "[branch][relative]")
   CHECK(request == BusRequest::Fetch(0x5081_addr));  // PC(5002) + offset(127) = 5081
 
   CHECK(cpu.pc == 0x5082_addr);  // PC should be at branch target + 1 (since we've already fetched)
-  CHECK(pump.microcodeCount() == 3);  // Three cycles for branch taken, same page
+  CHECK(pump.cyclesSinceLastFetch() == 3);  // Three cycles for branch taken, same page
 }
 
 TEST_CASE("BCS - Branch taken (Carry flag set) page crossing", "[branch][relative]")
@@ -805,7 +811,7 @@ TEST_CASE("BCS - Branch taken (Carry flag set) page crossing", "[branch][relativ
   CHECK(request == BusRequest::Fetch(0x5F82_addr));  // PC(6002) + offset(-128) = 5F82
 
   CHECK(cpu.pc == 0x5F83_addr);  // PC should be at branch target
-  CHECK(pump.microcodeCount() == 4);  // Three cycles for branch taken, same page
+  CHECK(pump.cyclesSinceLastFetch() == 4);  // Three cycles for branch taken, same page
 }
 
 TEST_CASE("BVC - Branch taken (Overflow flag clear)", "[branch][relative]")
@@ -825,7 +831,7 @@ TEST_CASE("BVC - Branch taken (Overflow flag clear)", "[branch][relative]")
   CHECK(request == BusRequest::Fetch(0x7022_addr));  // PC(7002) + offset(32) = 7022
 
   CHECK(cpu.pc == 0x7023_addr);  // PC should be at branch target
-  CHECK(pump.microcodeCount() == 3);  // Three cycles for branch taken, same page
+  CHECK(pump.cyclesSinceLastFetch() == 3);  // Three cycles for branch taken, same page
 }
 
 TEST_CASE("BVS - Branch taken (Overflow flag set), page crossing", "[branch][relative]")
@@ -849,7 +855,7 @@ TEST_CASE("BVS - Branch taken (Overflow flag set), page crossing", "[branch][rel
   CHECK(request == BusRequest::Fetch(0x7FE2_addr));  // PC(8002) + offset(-32) = 7FE2
 
   CHECK(cpu.pc == 0x7FE3_addr);  // PC should be at branch target
-  CHECK(pump.microcodeCount() == 4);  // Three cycles for branch taken, different page
+  CHECK(pump.cyclesSinceLastFetch() == 4);  // Three cycles for branch taken, different page
 }
 
 TEST_CASE("Branch with page crossing - forward", "[branch][relative]")
@@ -873,7 +879,7 @@ TEST_CASE("Branch with page crossing - forward", "[branch][relative]")
   CHECK(request == BusRequest::Fetch(0x2112_addr));  // Correct address after fixup
 
   CHECK(cpu.pc == 0x2113_addr);  // PC should be at branch target
-  CHECK(pump.microcodeCount() == 4);  // Four cycles for page crossing branch
+  CHECK(pump.cyclesSinceLastFetch() == 4);  // Four cycles for page crossing branch
 }
 
 TEST_CASE("Branch with page crossing - backward", "[branch][relative]")
@@ -897,7 +903,7 @@ TEST_CASE("Branch with page crossing - backward", "[branch][relative]")
   CHECK(request == BusRequest::Fetch(0x20F2_addr));  // Correct address after fixup
 
   CHECK(cpu.pc == 0x20F3_addr);  // PC should be at branch target
-  CHECK(pump.microcodeCount() == 4);  // Four cycles for page crossing branch
+  CHECK(pump.cyclesSinceLastFetch() == 4);  // Four cycles for page crossing branch
 }
 
 TEST_CASE("Branch forward - no page crossing", "[branch][relative]")
@@ -918,7 +924,7 @@ TEST_CASE("Branch forward - no page crossing", "[branch][relative]")
   CHECK(request == BusRequest::Fetch(0x30B2_addr));  // Direct to target, no page crossing
 
   CHECK(cpu.pc == 0x30B3_addr);  // PC should be at branch target
-  CHECK(pump.microcodeCount() == 3);  // Three cycles for same page branch
+  CHECK(pump.cyclesSinceLastFetch() == 3);  // Three cycles for same page branch
 }
 
 TEST_CASE("Branch backward - no page crossing", "[branch][relative]")
@@ -939,7 +945,7 @@ TEST_CASE("Branch backward - no page crossing", "[branch][relative]")
   CHECK(request == BusRequest::Fetch(0x4052_addr));  // Direct to target, no page crossing
 
   CHECK(cpu.pc == 0x4053_addr);  // PC should be at branch target
-  CHECK(pump.microcodeCount() == 3);  // Three cycles for same page branch
+  CHECK(pump.cyclesSinceLastFetch() == 3);  // Three cycles for same page branch
 }
 
 TEST_CASE("Branch zero offset", "[branch][relative]")
@@ -960,7 +966,7 @@ TEST_CASE("Branch zero offset", "[branch][relative]")
   CHECK(request == BusRequest::Fetch(0x5002_addr));  // Branch to next instruction
 
   CHECK(cpu.pc == 0x5003_addr);  // PC should be at branch target (next instruction)
-  CHECK(pump.microcodeCount() == 3);  // Three cycles for branch taken
+  CHECK(pump.cyclesSinceLastFetch() == 3);  // Three cycles for branch taken
 }
 
 TEST_CASE("Self-branch trap detection", "[branch][relative]")
@@ -1027,7 +1033,7 @@ TEMPLATE_TEST_CASE("Load Register Immediate", "[load][immediate]", LDX_Tag, LDY_
   CHECK((cpu.*(Traits::reg)) == 0x42);  // Register should be loaded
   CHECK(cpu.has(State::Flag::Zero) == false);  // Zero flag should be clear
   CHECK(cpu.has(State::Flag::Negative) == false);  // Negative flag should be clear
-  CHECK(pump.microcodeCount() == 3);  // Three cycles for immediate mode
+  CHECK(pump.cyclesSinceLastFetch() == 3);  // Three cycles for immediate mode
 }
 
 TEMPLATE_TEST_CASE("Load Register Immediate - Zero Result", "[load][immediate]", LDX_Tag, LDY_Tag)
@@ -1049,7 +1055,7 @@ TEMPLATE_TEST_CASE("Load Register Immediate - Zero Result", "[load][immediate]",
   CHECK((cpu.*(Traits::reg)) == 0x00);
   CHECK(cpu.has(State::Flag::Zero) == true);  // Zero flag should be set
   CHECK(cpu.has(State::Flag::Negative) == false);
-  CHECK(pump.microcodeCount() == 3);
+  CHECK(pump.cyclesSinceLastFetch() == 3);
 }
 
 TEMPLATE_TEST_CASE("Load Register Immediate - Negative Result", "[load][immediate]", LDX_Tag, LDY_Tag)
@@ -1071,7 +1077,7 @@ TEMPLATE_TEST_CASE("Load Register Immediate - Negative Result", "[load][immediat
   CHECK((cpu.*(Traits::reg)) == 0x80);
   CHECK(cpu.has(State::Flag::Zero) == false);
   CHECK(cpu.has(State::Flag::Negative) == true);  // Negative flag should be set
-  CHECK(pump.microcodeCount() == 3);
+  CHECK(pump.cyclesSinceLastFetch() == 3);
 }
 
 TEMPLATE_TEST_CASE("Load Register Zero Page", "[load][zeropage]", LDX_Tag, LDY_Tag)
@@ -1096,7 +1102,7 @@ TEMPLATE_TEST_CASE("Load Register Zero Page", "[load][zeropage]", LDX_Tag, LDY_T
   CHECK((cpu.*(Traits::reg)) == 0x99);
   CHECK(cpu.has(State::Flag::Zero) == false);
   CHECK(cpu.has(State::Flag::Negative) == true);
-  CHECK(pump.microcodeCount() == 4);
+  CHECK(pump.cyclesSinceLastFetch() == 4);
 }
 
 // LDX Zero Page,Y test
@@ -1121,7 +1127,7 @@ TEST_CASE("LDX Zero Page,Y", "[load][zeropage][indexed]")
   CHECK(cpu.x == 0x33);
   CHECK(cpu.has(State::Flag::Zero) == false);
   CHECK(cpu.has(State::Flag::Negative) == false);
-  CHECK(pump.microcodeCount() == 4);
+  CHECK(pump.cyclesSinceLastFetch() == 4);
 }
 
 // LDY Zero Page,X test
@@ -1146,7 +1152,7 @@ TEST_CASE("LDY Zero Page,X", "[load][zeropage][indexed]")
   CHECK(cpu.y == 0x77);
   CHECK(cpu.has(State::Flag::Zero) == false);
   CHECK(cpu.has(State::Flag::Negative) == false);
-  CHECK(pump.microcodeCount() == 4);
+  CHECK(pump.cyclesSinceLastFetch() == 4);
 }
 
 TEMPLATE_TEST_CASE("Load Register Absolute", "[load][absolute]", LDX_Tag, LDY_Tag)
@@ -1174,7 +1180,7 @@ TEMPLATE_TEST_CASE("Load Register Absolute", "[load][absolute]", LDX_Tag, LDY_Ta
   CHECK((cpu.*(Traits::reg)) == 0xAB);
   CHECK(cpu.has(State::Flag::Zero) == false);
   CHECK(cpu.has(State::Flag::Negative) == true);
-  CHECK(pump.microcodeCount() == 5);
+  CHECK(pump.cyclesSinceLastFetch() == 5);
 }
 
 // LDX Absolute,Y test (no page crossing)
@@ -1202,7 +1208,7 @@ TEST_CASE("LDX Absolute,Y - No Page Crossing", "[load][absolute][indexed]")
   CHECK(cpu.x == 0x55);
   CHECK(cpu.has(State::Flag::Zero) == false);
   CHECK(cpu.has(State::Flag::Negative) == false);
-  CHECK(pump.microcodeCount() == 5);
+  CHECK(pump.cyclesSinceLastFetch() == 5);
 }
 
 // LDY Absolute,X test (no page crossing)
@@ -1230,7 +1236,7 @@ TEST_CASE("LDY Absolute,X - No Page Crossing", "[load][absolute][indexed]")
   CHECK(cpu.y == 0x22);
   CHECK(cpu.has(State::Flag::Zero) == false);
   CHECK(cpu.has(State::Flag::Negative) == false);
-  CHECK(pump.microcodeCount() == 5);
+  CHECK(pump.cyclesSinceLastFetch() == 5);
 }
 
 // LDX Absolute,Y test (with page crossing)
@@ -1262,7 +1268,7 @@ TEST_CASE("LDX Absolute,Y - With Page Crossing", "[load][absolute][indexed]")
   CHECK(cpu.x == 0xCC);
   CHECK(cpu.has(State::Flag::Zero) == false);
   CHECK(cpu.has(State::Flag::Negative) == true);
-  CHECK(pump.microcodeCount() == 6);  // Six cycles due to page crossing
+  CHECK(pump.cyclesSinceLastFetch() == 6);  // Six cycles due to page crossing
 }
 
 // LDY Absolute,X test (with page crossing)
@@ -1294,5 +1300,293 @@ TEST_CASE("LDY Absolute,X - With Page Crossing", "[load][absolute][indexed]")
   CHECK(cpu.y == 0x00);
   CHECK(cpu.has(State::Flag::Zero) == true);  // Zero flag should be set
   CHECK(cpu.has(State::Flag::Negative) == false);
-  CHECK(pump.microcodeCount() == 6);  // Six cycles due to page crossing
+  CHECK(pump.cyclesSinceLastFetch() == 6);  // Six cycles due to page crossing
+}
+
+TEST_CASE("JMP Absolute", "[jump][absolute]")
+{
+  MicrocodePump<mos6502> pump;
+  State cpu;
+  cpu.pc = 0x1000_addr;
+
+  auto request = pump.tick(cpu, BusResponse{});  // Initial tick to fetch opcode
+  CHECK(request == BusRequest::Fetch(0x1000_addr));
+
+  request = pump.tick(cpu, BusResponse{0x4C});  // Opcode for JMP Absolute
+  CHECK(request == BusRequest::Read(0x1001_addr));
+
+  request = pump.tick(cpu, BusResponse{0x34});  // Low byte of target address
+  CHECK(request == BusRequest::Read(0x1002_addr));
+
+  request = pump.tick(cpu, BusResponse{0x12});  // High byte of target address
+  CHECK(request == BusRequest::Fetch(0x1234_addr));  // Should jump to $1234
+
+  CHECK(cpu.pc == 0x1235_addr);  // PC should be at jump target
+  CHECK(pump.cyclesSinceLastFetch() == 3);  // Three cycles for JMP Absolute
+}
+
+TEST_CASE("JMP Absolute - Forward Jump", "[jump][absolute]")
+{
+  MicrocodePump<mos6502> pump;
+  State cpu;
+  cpu.pc = 0x2000_addr;
+
+  auto request = pump.tick(cpu, BusResponse{});
+  CHECK(request == BusRequest::Fetch(0x2000_addr));
+
+  request = pump.tick(cpu, BusResponse{0x4C});  // JMP Absolute
+  CHECK(request == BusRequest::Read(0x2001_addr));
+
+  request = pump.tick(cpu, BusResponse{0x00});  // Low byte = $00
+  CHECK(request == BusRequest::Read(0x2002_addr));
+
+  request = pump.tick(cpu, BusResponse{0x30});  // High byte = $30
+  CHECK(request == BusRequest::Fetch(0x3000_addr));  // Jump to $3000
+
+  CHECK(cpu.pc == 0x3001_addr);
+  CHECK(pump.cyclesSinceLastFetch() == 4);
+}
+
+TEST_CASE("JMP Absolute - Backward Jump", "[jump][absolute]")
+{
+  MicrocodePump<mos6502> pump;
+  State cpu;
+  cpu.pc = 0x5000_addr;
+
+  auto request = pump.tick(cpu, BusResponse{});
+  CHECK(request == BusRequest::Fetch(0x5000_addr));
+
+  request = pump.tick(cpu, BusResponse{0x4C});  // JMP Absolute
+  CHECK(request == BusRequest::Read(0x5001_addr));
+
+  request = pump.tick(cpu, BusResponse{0x00});  // Low byte = $00
+  CHECK(request == BusRequest::Read(0x5002_addr));
+
+  request = pump.tick(cpu, BusResponse{0x10});  // High byte = $10
+  CHECK(request == BusRequest::Fetch(0x1000_addr));  // Jump to $1000
+
+  CHECK(cpu.pc == 0x1001_addr);
+  CHECK(pump.cyclesSinceLastFetch() == 4);
+}
+
+TEST_CASE("JMP Absolute - Same Page", "[jump][absolute]")
+{
+  MicrocodePump<mos6502> pump;
+  State cpu;
+  cpu.pc = 0x4000_addr;
+
+  auto request = pump.tick(cpu, BusResponse{});
+  CHECK(request == BusRequest::Fetch(0x4000_addr));
+
+  request = pump.tick(cpu, BusResponse{0x4C});  // JMP Absolute
+  CHECK(request == BusRequest::Read(0x4001_addr));
+
+  request = pump.tick(cpu, BusResponse{0x80});  // Low byte = $80
+  CHECK(request == BusRequest::Read(0x4002_addr));
+
+  request = pump.tick(cpu, BusResponse{0x40});  // High byte = $40
+  CHECK(request == BusRequest::Fetch(0x4080_addr));  // Jump to $4080 (same page)
+
+  CHECK(cpu.pc == 0x4081_addr);
+  CHECK(pump.cyclesSinceLastFetch() == 4);
+}
+
+TEST_CASE("JMP Indirect", "[jump][indirect]")
+{
+  MicrocodePump<mos6502> pump;
+  State cpu;
+  cpu.pc = 0x6000_addr;
+
+  auto request = pump.tick(cpu, BusResponse{});  // Initial tick to fetch opcode
+  CHECK(request == BusRequest::Fetch(0x6000_addr));
+
+  request = pump.tick(cpu, BusResponse{0x6C});  // Opcode for JMP Indirect
+  CHECK(request == BusRequest::Read(0x6001_addr));
+
+  request = pump.tick(cpu, BusResponse{0x20});  // Low byte of indirect address
+  CHECK(request == BusRequest::Read(0x6002_addr));
+
+  request = pump.tick(cpu, BusResponse{0x30});  // High byte of indirect address
+  CHECK(request == BusRequest::Read(0x3020_addr));  // Read target low byte from $3020
+
+  request = pump.tick(cpu, BusResponse{0x00});  // Target low byte = $00
+  CHECK(request == BusRequest::Read(0x3021_addr));  // Read target high byte from $3021
+
+  request = pump.tick(cpu, BusResponse{0x80});  // Target high byte = $80
+  CHECK(request == BusRequest::Fetch(0x8000_addr));  // Jump to $8000
+
+  CHECK(cpu.pc == 0x8001_addr);  // PC should be at final target
+  CHECK(pump.cyclesSinceLastFetch() == 6);  // Six cycles for JMP Indirect
+}
+
+TEST_CASE("JMP Indirect - Page Boundary Bug", "[jump][indirect][bug]")
+{
+  MicrocodePump<mos6502> pump;
+  State cpu;
+  cpu.pc = 0x1000_addr;
+
+  auto request = pump.tick(cpu, BusResponse{});
+  CHECK(request == BusRequest::Fetch(0x1000_addr));
+
+  request = pump.tick(cpu, BusResponse{0x6C});  // JMP Indirect
+  CHECK(request == BusRequest::Read(0x1001_addr));
+
+  request = pump.tick(cpu, BusResponse{0xFF});  // Low byte = $FF (page boundary!)
+  CHECK(request == BusRequest::Read(0x1002_addr));
+
+  request = pump.tick(cpu, BusResponse{0x20});  // High byte = $20
+  CHECK(request == BusRequest::Read(0x20FF_addr));  // Read target low byte from $20FF
+
+  request = pump.tick(cpu, BusResponse{0x34});  // Target low byte = $34
+  // 6502 bug: should read from $2100, but reads from $2000 instead!
+  CHECK(request == BusRequest::Read(0x2000_addr));  // Bug: wraps to $2000 not $2100
+
+  request = pump.tick(cpu, BusResponse{0x56});  // Target high byte = $56 (from wrong address)
+  CHECK(request == BusRequest::Fetch(0x5634_addr));  // Jump to $5634
+
+  CHECK(cpu.pc == 0x5635_addr);
+  CHECK(pump.cyclesSinceLastFetch() == 6);
+}
+
+TEST_CASE("JMP Indirect - Normal Case (No Bug)", "[jump][indirect]")
+{
+  MicrocodePump<mos6502> pump;
+  State cpu;
+  cpu.pc = 0x2000_addr;
+
+  auto request = pump.tick(cpu, BusResponse{});
+  CHECK(request == BusRequest::Fetch(0x2000_addr));
+
+  request = pump.tick(cpu, BusResponse{0x6C});  // JMP Indirect
+  CHECK(request == BusRequest::Read(0x2001_addr));
+
+  request = pump.tick(cpu, BusResponse{0x10});  // Low byte = $10 (not at page boundary)
+  CHECK(request == BusRequest::Read(0x2002_addr));
+
+  request = pump.tick(cpu, BusResponse{0x30});  // High byte = $30
+  CHECK(request == BusRequest::Read(0x3010_addr));  // Read target low byte
+
+  request = pump.tick(cpu, BusResponse{0xAB});  // Target low byte = $AB
+  CHECK(request == BusRequest::Read(0x3011_addr));  // Read target high byte (correct address)
+
+  request = pump.tick(cpu, BusResponse{0xCD});  // Target high byte = $CD
+  CHECK(request == BusRequest::Fetch(0xCDAB_addr));  // Jump to $CDAB
+
+  CHECK(cpu.pc == 0xCDAC_addr);
+  CHECK(pump.cyclesSinceLastFetch() == 6);
+}
+
+TEST_CASE("JMP Absolute - Self Jump Trap", "[jump][absolute][trap]")
+{
+  MicrocodePump<mos6502> pump;
+  State cpu;
+  cpu.pc = 0x7000_addr;
+
+  auto request = pump.tick(cpu, BusResponse{});
+  CHECK(request == BusRequest::Fetch(0x7000_addr));
+
+  request = pump.tick(cpu, BusResponse{0x4C});  // JMP Absolute
+  CHECK(request == BusRequest::Read(0x7001_addr));
+
+  request = pump.tick(cpu, BusResponse{0x00});  // Low byte = $00
+  CHECK(request == BusRequest::Read(0x7002_addr));
+
+  // Self-jump: target is $7000, same as original PC
+  CHECK_THROWS_AS(pump.tick(cpu, BusResponse{0x70}), TrapException);  // High byte = $70 -> $7000
+}
+
+TEST_CASE("JMP Absolute - Near Self Jump (Not Trapped)", "[jump][absolute]")
+{
+  MicrocodePump<mos6502> pump;
+  State cpu;
+  cpu.pc = 0x8000_addr;
+
+  auto request = pump.tick(cpu, BusResponse{});
+  CHECK(request == BusRequest::Fetch(0x8000_addr));
+
+  request = pump.tick(cpu, BusResponse{0x4C});  // JMP Absolute
+  CHECK(request == BusRequest::Read(0x8001_addr));
+
+  request = pump.tick(cpu, BusResponse{0x01});  // Low byte = $01
+  CHECK(request == BusRequest::Read(0x8002_addr));
+
+  request = pump.tick(cpu, BusResponse{0x80});  // High byte = $80 -> target $8001 (not self-jump)
+  CHECK(request == BusRequest::Fetch(0x8001_addr));
+
+  CHECK(cpu.pc == 0x8002_addr);  // Should jump to $8001 (not trapped)
+  CHECK(pump.cyclesSinceLastFetch() == 4);
+}
+
+TEST_CASE("JMP Absolute - Register State Preserved", "[jump][absolute][registers]")
+{
+  MicrocodePump<mos6502> pump;
+  State cpu;
+  cpu.pc = 0x9000_addr;
+  // Set register state to verify it's preserved
+  cpu.a = 0x42;
+  cpu.x = 0x33;
+  cpu.y = 0x55;
+  cpu.sp = 0xFE;
+  cpu.p = 0xA5;
+
+  auto request = pump.tick(cpu, BusResponse{});
+  CHECK(request == BusRequest::Fetch(0x9000_addr));
+
+  request = pump.tick(cpu, BusResponse{0x4C});  // JMP Absolute
+  CHECK(request == BusRequest::Read(0x9001_addr));
+
+  request = pump.tick(cpu, BusResponse{0x78});  // Low byte
+  CHECK(request == BusRequest::Read(0x9002_addr));
+
+  request = pump.tick(cpu, BusResponse{0x56});  // High byte
+  CHECK(request == BusRequest::Fetch(0x5678_addr));
+
+  CHECK(cpu.pc == 0x5679_addr);  // PC should change
+  // All other registers should be preserved
+  CHECK(cpu.a == 0x42);
+  CHECK(cpu.x == 0x33);
+  CHECK(cpu.y == 0x55);
+  CHECK(cpu.sp == 0xFE);
+  CHECK(cpu.p == 0xA5);  // Flags should be preserved
+  CHECK(pump.cyclesSinceLastFetch() == 4);
+}
+
+TEST_CASE("JMP Indirect - Register State Preserved", "[jump][indirect][registers]")
+{
+  MicrocodePump<mos6502> pump;
+  State cpu;
+  cpu.pc = 0xA000_addr;
+  // Set register state to verify it's preserved
+  cpu.a = 0xFF;
+  cpu.x = 0x00;
+  cpu.y = 0x88;
+  cpu.sp = 0x77;
+  cpu.p = 0x23;
+
+  auto request = pump.tick(cpu, BusResponse{});
+  CHECK(request == BusRequest::Fetch(0xA000_addr));
+
+  request = pump.tick(cpu, BusResponse{0x6C});  // JMP Indirect
+  CHECK(request == BusRequest::Read(0xA001_addr));
+
+  request = pump.tick(cpu, BusResponse{0x00});  // Indirect address low
+  CHECK(request == BusRequest::Read(0xA002_addr));
+
+  request = pump.tick(cpu, BusResponse{0xB0});  // Indirect address high
+  CHECK(request == BusRequest::Read(0xB000_addr));  // Read target low
+
+  request = pump.tick(cpu, BusResponse{0xEF});  // Target low
+  CHECK(request == BusRequest::Read(0xB001_addr));  // Read target high
+
+  request = pump.tick(cpu, BusResponse{0xBE});  // Target high
+  CHECK(request == BusRequest::Fetch(0xBEEF_addr));
+
+  CHECK(cpu.pc == 0xBEF0_addr);  // PC should change
+  // All other registers should be preserved
+  CHECK(cpu.a == 0xFF);
+  CHECK(cpu.x == 0x00);
+  CHECK(cpu.y == 0x88);
+  CHECK(cpu.sp == 0x77);
+  CHECK(cpu.p == 0x23);  // Flags should be preserved
+  CHECK(pump.cyclesSinceLastFetch() == 6);
 }
