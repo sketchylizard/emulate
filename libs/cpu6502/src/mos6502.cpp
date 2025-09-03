@@ -14,6 +14,12 @@ namespace cpu6502
 static MicrocodeResponse branchTaken(State& cpu, Common::BusResponse /*response*/);
 static MicrocodeResponse branchPageFixup(State& cpu, Common::BusResponse /*response*/);
 
+static MicrocodeResponse nop(State& cpu, Common::BusResponse /*response*/)
+{
+  // No operation; used to consume a cycle
+  return {BusRequest::Read(cpu.pc)};  // Dummy read to consume cycle
+}
+
 // Evaluate condition and decide whether to branch
 template<State::Flag flag, bool condition>
 static MicrocodeResponse branch(State& cpu, Common::BusResponse /*response*/)
@@ -22,15 +28,15 @@ static MicrocodeResponse branch(State& cpu, Common::BusResponse /*response*/)
   bool flagSet = cpu.has(flag);
   bool shouldBranch = (flagSet == condition);
 
+  Microcode next = nullptr;
+
   if (shouldBranch)
   {
     // Branch taken - continue to step 1
-    return {BusRequest::Read(cpu.pc++), branchTaken};
+    next = branchTaken;
   }
 
-  // Branch not taken - 2 cycles total, we're done, when we return we'll fetch next opcode
-  ++cpu.pc;  // Just increment PC to skip the offset byte
-  return MicrocodeResponse{};
+  return {BusRequest::Read(cpu.pc++), next};
 }
 
 static MicrocodeResponse branchTaken(State& cpu, Common::BusResponse response)
@@ -52,18 +58,15 @@ static MicrocodeResponse branchTaken(State& cpu, Common::BusResponse response)
   // Update PC with new low byte (keep high byte for now)
   cpu.pc = MakeAddress(static_cast<uint8_t>(tmp), HiByte(cpu.pc));
 
-  if (!carry)
-  {
-    // No page boundary crossed - 3 cycles total, we're done, PC is already correct.
-    // We'll fetch next opcode when we return.
-    return MicrocodeResponse{};
-  }
-  else
+  Microcode nextStage = nullptr;
+  if (carry)
   {
     // Page boundary crossed - need step 2 for fixup
-    // Dummy read to consume cycle
-    return {BusRequest::Read(cpu.pc), branchPageFixup};
+    nextStage = branchPageFixup;
   }
+
+  // Dummy read to consume cycle
+  return {BusRequest::Read(cpu.pc), nextStage};
 }
 
 static MicrocodeResponse branchPageFixup(State& cpu, Common::BusResponse /*response*/)
@@ -80,7 +83,8 @@ static MicrocodeResponse branchPageFixup(State& cpu, Common::BusResponse /*respo
     cpu.pc += 0x100;
   }
   // 4 cycles total, we're done
-  return MicrocodeResponse{};
+  // Dummy read to consume cycle
+  return {BusRequest::Read(cpu.pc)};
 }
 
 template<Common::Byte State::* reg>
@@ -124,15 +128,9 @@ template<State::Flag Flag, bool Set>
 static MicrocodeResponse flagOp(State& cpu, Common::BusResponse /*response*/)
 {
   cpu.set(Flag, Set);
-  return MicrocodeResponse{};
+  return {BusRequest::Read(cpu.pc)};  // Dummy read to consume cycle
 }
 
-
-static MicrocodeResponse txs(State& cpu, Common::BusResponse /*response*/)
-{
-  cpu.sp = cpu.x;
-  return MicrocodeResponse{};
-}
 
 static MicrocodeResponse ora(State& cpu, Common::BusResponse response)
 {
@@ -202,7 +200,7 @@ static MicrocodeResponse increment(State& cpu, Common::BusResponse /*response*/)
   auto& r = (cpu.*reg);
   ++r;
   cpu.setZN(r);
-  return MicrocodeResponse{};
+  return {BusRequest::Read(cpu.pc)};  // Dummy read to consume cycle
 }
 
 template<Common::Byte State::* reg>
@@ -212,7 +210,7 @@ static MicrocodeResponse decrement(State& cpu, Common::BusResponse /*response*/)
   auto& r = (cpu.*reg);
   --r;
   cpu.setZN(r);
-  return MicrocodeResponse{};
+  return {BusRequest::Read(cpu.pc)};  // Dummy read to consume cycle
 }
 
 static bool subtractWithBorrow(Byte& reg, Byte value) noexcept
@@ -241,14 +239,14 @@ static MicrocodeResponse transfer(State& cpu, Common::BusResponse /*response*/)
   auto& d = (cpu.*dst);
   d = s;
   cpu.setZN(d);
-  return MicrocodeResponse{};
+  return {BusRequest::Read(cpu.pc)};  // Dummy read to consume cycle
 }
 
 static MicrocodeResponse eor(State& cpu, Common::BusResponse response)
 {
   cpu.a ^= response.data;  // A ← A ⊕ M
   cpu.setZN(cpu.a);
-  return MicrocodeResponse{};
+  return {BusRequest::Read(cpu.pc)};  // Dummy read to consume cycle
 }
 
 static MicrocodeResponse pha(State& cpu, Common::BusResponse /*response*/)
@@ -340,7 +338,7 @@ static constexpr auto c_instructions = []()
   // Insert actual instructions by opcode
   // add(0x00, "BRK", table, {brk<false>});
 
-  add<Implied>(0xEA, "NOP", {}, table);
+  add<Implied>(0xEA, "NOP", {nop}, table);
 
   // ADC instructions
   add<Immediate>(0x69, "ADC", {adc}, table);
@@ -447,7 +445,7 @@ static constexpr auto c_instructions = []()
   add<Implied>(0xA8, "TAY", {transfer<&State::a, &State::y>}, table);
   add<Implied>(0x8A, "TXA", {transfer<&State::x, &State::a>}, table);
   add<Implied>(0xAA, "TAX", {transfer<&State::a, &State::x>}, table);
-  add<Implied>(0x9A, "TXS", {txs}, table);
+  add<Implied>(0x9A, "TXS", {transfer<&State::x, &State::sp>}, table);
   add<Implied>(0xBA, "TSX", {transfer<&State::sp, &State::x>}, table);
 
   add<Immediate>(0x49, "EOR", {eor}, table);

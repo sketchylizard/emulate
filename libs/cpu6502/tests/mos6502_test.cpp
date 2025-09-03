@@ -301,6 +301,9 @@ TEST_CASE("NOP", "[implied]")
   CHECK(request == BusRequest::Fetch(0_addr));
 
   request = pump.tick(cpu, BusResponse{0xEA});  // Opcode for NOP
+  CHECK(request == BusRequest::Read(1_addr));  // Dummy read
+
+  request = pump.tick(cpu, BusResponse{0xDE});  // Random data
   CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
 
   // Verify nothing changed
@@ -322,6 +325,9 @@ TEST_CASE("CLC - Clear Carry Flag", "[implied]")
   CHECK(request == BusRequest::Fetch(0_addr));
 
   request = pump.tick(cpu, BusResponse{0x18});  // Opcode for CLC
+  CHECK(request == BusRequest::Read(1_addr));  // Dummy read
+
+  request = pump.tick(cpu, BusResponse{0x23});  // Random data
   CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
 
   CHECK(cpu.has(State::Flag::Carry) == false);  // Carry flag should be clear
@@ -338,6 +344,9 @@ TEST_CASE("SEC - Set Carry Flag", "[implied]")
   CHECK(request == BusRequest::Fetch(0_addr));
 
   request = pump.tick(cpu, BusResponse{0x38});  // Opcode for SEC
+  CHECK(request == BusRequest::Read(1_addr));  // Dummy read
+
+  request = pump.tick(cpu, BusResponse{0x23});  // Random data
   CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
 
   CHECK(cpu.has(State::Flag::Carry) == true);  // Carry flag should be set
@@ -354,6 +363,9 @@ TEST_CASE("CLI - Clear Interrupt Flag", "[implied]")
   CHECK(request == BusRequest::Fetch(0_addr));
 
   request = pump.tick(cpu, BusResponse{0x58});  // Opcode for CLI
+  CHECK(request == BusRequest::Read(1_addr));  // Dummy read
+
+  request = pump.tick(cpu, BusResponse{0x23});  // Random data
   CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
 
   CHECK(cpu.has(State::Flag::Interrupt) == false);  // Interrupt flag should be clear
@@ -370,6 +382,9 @@ TEST_CASE("SEI - Set Interrupt Flag", "[implied]")
   CHECK(request == BusRequest::Fetch(0_addr));
 
   request = pump.tick(cpu, BusResponse{0x78});  // Opcode for SEI
+  CHECK(request == BusRequest::Read(1_addr));  // Dummy read
+
+  request = pump.tick(cpu, BusResponse{0x23});  // Random data
   CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
 
   CHECK(cpu.has(State::Flag::Interrupt) == true);  // Interrupt flag should be set
@@ -386,6 +401,9 @@ TEST_CASE("CLV - Clear Overflow Flag", "[implied]")
   CHECK(request == BusRequest::Fetch(0_addr));
 
   request = pump.tick(cpu, BusResponse{0xB8});  // Opcode for CLV
+  CHECK(request == BusRequest::Read(1_addr));  // Dummy read
+
+  request = pump.tick(cpu, BusResponse{0x23});  // Random data
   CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
 
   CHECK(cpu.has(State::Flag::Overflow) == false);  // Overflow flag should be clear
@@ -402,6 +420,9 @@ TEST_CASE("CLD - Clear Decimal Flag", "[implied]")
   CHECK(request == BusRequest::Fetch(0_addr));
 
   request = pump.tick(cpu, BusResponse{0xD8});  // Opcode for CLD
+  CHECK(request == BusRequest::Read(1_addr));  // Dummy read
+
+  request = pump.tick(cpu, BusResponse{0x23});  // Random data
   CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
 
   CHECK(cpu.has(State::Flag::Decimal) == false);  // Decimal flag should be clear
@@ -418,6 +439,9 @@ TEST_CASE("SED - Set Decimal Flag", "[implied]")
   CHECK(request == BusRequest::Fetch(0_addr));
 
   request = pump.tick(cpu, BusResponse{0xF8});  // Opcode for SED
+  CHECK(request == BusRequest::Read(1_addr));  // Dummy read
+
+  request = pump.tick(cpu, BusResponse{0x23});  // Random data
   CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
 
   CHECK(cpu.has(State::Flag::Decimal) == true);  // Decimal flag should be set
@@ -434,6 +458,9 @@ TEST_CASE("INX - Increment X Register", "[implied]")
   CHECK(request == BusRequest::Fetch(0_addr));
 
   request = pump.tick(cpu, BusResponse{0xE8});  // Opcode for INX
+  CHECK(request == BusRequest::Read(1_addr));  // Dummy read
+
+  request = pump.tick(cpu, BusResponse{0x23});  // Random data
   CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
 
   CHECK(cpu.x == 0x80);  // X should be incremented
@@ -452,6 +479,9 @@ TEST_CASE("INX - Zero Result", "[implied]")
   CHECK(request == BusRequest::Fetch(0_addr));
 
   request = pump.tick(cpu, BusResponse{0xE8});  // Opcode for INX
+  CHECK(request == BusRequest::Read(1_addr));  // Dummy read
+
+  request = pump.tick(cpu, BusResponse{0x23});  // Random data
   CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
 
   CHECK(cpu.x == 0x00);  // X should wrap to zero
@@ -470,6 +500,9 @@ TEST_CASE("INY - Increment Y Register", "[implied]")
   CHECK(request == BusRequest::Fetch(0_addr));
 
   request = pump.tick(cpu, BusResponse{0xC8});  // Opcode for INY
+  CHECK(request == BusRequest::Read(1_addr));  // Dummy read
+
+  request = pump.tick(cpu, BusResponse{0x23});  // Random data
   CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
 
   CHECK(cpu.y == 0x43);  // Y should be incremented
@@ -488,6 +521,9 @@ TEST_CASE("DEX - Decrement X Register", "[implied]")
   CHECK(request == BusRequest::Fetch(0_addr));
 
   request = pump.tick(cpu, BusResponse{0xCA});  // Opcode for DEX
+  CHECK(request == BusRequest::Read(1_addr));  // Dummy read
+
+  request = pump.tick(cpu, BusResponse{0x23});  // Random data
   CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
 
   CHECK(cpu.x == 0x00);  // X should be decremented to zero
@@ -506,6 +542,9 @@ TEST_CASE("DEX - Underflow", "[implied]")
   CHECK(request == BusRequest::Fetch(0_addr));
 
   request = pump.tick(cpu, BusResponse{0xCA});  // Opcode for DEX
+  CHECK(request == BusRequest::Read(1_addr));  // Dummy read
+
+  request = pump.tick(cpu, BusResponse{0x23});  // Random data
   CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
 
   CHECK(cpu.x == 0xFF);  // X should underflow to 0xFF
@@ -524,6 +563,9 @@ TEST_CASE("DEY - Decrement Y Register", "[implied]")
   CHECK(request == BusRequest::Fetch(0_addr));
 
   request = pump.tick(cpu, BusResponse{0x88});  // Opcode for DEY
+  CHECK(request == BusRequest::Read(1_addr));  // Dummy read
+
+  request = pump.tick(cpu, BusResponse{0x23});  // Random data
   CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
 
   CHECK(cpu.y == 0x7F);  // Y should be decremented
@@ -543,6 +585,9 @@ TEST_CASE("TAX - Transfer A to X", "[implied]")
   CHECK(request == BusRequest::Fetch(0_addr));
 
   request = pump.tick(cpu, BusResponse{0xAA});  // Opcode for TAX
+  CHECK(request == BusRequest::Read(1_addr));  // Dummy read
+
+  request = pump.tick(cpu, BusResponse{0x23});  // Random data
   CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
 
   CHECK(cpu.x == 0x99);  // X should equal A
@@ -563,6 +608,9 @@ TEST_CASE("TAY - Transfer A to Y", "[implied]")
   CHECK(request == BusRequest::Fetch(0_addr));
 
   request = pump.tick(cpu, BusResponse{0xA8});  // Opcode for TAY
+  CHECK(request == BusRequest::Read(1_addr));  // Dummy read
+
+  request = pump.tick(cpu, BusResponse{0x23});  // Random data
   CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
 
   CHECK(cpu.y == 0x00);  // Y should equal A
@@ -583,6 +631,9 @@ TEST_CASE("TXA - Transfer X to A", "[implied]")
   CHECK(request == BusRequest::Fetch(0_addr));
 
   request = pump.tick(cpu, BusResponse{0x8A});  // Opcode for TXA
+  CHECK(request == BusRequest::Read(1_addr));  // Dummy read
+
+  request = pump.tick(cpu, BusResponse{0x23});  // Random data
   CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
 
   CHECK(cpu.a == 0x42);  // A should equal X
@@ -603,6 +654,9 @@ TEST_CASE("TYA - Transfer Y to A", "[implied]")
   CHECK(request == BusRequest::Fetch(0_addr));
 
   request = pump.tick(cpu, BusResponse{0x98});  // Opcode for TYA
+  CHECK(request == BusRequest::Read(1_addr));  // Dummy read
+
+  request = pump.tick(cpu, BusResponse{0x23});  // Random data
   CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
 
   CHECK(cpu.a == 0x80);  // A should equal Y
@@ -623,6 +677,9 @@ TEST_CASE("TXS - Transfer X to Stack Pointer", "[implied]")
   CHECK(request == BusRequest::Fetch(0_addr));
 
   request = pump.tick(cpu, BusResponse{0x9A});  // Opcode for TXS
+  CHECK(request == BusRequest::Read(1_addr));  // Dummy read
+
+  request = pump.tick(cpu, BusResponse{0x23});  // Random data
   CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
 
   CHECK(cpu.sp == 0xFE);  // SP should equal X
@@ -642,6 +699,9 @@ TEST_CASE("TSX - Transfer Stack Pointer to X", "[implied]")
   CHECK(request == BusRequest::Fetch(0_addr));
 
   request = pump.tick(cpu, BusResponse{0xBA});  // Opcode for TSX
+  CHECK(request == BusRequest::Read(1_addr));  // Dummy read
+
+  request = pump.tick(cpu, BusResponse{0x23});  // Random data
   CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
 
   CHECK(cpu.x == 0x00);  // X should equal SP
@@ -651,339 +711,243 @@ TEST_CASE("TSX - Transfer Stack Pointer to X", "[implied]")
   CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
 }
 
-TEST_CASE("BEQ - Branch taken (Zero flag set)", "[branch][relative]")
+// Branch instruction data structure
+struct BranchInstruction
 {
-  MicrocodePump<mos6502> pump;
-  State cpu;
-  cpu.pc = 0x1000_addr;
-  cpu.set(State::Flag::Zero, true);  // Set zero flag
+  const char* name;
+  Byte opcode;
+  State::Flag flag;
+  bool condition;
 
-  auto request = pump.tick(cpu, BusResponse{});  // Initial tick to fetch opcode
-  CHECK(request == BusRequest::Fetch(0x1000_addr));
+  // For better test output
+  friend std::ostream& operator<<(std::ostream& os, const BranchInstruction& branch)
+  {
+    return os << branch.name;
+  }
+};
 
-  request = pump.tick(cpu, BusResponse{0xF0});  // Opcode for BEQ
-  CHECK(request == BusRequest::Read(0x1001_addr));
+// All branch instructions
+static const BranchInstruction BEQ{"BEQ", 0xF0, State::Flag::Zero, true};
+static const BranchInstruction BNE{"BNE", 0xD0, State::Flag::Zero, false};
+static const BranchInstruction BPL{"BPL", 0x10, State::Flag::Negative, false};
+static const BranchInstruction BMI{"BMI", 0x30, State::Flag::Negative, true};
+static const BranchInstruction BCC{"BCC", 0x90, State::Flag::Carry, false};
+static const BranchInstruction BCS{"BCS", 0xB0, State::Flag::Carry, true};
+static const BranchInstruction BVC{"BVC", 0x50, State::Flag::Overflow, false};
+static const BranchInstruction BVS{"BVS", 0x70, State::Flag::Overflow, true};
 
-  request = pump.tick(cpu, BusResponse{0x05});  // Branch offset +5
-  CHECK(request == BusRequest::Fetch(0x1007_addr));  // PC(1002) + offset(5) = 1007
-
-  CHECK(cpu.pc == 0x1008_addr);  // PC should be at branch target
-  CHECK(pump.cyclesSinceLastFetch() == 3);  // Three cycles for branch taken, same page
-}
-
-TEST_CASE("BEQ - Branch not taken (Zero flag clear)", "[branch][relative]")
+TEST_CASE("Branch Instructions - All Variants", "[branch][relative]")
 {
-  MicrocodePump<mos6502> pump;
-  State cpu;
-  cpu.pc = 0x1000_addr;
-  cpu.set(State::Flag::Zero, false);  // Clear zero flag
-
-  auto request = pump.tick(cpu, BusResponse{});  // Initial tick to fetch opcode
-  CHECK(request == BusRequest::Fetch(0x1000_addr));
-
-  request = pump.tick(cpu, BusResponse{0xF0});  // Opcode for BEQ
-  CHECK(request == BusRequest::Fetch(0x1002_addr));  // PC should advance normally
-
-  CHECK(cpu.pc == 0x1003_addr);  // PC should be after branch instruction
-  CHECK(pump.cyclesSinceLastFetch() == 2);  // Only TWO cycles for branch not taken
-}
-
-TEST_CASE("BNE - Branch taken (Zero flag clear)", "[branch][relative]")
-{
-  MicrocodePump<mos6502> pump;
-  State cpu;
-  cpu.pc = 0x2000_addr;
-  cpu.set(State::Flag::Zero, false);  // Clear zero flag
-
-  auto request = pump.tick(cpu, BusResponse{});  // Initial tick to fetch opcode
-  CHECK(request == BusRequest::Fetch(0x2000_addr));
-
-  request = pump.tick(cpu, BusResponse{0xD0});  // Opcode for BNE
-  CHECK(request == BusRequest::Read(0x2001_addr));
-
-  // Branch to self is caught by trap detection
-  CHECK_THROWS(pump.tick(cpu, BusResponse{0xFE}));
-  CHECK(pump.cyclesSinceLastFetch() == 3);  // Three cycles for branch taken, same page
-}
-
-TEST_CASE("BNE - Branch not taken (Zero flag set)", "[branch][relative]")
-{
-  MicrocodePump<mos6502> pump;
-  State cpu;
-  cpu.pc = 0x2000_addr;
-  cpu.set(State::Flag::Zero, true);  // Set zero flag
-
-  auto request = pump.tick(cpu, BusResponse{});  // Initial tick to fetch opcode
-  CHECK(request == BusRequest::Fetch(0x2000_addr));
-
-  request = pump.tick(cpu, BusResponse{0xD0});  // Opcode for BNE
-  // branch not taken, so PC should advance normally
-  CHECK(request == BusRequest::Fetch(0x2002_addr));
-
-  CHECK(cpu.pc == 0x2003_addr);  // PC should be after branch instruction
-  CHECK(pump.cyclesSinceLastFetch() == 2);  // Only TWO cycles for branch not taken
-}
-
-TEST_CASE("BPL - Branch taken (Negative flag clear)", "[branch][relative]")
-{
-  MicrocodePump<mos6502> pump;
-  State cpu;
-  cpu.pc = 0x3000_addr;
-  cpu.set(State::Flag::Negative, false);  // Clear negative flag
-
-  auto request = pump.tick(cpu, BusResponse{});  // Initial tick to fetch opcode
-  CHECK(request == BusRequest::Fetch(0x3000_addr));
-
-  request = pump.tick(cpu, BusResponse{0x10});  // Opcode for BPL
-  CHECK(request == BusRequest::Read(0x3001_addr));
-
-  request = pump.tick(cpu, BusResponse{0x10});  // Branch offset +16
-  CHECK(request == BusRequest::Fetch(0x3012_addr));  // PC(3002) + offset(16) = 3012
-
-  CHECK(cpu.pc == 0x3013_addr);  // PC should be at branch target
-  CHECK(pump.cyclesSinceLastFetch() == 3);  // Three cycles for branch taken, same page
-}
-
-TEST_CASE("BMI - Branch taken (Negative flag set), page crossing", "[branch][relative]")
-{
-  MicrocodePump<mos6502> pump;
-  State cpu;
-  cpu.pc = 0x4000_addr;
-  cpu.set(State::Flag::Negative, true);  // Set negative flag
-
-  auto request = pump.tick(cpu, BusResponse{});  // Initial tick to fetch opcode
-  CHECK(request == BusRequest::Fetch(0x4000_addr));
-
-  request = pump.tick(cpu, BusResponse{0x30});  // Opcode for BMI
-  CHECK(request == BusRequest::Read(0x4001_addr));
-
-  // page was crossed, so the first read is from the wrong page
-  request = pump.tick(cpu, BusResponse{0xF0});  // Branch offset -16 (0xF0 = -16 signed)
-  // PC(4002) + offset(-16) = 3FF2, but the first read is from wrong page
-  CHECK(request == BusRequest::Read(0x40F2_addr));
-
-  request = pump.tick(cpu, BusResponse{0x99});  // Random data, should be ignored
-  CHECK(request == BusRequest::Fetch(0x3FF2_addr));  // PC(4002) + offset(-16) = 3FF2
-
-  CHECK(cpu.pc == 0x3FF3_addr);  // PC should be at branch target
-  CHECK(pump.cyclesSinceLastFetch() == 4);  // Three cycles for branch taken, cross page
-}
-
-TEST_CASE("BCC - Branch taken (Carry flag clear)", "[branch][relative]")
-{
-  MicrocodePump<mos6502> pump;
-  State cpu;
-  cpu.pc = 0x5000_addr;
-  cpu.set(State::Flag::Carry, false);  // Clear carry flag
+  auto branch = GENERATE(BEQ, BNE, BPL, BMI, BCC, BCS, BVC, BVS);
 
-  auto request = pump.tick(cpu, BusResponse{});  // Initial tick to fetch opcode
-  CHECK(request == BusRequest::Fetch(0x5000_addr));
+  SECTION("Branch Not Taken")
+  {
+    MicrocodePump<mos6502> pump;
+    State cpu;
+    cpu.pc = 0x1000_addr;
 
-  request = pump.tick(cpu, BusResponse{0x90});  // Opcode for BCC
-  CHECK(request == BusRequest::Read(0x5001_addr));
+    // Set flag to opposite of branch condition (so branch is NOT taken)
+    cpu.set(branch.flag, !branch.condition);
 
-  request = pump.tick(cpu, BusResponse{0x7F});  // Branch offset +127 (max positive)
-  CHECK(request == BusRequest::Fetch(0x5081_addr));  // PC(5002) + offset(127) = 5081
+    auto request = pump.tick(cpu, BusResponse{});  // Initial tick to fetch opcode
+    CHECK(request == BusRequest::Fetch(0x1000_addr));
 
-  CHECK(cpu.pc == 0x5082_addr);  // PC should be at branch target + 1 (since we've already fetched)
-  CHECK(pump.cyclesSinceLastFetch() == 3);  // Three cycles for branch taken, same page
-}
-
-TEST_CASE("BCS - Branch taken (Carry flag set) page crossing", "[branch][relative]")
-{
-  MicrocodePump<mos6502> pump;
-  State cpu;
-  cpu.pc = 0x6000_addr;
-  cpu.set(State::Flag::Carry, true);  // Set carry flag
+    request = pump.tick(cpu, BusResponse{branch.opcode});  // Branch opcode
+    CHECK(request == BusRequest::Read(0x1001_addr));
 
-  auto request = pump.tick(cpu, BusResponse{});  // Initial tick to fetch opcode
-  CHECK(request == BusRequest::Fetch(0x6000_addr));
-
-  request = pump.tick(cpu, BusResponse{0xB0});  // Opcode for BCS
-  CHECK(request == BusRequest::Read(0x6001_addr));
+    request = pump.tick(cpu, BusResponse{0x10});  // Branch offset (ignored)
+    CHECK(request == BusRequest::Fetch(0x1002_addr));  // Next instruction
 
-  // page was crossed, so the first read is from the wrong page
-  request = pump.tick(cpu, BusResponse{0x80});  // Branch offset -128 (0x80 = -128 signed)
-  // PC(6002) + offset(-128) = 5F82, but the first read is from wrong page
-  CHECK(request == BusRequest::Read(0x6082_addr));
+    CHECK(cpu.pc == 0x1003_addr);  // PC should advance normally
+    CHECK(pump.cyclesSinceLastFetch() == 2);  // Two cycles for branch not taken
+  }
 
-  request = pump.tick(cpu, BusResponse{0xAA});  // rando data, should be ignored
-  CHECK(request == BusRequest::Fetch(0x5F82_addr));  // PC(6002) + offset(-128) = 5F82
+  SECTION("Branch Taken - Same Page")
+  {
+    MicrocodePump<mos6502> pump;
+    State cpu;
+    cpu.pc = 0x2000_addr;
 
-  CHECK(cpu.pc == 0x5F83_addr);  // PC should be at branch target
-  CHECK(pump.cyclesSinceLastFetch() == 4);  // Three cycles for branch taken, same page
-}
+    // Set flag to match branch condition (so branch IS taken)
+    cpu.set(branch.flag, branch.condition);
 
-TEST_CASE("BVC - Branch taken (Overflow flag clear)", "[branch][relative]")
-{
-  MicrocodePump<mos6502> pump;
-  State cpu;
-  cpu.pc = 0x7000_addr;
-  cpu.set(State::Flag::Overflow, false);  // Clear overflow flag
+    auto request = pump.tick(cpu, BusResponse{});
+    CHECK(request == BusRequest::Fetch(0x2000_addr));
 
-  auto request = pump.tick(cpu, BusResponse{});  // Initial tick to fetch opcode
-  CHECK(request == BusRequest::Fetch(0x7000_addr));
+    request = pump.tick(cpu, BusResponse{branch.opcode});
+    CHECK(request == BusRequest::Read(0x2001_addr));
 
-  request = pump.tick(cpu, BusResponse{0x50});  // Opcode for BVC
-  CHECK(request == BusRequest::Read(0x7001_addr));
-
-  request = pump.tick(cpu, BusResponse{0x20});  // Branch offset +32
-  CHECK(request == BusRequest::Fetch(0x7022_addr));  // PC(7002) + offset(32) = 7022
+    request = pump.tick(cpu, BusResponse{0x10});  // Branch offset +16
+    // Dummy read to consume cycle
+    CHECK(request == BusRequest::Read(0x2012_addr));  // Spurious read
 
-  CHECK(cpu.pc == 0x7023_addr);  // PC should be at branch target
-  CHECK(pump.cyclesSinceLastFetch() == 3);  // Three cycles for branch taken, same page
-}
-
-TEST_CASE("BVS - Branch taken (Overflow flag set), page crossing", "[branch][relative]")
-{
-  MicrocodePump<mos6502> pump;
-  State cpu;
-  cpu.pc = 0x8000_addr;
-  cpu.set(State::Flag::Overflow, true);  // Set overflow flag
+    request = pump.tick(cpu, BusResponse{0x91});  // random data
+    CHECK(request == BusRequest::Fetch(0x2012_addr));  // PC(2002) + offset(16) = 2012
 
-  auto request = pump.tick(cpu, BusResponse{});  // Initial tick to fetch opcode
-  CHECK(request == BusRequest::Fetch(0x8000_addr));
-
-  request = pump.tick(cpu, BusResponse{0x70});  // Opcode for BVS
-  CHECK(request == BusRequest::Read(0x8001_addr));
-
-  request = pump.tick(cpu, BusResponse{0xE0});  // Branch offset -32 (0xE0 = -32 signed), but wrong page
-  // PC(8002) + offset(-32) = 7FE2, but the first read is from wrong page
-  CHECK(request == BusRequest::Read(0x80E2_addr));
-
-  request = pump.tick(cpu, BusResponse{0x55});  // Random data, should be ignored
-  CHECK(request == BusRequest::Fetch(0x7FE2_addr));  // PC(8002) + offset(-32) = 7FE2
-
-  CHECK(cpu.pc == 0x7FE3_addr);  // PC should be at branch target
-  CHECK(pump.cyclesSinceLastFetch() == 4);  // Three cycles for branch taken, different page
-}
-
-TEST_CASE("Branch with page crossing - forward", "[branch][relative]")
-{
-  MicrocodePump<mos6502> pump;
-  State cpu;
-  cpu.pc = 0x20F0_addr;  // Set PC near page boundary
-  cpu.set(State::Flag::Zero, true);  // Set zero flag for BEQ
-
-  auto request = pump.tick(cpu, BusResponse{});  // Initial tick to fetch opcode
-  CHECK(request == BusRequest::Fetch(0x20F0_addr));
-
-  request = pump.tick(cpu, BusResponse{0xF0});  // Opcode for BEQ
-  CHECK(request == BusRequest::Read(0x20F1_addr));
-
-  request = pump.tick(cpu, BusResponse{0x20});  // Branch offset +32
-  // PC after instruction = 20F2, target = 20F2 + 32 = 2112 (crosses page boundary)
-  CHECK(request == BusRequest::Read(0x2012_addr));  // Wrong page read first
-
-  request = pump.tick(cpu, BusResponse{0xFF});  // Dummy data from page crossing fixup
-  CHECK(request == BusRequest::Fetch(0x2112_addr));  // Correct address after fixup
-
-  CHECK(cpu.pc == 0x2113_addr);  // PC should be at branch target
-  CHECK(pump.cyclesSinceLastFetch() == 4);  // Four cycles for page crossing branch
-}
-
-TEST_CASE("Branch with page crossing - backward", "[branch][relative]")
-{
-  MicrocodePump<mos6502> pump;
-  State cpu;
-  cpu.pc = 0x2110_addr;  // Set PC in upper part of page
-  cpu.set(State::Flag::Carry, false);  // Clear carry flag for BCC
-
-  auto request = pump.tick(cpu, BusResponse{});  // Initial tick to fetch opcode
-  CHECK(request == BusRequest::Fetch(0x2110_addr));
-
-  request = pump.tick(cpu, BusResponse{0x90});  // Opcode for BCC
-  CHECK(request == BusRequest::Read(0x2111_addr));
-
-  request = pump.tick(cpu, BusResponse{0xE0});  // Branch offset -32 (0xE0 = -32 signed)
-  // PC after instruction = 2112, target = 2112 + (-32) = 20F2 (crosses page boundary)
-  CHECK(request == BusRequest::Read(0x21F2_addr));  // Wrong page read first
-
-  request = pump.tick(cpu, BusResponse{0xFF});  // Dummy data from page crossing fixup
-  CHECK(request == BusRequest::Fetch(0x20F2_addr));  // Correct address after fixup
-
-  CHECK(cpu.pc == 0x20F3_addr);  // PC should be at branch target
-  CHECK(pump.cyclesSinceLastFetch() == 4);  // Four cycles for page crossing branch
-}
-
-TEST_CASE("Branch forward - no page crossing", "[branch][relative]")
-{
-  MicrocodePump<mos6502> pump;
-  State cpu;
-  cpu.pc = 0x3080_addr;  // Set PC in middle of page
-  cpu.set(State::Flag::Negative, false);  // Clear negative flag for BPL
-
-  auto request = pump.tick(cpu, BusResponse{});  // Initial tick to fetch opcode
-  CHECK(request == BusRequest::Fetch(0x3080_addr));
-
-  request = pump.tick(cpu, BusResponse{0x10});  // Opcode for BPL
-  CHECK(request == BusRequest::Read(0x3081_addr));
-
-  request = pump.tick(cpu, BusResponse{0x30});  // Branch offset +48
-  // PC after instruction = 3082, target = 3082 + 48 = 30B2 (same page)
-  CHECK(request == BusRequest::Fetch(0x30B2_addr));  // Direct to target, no page crossing
-
-  CHECK(cpu.pc == 0x30B3_addr);  // PC should be at branch target
-  CHECK(pump.cyclesSinceLastFetch() == 3);  // Three cycles for same page branch
-}
-
-TEST_CASE("Branch backward - no page crossing", "[branch][relative]")
-{
-  MicrocodePump<mos6502> pump;
-  State cpu;
-  cpu.pc = 0x4080_addr;  // Set PC in middle of page
-  cpu.set(State::Flag::Overflow, true);  // Set overflow flag for BVS
-
-  auto request = pump.tick(cpu, BusResponse{});  // Initial tick to fetch opcode
-  CHECK(request == BusRequest::Fetch(0x4080_addr));
-
-  request = pump.tick(cpu, BusResponse{0x70});  // Opcode for BVS
-  CHECK(request == BusRequest::Read(0x4081_addr));
-
-  request = pump.tick(cpu, BusResponse{0xD0});  // Branch offset -48 (0xD0 = -48 signed)
-  // PC after instruction = 4082, target = 4082 + (-48) = 4052 (same page)
-  CHECK(request == BusRequest::Fetch(0x4052_addr));  // Direct to target, no page crossing
-
-  CHECK(cpu.pc == 0x4053_addr);  // PC should be at branch target
-  CHECK(pump.cyclesSinceLastFetch() == 3);  // Three cycles for same page branch
-}
-
-TEST_CASE("Branch zero offset", "[branch][relative]")
-{
-  MicrocodePump<mos6502> pump;
-  State cpu;
-  cpu.pc = 0x5000_addr;
-  cpu.set(State::Flag::Zero, false);  // Clear zero flag for BNE
-
-  auto request = pump.tick(cpu, BusResponse{});  // Initial tick to fetch opcode
-  CHECK(request == BusRequest::Fetch(0x5000_addr));
-
-  request = pump.tick(cpu, BusResponse{0xD0});  // Opcode for BNE
-  CHECK(request == BusRequest::Read(0x5001_addr));
-
-  request = pump.tick(cpu, BusResponse{0x00});  // Branch offset 0
-  // PC after instruction = 5002, target = 5002 + 0 = 5002 (branch to next instruction)
-  CHECK(request == BusRequest::Fetch(0x5002_addr));  // Branch to next instruction
-
-  CHECK(cpu.pc == 0x5003_addr);  // PC should be at branch target (next instruction)
-  CHECK(pump.cyclesSinceLastFetch() == 3);  // Three cycles for branch taken
-}
-
-TEST_CASE("Self-branch trap detection", "[branch][relative]")
-{
-  MicrocodePump<mos6502> pump;
-  State cpu;
-  cpu.pc = 0x6000_addr;
-  cpu.set(State::Flag::Carry, true);  // Set carry flag for BCS
-
-  auto request = pump.tick(cpu, BusResponse{});  // Initial tick to fetch opcode
-  CHECK(request == BusRequest::Fetch(0x6000_addr));
-
-  request = pump.tick(cpu, BusResponse{0xB0});  // Opcode for BCS
-  CHECK(request == BusRequest::Read(0x6001_addr));
-
-  // Branch offset -2 should create infinite loop: PC(6002) + (-2) = 6000
-  CHECK_THROWS_AS(pump.tick(cpu, BusResponse{0xFE}), TrapException);
+    CHECK(cpu.pc == 0x2013_addr);  // PC should be at branch target
+    CHECK(pump.cyclesSinceLastFetch() == 3);  // Three cycles for branch taken, same page
+  }
+
+  SECTION("Branch Taken - Page Crossing Forward")
+  {
+    MicrocodePump<mos6502> pump;
+    State cpu;
+    cpu.pc = 0x20F0_addr;  // Near page boundary
+
+    // Set flag to match branch condition
+    cpu.set(branch.flag, branch.condition);
+
+    auto request = pump.tick(cpu, BusResponse{});
+    CHECK(request == BusRequest::Fetch(0x20F0_addr));
+
+    request = pump.tick(cpu, BusResponse{branch.opcode});
+    CHECK(request == BusRequest::Read(0x20F1_addr));
+
+    request = pump.tick(cpu, BusResponse{0x20});  // Branch offset +32
+    // Dummy read to consume cycle
+    CHECK(request == BusRequest::Read(0x2012_addr));  // Spurious read
+
+    request = pump.tick(cpu, BusResponse{0x91});  // random data
+    // PC after instruction = 20F2, target = 20F2 + 32 = 2112 (crosses page boundary)
+    CHECK(request == BusRequest::Read(0x2112_addr));  // Wrong page read first
+
+    request = pump.tick(cpu, BusResponse{0xFF});  // Dummy data from page crossing fixup
+    CHECK(request == BusRequest::Fetch(0x2112_addr));  // Correct address after fixup
+
+    CHECK(cpu.pc == 0x2113_addr);  // PC should be at branch target
+    CHECK(pump.cyclesSinceLastFetch() == 4);  // Four cycles for page crossing branch
+  }
+
+  SECTION("Branch Taken - Page Crossing Backward")
+  {
+    MicrocodePump<mos6502> pump;
+    State cpu;
+    cpu.pc = 0x2110_addr;  // In upper part of page
+
+    // Set flag to match branch condition
+    cpu.set(branch.flag, branch.condition);
+
+    auto request = pump.tick(cpu, BusResponse{});
+    CHECK(request == BusRequest::Fetch(0x2110_addr));
+
+    request = pump.tick(cpu, BusResponse{branch.opcode});
+    CHECK(request == BusRequest::Read(0x2111_addr));
+
+    request = pump.tick(cpu, BusResponse{0xE0});  // Branch offset -32
+    // Dummy read to consume cycle
+    CHECK(request == BusRequest::Read(0x21F2_addr));  // Spurious read
+
+    request = pump.tick(cpu, BusResponse{0x95});  // random data
+    // PC after instruction = 2112, target = 2112 + (-32) = 20F2 (crosses page boundary)
+    CHECK(request == BusRequest::Read(0x20F2_addr));
+
+    request = pump.tick(cpu, BusResponse{0xFF});  // Dummy data from page crossing fixup
+    CHECK(request == BusRequest::Fetch(0x20F2_addr));  // Correct address after fixup
+
+    CHECK(cpu.pc == 0x20F3_addr);  // PC should be at branch target
+    CHECK(pump.cyclesSinceLastFetch() == 4);  // Four cycles for page crossing branch
+  }
+
+  SECTION("Branch Self-Jump Trap")
+  {
+    MicrocodePump<mos6502> pump;
+    State cpu;
+    cpu.pc = 0x3000_addr;
+
+    // Set flag to match branch condition
+    cpu.set(branch.flag, branch.condition);
+
+    auto request = pump.tick(cpu, BusResponse{});
+    CHECK(request == BusRequest::Fetch(0x3000_addr));
+
+    request = pump.tick(cpu, BusResponse{branch.opcode});
+    CHECK(request == BusRequest::Read(0x3001_addr));
+
+    // Self-branch: offset -2 should create infinite loop
+    // PC after instruction = 3002, target = 3002 + (-2) = 3000 (back to start)
+    CHECK_THROWS_AS(pump.tick(cpu, BusResponse{0xFE}), TrapException);
+  }
+
+  SECTION("Branch Zero Offset")
+  {
+    MicrocodePump<mos6502> pump;
+    State cpu;
+    cpu.pc = 0x4000_addr;
+
+    // Set flag to match branch condition
+    cpu.set(branch.flag, branch.condition);
+
+    auto request = pump.tick(cpu, BusResponse{});
+    CHECK(request == BusRequest::Fetch(0x4000_addr));
+
+    request = pump.tick(cpu, BusResponse{branch.opcode});
+    CHECK(request == BusRequest::Read(0x4001_addr));
+
+    request = pump.tick(cpu, BusResponse{0x00});  // Zero offset
+    // Dummy read to consume cycle
+    CHECK(request == BusRequest::Read(0x4002_addr));  // Spurious read
+
+    request = pump.tick(cpu, BusResponse{0x91});  // random data
+    // PC after instruction = 4002, target = 4002 + 0 = 4002 (branch to next instruction)
+    CHECK(request == BusRequest::Fetch(0x4002_addr));
+
+    CHECK(cpu.pc == 0x4003_addr);  // PC should be at next instruction
+    CHECK(pump.cyclesSinceLastFetch() == 3);  // Three cycles for branch taken
+  }
+
+  SECTION("Branch Maximum Positive Offset")
+  {
+    MicrocodePump<mos6502> pump;
+    State cpu;
+    cpu.pc = 0x5000_addr;
+
+    // Set flag to match branch condition
+    cpu.set(branch.flag, branch.condition);
+
+    auto request = pump.tick(cpu, BusResponse{});
+    CHECK(request == BusRequest::Fetch(0x5000_addr));
+
+    request = pump.tick(cpu, BusResponse{branch.opcode});
+    CHECK(request == BusRequest::Read(0x5001_addr));
+
+    request = pump.tick(cpu, BusResponse{0x7F});  // Maximum positive offset (+127)
+    // Dummy read to consume cycle
+    CHECK(request == BusRequest::Read(0x5081_addr));  // Spurious read
+
+    request = pump.tick(cpu, BusResponse{0x91});  // random data
+    // PC after instruction = 5002, target = 5002 + 127 = 5081
+    CHECK(request == BusRequest::Fetch(0x5081_addr));
+
+    CHECK(cpu.pc == 0x5082_addr);
+    CHECK(pump.cyclesSinceLastFetch() == 3);  // Three cycles (same page)
+  }
+
+  SECTION("Branch Maximum Negative Offset")
+  {
+    MicrocodePump<mos6502> pump;
+    State cpu;
+    cpu.pc = 0x6080_addr;  // Start high enough to avoid underflow
+
+    // Set flag to match branch condition
+    cpu.set(branch.flag, branch.condition);
+
+    auto request = pump.tick(cpu, BusResponse{});
+    CHECK(request == BusRequest::Fetch(0x6080_addr));
+
+    request = pump.tick(cpu, BusResponse{branch.opcode});
+    CHECK(request == BusRequest::Read(0x6081_addr));
+
+    request = pump.tick(cpu, BusResponse{0x80});  // Maximum negative offset (-128)
+    // Dummy read to consume cycle
+    CHECK(request == BusRequest::Read(0x6002_addr));  // Spurious read
+
+    request = pump.tick(cpu, BusResponse{0x91});  // random data
+    // PC after instruction = 6082, target = 6082 + (-128) = 6002
+    CHECK(request == BusRequest::Fetch(0x6002_addr));
+
+    CHECK(cpu.pc == 0x6003_addr);
+    CHECK(pump.cyclesSinceLastFetch() == 3);  // Three cycles (same page)
+  }
 }
 
 // Template traits for LDX and LDY instructions
