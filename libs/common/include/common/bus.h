@@ -13,6 +13,7 @@ namespace Common
 enum class Control : uint8_t
 {
   None = 0,
+  Write = 0b1000'0000,
   Interrupt = 0b1000'0001,
   NonMaskableInterrupt = 0b1000'0010,
   Ready = 0b1000'0100,
@@ -89,7 +90,7 @@ struct BusRequest
 
   static constexpr BusRequest Write(Address addr, Byte data, Control additionalFlags = Control::None) noexcept
   {
-    return BusRequest{addr, data, additionalFlags & ~Control::Read};
+    return BusRequest{addr, data, (additionalFlags & ~Control::Read) | Control::Write};
   }
 
   static constexpr BusRequest Fetch(Address addr) noexcept

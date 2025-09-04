@@ -1436,3 +1436,448 @@ TEMPLATE_TEST_CASE("Load Register Side Effects", "[load][functional]", A_Reg, X_
     CHECK(cpu.has(State::Flag::Zero) == false);  // 0x42 is non-zero
   }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// Store tests
+////////////////////////////////////////////////////////////////////////////////
+
+// Traits for store register tag types
+template<typename RegTag>
+struct StoreTraits;
+
+template<>
+struct StoreTraits<A_Reg>
+{
+  static constexpr Byte State::* reg = &State::a;
+  static constexpr const char* name = "STA";
+  static constexpr Byte zeropage_opcode = 0x85;
+  static constexpr Byte zeropage_indexed_opcode = 0x95;  // STA uses X
+  static constexpr Byte absolute_opcode = 0x8D;
+  static constexpr Byte absolute_indexed_x_opcode = 0x9D;  // STA $nnnn,X
+  static constexpr Byte absolute_indexed_y_opcode = 0x99;  // STA $nnnn,Y
+  static constexpr void setIndexReg(State& cpu, Byte value, bool useY = false)
+  {
+    if (useY)
+      cpu.y = value;
+    else
+      cpu.x = value;
+  }
+};
+
+template<>
+struct StoreTraits<X_Reg>
+{
+  static constexpr Byte State::* reg = &State::x;
+  static constexpr const char* name = "STX";
+  static constexpr Byte zeropage_opcode = 0x86;
+  static constexpr Byte zeropage_indexed_opcode = 0x96;  // STX uses Y
+  static constexpr Byte absolute_opcode = 0x8E;
+  // STX has no absolute indexed modes
+  static constexpr void setIndexReg(State& cpu, Byte value, bool /*useY*/ = true)
+  {
+    cpu.y = value;  // STX only has zeropage,Y
+  }
+};
+
+template<>
+struct StoreTraits<Y_Reg>
+{
+  static constexpr Byte State::* reg = &State::y;
+  static constexpr const char* name = "STY";
+  static constexpr Byte zeropage_opcode = 0x84;
+  static constexpr Byte zeropage_indexed_opcode = 0x94;  // STY uses X
+  static constexpr Byte absolute_opcode = 0x8C;
+  // STY has no absolute indexed modes
+  static constexpr void setIndexReg(State& cpu, Byte value, bool /*useY*/ = false)
+  {
+    cpu.x = value;  // STY only has zeropage,X
+  }
+};
+
+TEMPLATE_TEST_CASE("Store Register Zero Page Mode", "[store][zeropage]", A_Reg, X_Reg, Y_Reg)
+{
+  using Traits = StoreTraits<TestType>;
+
+  std::array<Byte, 65536> memory_array{};
+
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Normal Store Operation")
+  {
+    State cpu;
+    (cpu.*(Traits::reg)) = 0x42;  // Set register value
+    memory_array[0x80] = 0x00;  // Clear target location
+
+    executeInstruction(pump, cpu, memory, {Traits::zeropage_opcode, 0x80});
+
+    CHECK(memory_array[0x80] == 0x42);  // Value should be stored
+    CHECK((cpu.*(Traits::reg)) == 0x42);  // Register unchanged
+  }
+
+  SECTION("Store Zero Value")
+  {
+    State cpu;
+    (cpu.*(Traits::reg)) = 0x00;
+    memory_array[0x50] = 0xFF;  // Pre-fill with different value
+
+    executeInstruction(pump, cpu, memory, {Traits::zeropage_opcode, 0x50});
+
+    CHECK(memory_array[0x50] == 0x00);
+    CHECK((cpu.*(Traits::reg)) == 0x00);
+  }
+
+  SECTION("Store Maximum Value")
+  {
+    State cpu;
+    (cpu.*(Traits::reg)) = 0xFF;
+    memory_array[0xFF] = 0x00;
+
+    executeInstruction(pump, cpu, memory, {Traits::zeropage_opcode, 0xFF});
+
+    CHECK(memory_array[0xFF] == 0xFF);
+    CHECK((cpu.*(Traits::reg)) == 0xFF);
+  }
+
+  SECTION("Store to Zero Page Address $00")
+  {
+    State cpu;
+    (cpu.*(Traits::reg)) = 0x33;
+    memory_array[0x00] = 0x00;
+
+    executeInstruction(pump, cpu, memory, {Traits::zeropage_opcode, 0x00});
+
+    CHECK(memory_array[0x00] == 0x33);
+  }
+}
+
+TEMPLATE_TEST_CASE("Store Register Zero Page Indexed Mode", "[store][zeropage][indexed]", A_Reg, X_Reg, Y_Reg)
+{
+  using Traits = StoreTraits<TestType>;
+
+  std::array<Byte, 65536> memory_array{};
+
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Normal Indexed Store")
+  {
+    State cpu;
+    (cpu.*(Traits::reg)) = 0x77;
+    memory_array[0x85] = 0x00;  // Target at $80 + 5 = $85
+
+    Traits::setIndexReg(cpu, 0x05);
+
+    executeInstruction(pump, cpu, memory, {Traits::zeropage_indexed_opcode, 0x80});
+
+    CHECK(memory_array[0x85] == 0x77);
+    CHECK((cpu.*(Traits::reg)) == 0x77);
+  }
+
+  SECTION("Zero Page Wraparound")
+  {
+    State cpu;
+    (cpu.*(Traits::reg)) = 0x88;
+    memory_array[0x10] = 0x00;  // $80 + $90 = $110 -> $10 (wraparound)
+
+    Traits::setIndexReg(cpu, 0x90);
+
+    executeInstruction(pump, cpu, memory, {Traits::zeropage_indexed_opcode, 0x80});
+
+    CHECK(memory_array[0x10] == 0x88);
+    CHECK(memory_array[0x110] == 0x00);  // Should NOT write here
+  }
+
+  SECTION("Index Zero")
+  {
+    State cpu;
+    (cpu.*(Traits::reg)) = 0x99;
+    memory_array[0x80] = 0x00;
+
+    Traits::setIndexReg(cpu, 0x00);
+
+    executeInstruction(pump, cpu, memory, {Traits::zeropage_indexed_opcode, 0x80});
+
+    CHECK(memory_array[0x80] == 0x99);
+  }
+
+  SECTION("Maximum Index")
+  {
+    State cpu;
+    (cpu.*(Traits::reg)) = 0xAA;
+    memory_array[0x7F] = 0x00;  // $80 + $FF = $17F -> $7F
+
+    Traits::setIndexReg(cpu, 0xFF);
+
+    executeInstruction(pump, cpu, memory, {Traits::zeropage_indexed_opcode, 0x80});
+
+    CHECK(memory_array[0x7F] == 0xAA);
+  }
+}
+
+TEMPLATE_TEST_CASE("Store Register Absolute Mode", "[store][absolute]", A_Reg, X_Reg, Y_Reg)
+{
+  using Traits = StoreTraits<TestType>;
+
+  std::array<Byte, 65536> memory_array{};
+
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Normal Absolute Store")
+  {
+    State cpu;
+    (cpu.*(Traits::reg)) = 0xCD;
+    memory_array[0x1234] = 0x00;
+
+    executeInstruction(pump, cpu, memory, {Traits::absolute_opcode, 0x34, 0x12});  // Little-endian
+
+    CHECK(memory_array[0x1234] == 0xCD);
+    CHECK((cpu.*(Traits::reg)) == 0xCD);
+  }
+
+  SECTION("Low Memory Address")
+  {
+    State cpu;
+    (cpu.*(Traits::reg)) = 0x11;
+    memory_array[0x0200] = 0x00;
+
+    executeInstruction(pump, cpu, memory, {Traits::absolute_opcode, 0x00, 0x02});
+
+    CHECK(memory_array[0x0200] == 0x11);
+  }
+
+  SECTION("High Memory Address")
+  {
+    State cpu;
+    (cpu.*(Traits::reg)) = 0xEE;
+    memory_array[0xFFFF] = 0x00;
+
+    executeInstruction(pump, cpu, memory, {Traits::absolute_opcode, 0xFF, 0xFF});
+
+    CHECK(memory_array[0xFFFF] == 0xEE);
+  }
+
+  SECTION("Overwrite Existing Data")
+  {
+    State cpu;
+    (cpu.*(Traits::reg)) = 0x55;
+    memory_array[0x3000] = 0xAA;  // Pre-existing data
+
+    executeInstruction(pump, cpu, memory, {Traits::absolute_opcode, 0x00, 0x30});
+
+    CHECK(memory_array[0x3000] == 0x55);  // Should overwrite
+  }
+}
+
+// Only test STA for absolute indexed modes (STX/STY don't have these)
+TEST_CASE("STA Absolute Indexed Mode", "[store][absolute][indexed][sta]")
+{
+  std::array<Byte, 65536> memory_array{};
+
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Absolute,X - No Page Crossing")
+  {
+    State cpu;
+    cpu.a = 0xBB;
+    cpu.x = 0x05;
+    memory_array[0x3025] = 0x00;  // $3020 + 5 = $3025
+
+    executeInstruction(pump, cpu, memory, {0x9D, 0x20, 0x30});  // STA $3020,X
+
+    CHECK(memory_array[0x3025] == 0xBB);
+    CHECK(cpu.a == 0xBB);
+  }
+
+  SECTION("Absolute,X - Page Crossing")
+  {
+    State cpu;
+    cpu.a = 0xCC;
+    cpu.x = 0x20;
+    memory_array[0x2110] = 0x00;  // $20F0 + $20 = $2110
+
+    executeInstruction(pump, cpu, memory, {0x9D, 0xF0, 0x20});  // STA $20F0,X
+
+    CHECK(memory_array[0x2110] == 0xCC);
+  }
+
+  SECTION("Absolute,Y - No Page Crossing")
+  {
+    State cpu;
+    cpu.a = 0xDD;
+    cpu.y = 0x10;
+    memory_array[0x4010] = 0x00;  // $4000 + $10 = $4010
+
+    executeInstruction(pump, cpu, memory, {0x99, 0x00, 0x40});  // STA $4000,Y
+
+    CHECK(memory_array[0x4010] == 0xDD);
+    CHECK(cpu.a == 0xDD);
+  }
+
+  SECTION("Absolute,Y - Page Crossing")
+  {
+    State cpu;
+    cpu.a = 0xEE;
+    cpu.y = 0xFF;
+    memory_array[0x50FF] = 0x00;  // $5000 + $FF = $50FF
+
+    executeInstruction(pump, cpu, memory, {0x99, 0x00, 0x50});  // STA $5000,Y
+
+    CHECK(memory_array[0x50FF] == 0xEE);
+  }
+
+  SECTION("Zero Index")
+  {
+    State cpu;
+    cpu.a = 0x77;
+    cpu.x = 0x00;
+    memory_array[0x6000] = 0x00;
+
+    executeInstruction(pump, cpu, memory, {0x9D, 0x00, 0x60});  // STA $6000,X
+
+    CHECK(memory_array[0x6000] == 0x77);
+  }
+}
+
+TEMPLATE_TEST_CASE("Store Register Side Effects", "[store][functional]", A_Reg, X_Reg, Y_Reg)
+{
+  using Traits = StoreTraits<TestType>;
+
+  std::array<Byte, 65536> memory_array{};
+
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("No Flag Changes")
+  {
+    State cpu;
+    (cpu.*(Traits::reg)) = 0x42;
+
+    // Set all flags to known state
+    cpu.p = static_cast<Byte>(State::Flag::Carry) | static_cast<Byte>(State::Flag::Zero) |
+            static_cast<Byte>(State::Flag::Interrupt) | static_cast<Byte>(State::Flag::Decimal) |
+            static_cast<Byte>(State::Flag::Overflow) | static_cast<Byte>(State::Flag::Negative) |
+            static_cast<Byte>(State::Flag::Unused);
+    auto original_flags = cpu.p;
+
+    executeInstruction(pump, cpu, memory, {Traits::zeropage_opcode, 0x80});
+
+    // Store operations should NOT affect any flags
+    CHECK(cpu.p == original_flags);
+    CHECK(memory_array[0x80] == 0x42);
+  }
+
+  SECTION("Register Independence")
+  {
+    State cpu;
+
+    // Set all registers to known values
+    cpu.a = 0x11;
+    cpu.x = 0x22;
+    cpu.y = 0x33;
+    cpu.sp = 0xFF;
+
+    executeInstruction(pump, cpu, memory, {Traits::zeropage_opcode, 0x80});
+
+    // Check that all registers are unchanged (except PC advancement)
+    CHECK(cpu.a == 0x11);
+    CHECK(cpu.x == 0x22);
+    CHECK(cpu.y == 0x33);
+    CHECK(cpu.sp == 0xFF);
+
+    // Memory should contain the value from the target register
+    CHECK(memory_array[0x80] == (cpu.*(Traits::reg)));
+  }
+
+  SECTION("Multiple Stores to Same Address")
+  {
+    State cpu;
+
+    // First store
+    (cpu.*(Traits::reg)) = 0x11;
+    executeInstruction(pump, cpu, memory, {Traits::zeropage_opcode, 0x90});
+    CHECK(memory_array[0x90] == 0x11);
+
+    // Second store to same address
+    (cpu.*(Traits::reg)) = 0x22;
+    executeInstruction(pump, cpu, memory, {Traits::zeropage_opcode, 0x90});
+    CHECK(memory_array[0x90] == 0x22);  // Should overwrite
+
+    // Third store with zero
+    (cpu.*(Traits::reg)) = 0x00;
+    executeInstruction(pump, cpu, memory, {Traits::zeropage_opcode, 0x90});
+    CHECK(memory_array[0x90] == 0x00);
+  }
+
+  SECTION("Store Does Not Affect Memory Read Timing")
+  {
+    State cpu;
+    (cpu.*(Traits::reg)) = 0x55;
+
+    // This is mainly to verify the store completes in expected cycles
+    // The exact cycle count depends on addressing mode:
+    // Zero page: 3 cycles
+    // Absolute: 4 cycles
+    // Zero page indexed: 4 cycles
+    // Absolute indexed: 5 cycles (always, no extra cycle like loads)
+
+    memory_array[0xA0] = 0x00;
+    executeInstruction(pump, cpu, memory, {Traits::zeropage_opcode, 0xA0});
+
+    CHECK(memory_array[0xA0] == 0x55);
+    CHECK((cpu.*(Traits::reg)) == 0x55);
+  }
+}
+
+TEST_CASE("Store Edge Cases", "[store][edge]")
+{
+  std::array<Byte, 65536> memory_array{};
+
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Store to Stack Page")
+  {
+    State cpu;
+    cpu.a = 0x99;
+    memory_array[0x01FF] = 0x00;  // Stack page
+
+    executeInstruction(pump, cpu, memory, {0x8D, 0xFF, 0x01});  // STA $01FF
+
+    CHECK(memory_array[0x01FF] == 0x99);
+  }
+
+  SECTION("Store to Zero Page vs Absolute Same Address")
+  {
+    State cpu;
+    cpu.a = 0xAA;
+
+    // Store to zero page $80
+    executeInstruction(pump, cpu, memory, {0x85, 0x80});  // STA $80
+    CHECK(memory_array[0x80] == 0xAA);
+
+    cpu.a = 0xBB;
+    // Store to absolute $0080 (same physical address)
+    executeInstruction(pump, cpu, memory, {0x8D, 0x80, 0x00});  // STA $0080
+    CHECK(memory_array[0x80] == 0xBB);  // Should overwrite
+  }
+
+  SECTION("Cross-Register Store Pattern")
+  {
+    State cpu;
+    cpu.a = 0x11;
+    cpu.x = 0x22;
+    cpu.y = 0x33;
+
+    // Store A, then X, then Y to consecutive locations
+    executeInstruction(pump, cpu, memory, {0x85, 0x10});  // STA $10
+    executeInstruction(pump, cpu, memory, {0x86, 0x11});  // STX $11
+    executeInstruction(pump, cpu, memory, {0x84, 0x12});  // STY $12
+
+    CHECK(memory_array[0x10] == 0x11);  // A
+    CHECK(memory_array[0x11] == 0x22);  // X
+    CHECK(memory_array[0x12] == 0x33);  // Y
+  }
+}

@@ -402,6 +402,19 @@ static constexpr auto c_instructions = []()
   // add<IndirectZpX>(0x81, "STA", {store<&State::a>}, table);
   // add<IndirectZpY>(0x91, "STA", {store<&State::a>}, table);
 
+  // STX variations
+  add<ZeroPage<>>(0x86, "STX", {store<&State::x>}, table);
+  add<ZeroPage<&State::y>>(0x96, "STX", {store<&State::x>}, table);
+  add<Absolute<>>(0x8E, "STX", {store<&State::x>}, table);
+  // STX has no absolute indexed modes
+
+  // STY variations
+  add<ZeroPage<>>(0x84, "STY", {store<&State::y>}, table);
+  add<ZeroPage<&State::x>>(0x94, "STY", {store<&State::y>}, table);
+  add<Absolute<>>(0x8C, "STY", {store<&State::y>}, table);
+  // STY has no absolute indexed modes
+  // STY has no indirect modes
+
   // ORA variations
   // add<IndirectZpX>(0x01, "ORA", {ora}, table);
   add<ZeroPage<>>(0x05, "ORA", {ora}, table);
