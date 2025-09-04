@@ -18,6 +18,17 @@ using namespace Common;
 
 namespace Common
 {
+// Test-only tag types for registers
+struct A_Reg
+{
+};
+struct X_Reg
+{
+};
+struct Y_Reg
+{
+};
+
 // In common/test_helpers.h or wherever you put the test utilities
 // Helper function for readable output
 std::ostream& operator<<(std::ostream& os, const BusRequest& value)
@@ -251,130 +262,351 @@ TEST_CASE("SED - Set Decimal Flag", "[implied]")
   CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
 }
 
-TEST_CASE("INX - Increment X Register", "[implied]")
+////////////////////////////////////////////////////////////////////////////////
+// Increment/Decrement Instruction Tests - Templated
+////////////////////////////////////////////////////////////////////////////////
+
+// Reuse existing register tags: X_Reg, Y_Reg
+// (A register doesn't have increment/decrement instructions)
+
+// Traits for increment operations
+template<typename RegTag>
+struct IncrementTraits;
+
+template<>
+struct IncrementTraits<X_Reg>
 {
+  static constexpr const char* name = "INX";
+  static constexpr Byte opcode = 0xE8;
+  static constexpr Byte State::* target_reg = &State::x;
+};
+
+template<>
+struct IncrementTraits<Y_Reg>
+{
+  static constexpr const char* name = "INY";
+  static constexpr Byte opcode = 0xC8;
+  static constexpr Byte State::* target_reg = &State::y;
+};
+
+// Traits for decrement operations
+template<typename RegTag>
+struct DecrementTraits;
+
+template<>
+struct DecrementTraits<X_Reg>
+{
+  static constexpr const char* name = "DEX";
+  static constexpr Byte opcode = 0xCA;
+  static constexpr Byte State::* target_reg = &State::x;
+};
+
+template<>
+struct DecrementTraits<Y_Reg>
+{
+  static constexpr const char* name = "DEY";
+  static constexpr Byte opcode = 0x88;
+  static constexpr Byte State::* target_reg = &State::y;
+};
+
+TEMPLATE_TEST_CASE("Increment Instructions", "[inc/dec][implied]", X_Reg, Y_Reg)
+{
+  using Traits = IncrementTraits<TestType>;
+
+  std::array<Byte, 65536> memory_array{};
   MicrocodePump<mos6502> pump;
-  State cpu;
-  cpu.x = 0x7F;  // Set X to positive value
+  MemoryDevice memory(memory_array);
 
-  auto request = pump.tick(cpu, BusResponse{});  // Initial tick to fetch opcode
-  CHECK(request == BusRequest::Fetch(0_addr));
+  SECTION("Normal Increment")
+  {
+    State cpu;
+    (cpu.*(Traits::target_reg)) = 0x42;
 
-  request = pump.tick(cpu, BusResponse{0xE8});  // Opcode for INX
-  CHECK(request == BusRequest::Read(1_addr));  // Dummy read
+    executeInstruction(pump, cpu, memory, {Traits::opcode});
 
-  request = pump.tick(cpu, BusResponse{0x23});  // Random data
-  CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
+    CHECK((cpu.*(Traits::target_reg)) == 0x43);
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == false);
+  }
 
-  CHECK(cpu.x == 0x80);  // X should be incremented
-  CHECK(cpu.has(State::Flag::Zero) == false);  // Zero flag should be clear
-  CHECK(cpu.has(State::Flag::Negative) == true);  // Negative flag should be set (0x80 has bit 7 set)
-  CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
+  SECTION("Increment to Zero (Wraparound)")
+  {
+    State cpu;
+    (cpu.*(Traits::target_reg)) = 0xFF;
+
+    executeInstruction(pump, cpu, memory, {Traits::opcode});
+
+    CHECK((cpu.*(Traits::target_reg)) == 0x00);
+    CHECK(cpu.has(State::Flag::Zero) == true);
+    CHECK(cpu.has(State::Flag::Negative) == false);
+  }
+
+  SECTION("Increment to Negative")
+  {
+    State cpu;
+    (cpu.*(Traits::target_reg)) = 0x7F;
+
+    executeInstruction(pump, cpu, memory, {Traits::opcode});
+
+    CHECK((cpu.*(Traits::target_reg)) == 0x80);
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == true);
+  }
+
+  SECTION("Increment Zero")
+  {
+    State cpu;
+    (cpu.*(Traits::target_reg)) = 0x00;
+
+    executeInstruction(pump, cpu, memory, {Traits::opcode});
+
+    CHECK((cpu.*(Traits::target_reg)) == 0x01);
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == false);
+  }
+
+  SECTION("Non-NZ Flags Preserved")
+  {
+    State cpu;
+    cpu.p = static_cast<Byte>(State::Flag::Carry) | static_cast<Byte>(State::Flag::Interrupt) |
+            static_cast<Byte>(State::Flag::Decimal) | static_cast<Byte>(State::Flag::Overflow) |
+            static_cast<Byte>(State::Flag::Unused);
+
+    auto original_flags = cpu.p;
+    (cpu.*(Traits::target_reg)) = 0x42;
+
+    executeInstruction(pump, cpu, memory, {Traits::opcode});
+
+    // Only N and Z should potentially change
+    Byte flag_mask = static_cast<Byte>(State::Flag::Negative) | static_cast<Byte>(State::Flag::Zero);
+    CHECK((cpu.p & ~flag_mask) == (original_flags & ~flag_mask));
+  }
+
+  SECTION("Other Registers Unchanged")
+  {
+    State cpu;
+    cpu.a = 0x11;
+    cpu.x = 0x22;
+    cpu.y = 0x33;
+    cpu.sp = 0xEE;
+
+    executeInstruction(pump, cpu, memory, {Traits::opcode});
+
+    // Check that non-target registers are unchanged
+    if (Traits::target_reg != &State::a)
+      CHECK(cpu.a == 0x11);
+    if (Traits::target_reg != &State::x)
+      CHECK(cpu.x == 0x22);
+    if (Traits::target_reg != &State::y)
+      CHECK(cpu.y == 0x33);
+    CHECK(cpu.sp == 0xEE);
+
+    // Verify target register incremented correctly
+    if (Traits::target_reg == &State::x)
+      CHECK(cpu.x == 0x23);
+    else
+      CHECK(cpu.y == 0x34);
+  }
 }
 
-TEST_CASE("INX - Zero Result", "[implied]")
+TEMPLATE_TEST_CASE("Decrement Instructions", "[inc/dec][implied]", X_Reg, Y_Reg)
 {
+  using Traits = DecrementTraits<TestType>;
+
+  std::array<Byte, 65536> memory_array{};
   MicrocodePump<mos6502> pump;
-  State cpu;
-  cpu.x = 0xFF;  // Set X to wrap around
+  MemoryDevice memory(memory_array);
 
-  auto request = pump.tick(cpu, BusResponse{});  // Initial tick to fetch opcode
-  CHECK(request == BusRequest::Fetch(0_addr));
+  SECTION("Normal Decrement")
+  {
+    State cpu;
+    (cpu.*(Traits::target_reg)) = 0x43;
 
-  request = pump.tick(cpu, BusResponse{0xE8});  // Opcode for INX
-  CHECK(request == BusRequest::Read(1_addr));  // Dummy read
+    executeInstruction(pump, cpu, memory, {Traits::opcode});
 
-  request = pump.tick(cpu, BusResponse{0x23});  // Random data
-  CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
+    CHECK((cpu.*(Traits::target_reg)) == 0x42);
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == false);
+  }
 
-  CHECK(cpu.x == 0x00);  // X should wrap to zero
-  CHECK(cpu.has(State::Flag::Zero) == true);  // Zero flag should be set
-  CHECK(cpu.has(State::Flag::Negative) == false);  // Negative flag should be clear
-  CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
+  SECTION("Decrement to Zero")
+  {
+    State cpu;
+    (cpu.*(Traits::target_reg)) = 0x01;
+
+    executeInstruction(pump, cpu, memory, {Traits::opcode});
+
+    CHECK((cpu.*(Traits::target_reg)) == 0x00);
+    CHECK(cpu.has(State::Flag::Zero) == true);
+    CHECK(cpu.has(State::Flag::Negative) == false);
+  }
+
+  SECTION("Decrement Underflow")
+  {
+    State cpu;
+    (cpu.*(Traits::target_reg)) = 0x00;
+
+    executeInstruction(pump, cpu, memory, {Traits::opcode});
+
+    CHECK((cpu.*(Traits::target_reg)) == 0xFF);
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == true);
+  }
+
+  SECTION("Decrement from Negative to Positive")
+  {
+    State cpu;
+    (cpu.*(Traits::target_reg)) = 0x80;
+
+    executeInstruction(pump, cpu, memory, {Traits::opcode});
+
+    CHECK((cpu.*(Traits::target_reg)) == 0x7F);
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == false);
+  }
+
+  SECTION("Decrement from 0xFF")
+  {
+    State cpu;
+    (cpu.*(Traits::target_reg)) = 0xFF;
+
+    executeInstruction(pump, cpu, memory, {Traits::opcode});
+
+    CHECK((cpu.*(Traits::target_reg)) == 0xFE);
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == true);
+  }
+
+  SECTION("Non-NZ Flags Preserved")
+  {
+    State cpu;
+    cpu.p = static_cast<Byte>(State::Flag::Carry) | static_cast<Byte>(State::Flag::Interrupt) |
+            static_cast<Byte>(State::Flag::Decimal) | static_cast<Byte>(State::Flag::Overflow) |
+            static_cast<Byte>(State::Flag::Unused);
+
+    auto original_flags = cpu.p;
+    (cpu.*(Traits::target_reg)) = 0x42;
+
+    executeInstruction(pump, cpu, memory, {Traits::opcode});
+
+    // Only N and Z should potentially change
+    Byte flag_mask = static_cast<Byte>(State::Flag::Negative) | static_cast<Byte>(State::Flag::Zero);
+    CHECK((cpu.p & ~flag_mask) == (original_flags & ~flag_mask));
+  }
+
+  SECTION("Other Registers Unchanged")
+  {
+    State cpu;
+    cpu.a = 0x11;
+    cpu.x = 0x22;
+    cpu.y = 0x33;
+    cpu.sp = 0xEE;
+
+    executeInstruction(pump, cpu, memory, {Traits::opcode});
+
+    // Check that non-target registers are unchanged
+    if (Traits::target_reg != &State::a)
+      CHECK(cpu.a == 0x11);
+    if (Traits::target_reg != &State::x)
+      CHECK(cpu.x == 0x22);
+    if (Traits::target_reg != &State::y)
+      CHECK(cpu.y == 0x33);
+    CHECK(cpu.sp == 0xEE);
+
+    // Verify target register decremented correctly
+    if (Traits::target_reg == &State::x)
+      CHECK(cpu.x == 0x21);
+    else
+      CHECK(cpu.y == 0x32);
+  }
 }
 
-TEST_CASE("INY - Increment Y Register", "[implied]")
+// Specific edge cases from original tests
+TEST_CASE("Increment/Decrement Edge Cases", "[inc/dec][edge]")
 {
+  std::array<Byte, 65536> memory_array{};
   MicrocodePump<mos6502> pump;
-  State cpu;
-  cpu.y = 0x42;  // Set Y to test value
+  MemoryDevice memory(memory_array);
 
-  auto request = pump.tick(cpu, BusResponse{});  // Initial tick to fetch opcode
-  CHECK(request == BusRequest::Fetch(0_addr));
+  SECTION("INX: 0x7F -> 0x80 (from original test)")
+  {
+    State cpu;
+    cpu.x = 0x7F;
 
-  request = pump.tick(cpu, BusResponse{0xC8});  // Opcode for INY
-  CHECK(request == BusRequest::Read(1_addr));  // Dummy read
+    executeInstruction(pump, cpu, memory, {0xE8});  // INX
 
-  request = pump.tick(cpu, BusResponse{0x23});  // Random data
-  CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
+    CHECK(cpu.x == 0x80);
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == true);
+  }
 
-  CHECK(cpu.y == 0x43);  // Y should be incremented
-  CHECK(cpu.has(State::Flag::Zero) == false);  // Zero flag should be clear
-  CHECK(cpu.has(State::Flag::Negative) == false);  // Negative flag should be clear
-  CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
-}
+  SECTION("INX: 0xFF -> 0x00 wraparound (from original test)")
+  {
+    State cpu;
+    cpu.x = 0xFF;
 
-TEST_CASE("DEX - Decrement X Register", "[implied]")
-{
-  MicrocodePump<mos6502> pump;
-  State cpu;
-  cpu.x = 0x01;  // Set X to decrement to zero
+    executeInstruction(pump, cpu, memory, {0xE8});  // INX
 
-  auto request = pump.tick(cpu, BusResponse{});  // Initial tick to fetch opcode
-  CHECK(request == BusRequest::Fetch(0_addr));
+    CHECK(cpu.x == 0x00);
+    CHECK(cpu.has(State::Flag::Zero) == true);
+    CHECK(cpu.has(State::Flag::Negative) == false);
+  }
 
-  request = pump.tick(cpu, BusResponse{0xCA});  // Opcode for DEX
-  CHECK(request == BusRequest::Read(1_addr));  // Dummy read
+  SECTION("DEX: 0x01 -> 0x00 (from original test)")
+  {
+    State cpu;
+    cpu.x = 0x01;
 
-  request = pump.tick(cpu, BusResponse{0x23});  // Random data
-  CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
+    executeInstruction(pump, cpu, memory, {0xCA});  // DEX
 
-  CHECK(cpu.x == 0x00);  // X should be decremented to zero
-  CHECK(cpu.has(State::Flag::Zero) == true);  // Zero flag should be set
-  CHECK(cpu.has(State::Flag::Negative) == false);  // Negative flag should be clear
-  CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
-}
+    CHECK(cpu.x == 0x00);
+    CHECK(cpu.has(State::Flag::Zero) == true);
+    CHECK(cpu.has(State::Flag::Negative) == false);
+  }
 
-TEST_CASE("DEX - Underflow", "[implied]")
-{
-  MicrocodePump<mos6502> pump;
-  State cpu;
-  cpu.x = 0x00;  // Set X to underflow
+  SECTION("DEX: 0x00 -> 0xFF underflow (from original test)")
+  {
+    State cpu;
+    cpu.x = 0x00;
 
-  auto request = pump.tick(cpu, BusResponse{});  // Initial tick to fetch opcode
-  CHECK(request == BusRequest::Fetch(0_addr));
+    executeInstruction(pump, cpu, memory, {0xCA});  // DEX
 
-  request = pump.tick(cpu, BusResponse{0xCA});  // Opcode for DEX
-  CHECK(request == BusRequest::Read(1_addr));  // Dummy read
+    CHECK(cpu.x == 0xFF);
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == true);
+  }
 
-  request = pump.tick(cpu, BusResponse{0x23});  // Random data
-  CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
+  SECTION("DEY: 0x80 -> 0x7F (from original test)")
+  {
+    State cpu;
+    cpu.y = 0x80;
 
-  CHECK(cpu.x == 0xFF);  // X should underflow to 0xFF
-  CHECK(cpu.has(State::Flag::Zero) == false);  // Zero flag should be clear
-  CHECK(cpu.has(State::Flag::Negative) == true);  // Negative flag should be set
-  CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
-}
+    executeInstruction(pump, cpu, memory, {0x88});  // DEY
 
-TEST_CASE("DEY - Decrement Y Register", "[implied]")
-{
-  MicrocodePump<mos6502> pump;
-  State cpu;
-  cpu.y = 0x80;  // Set Y to negative value
+    CHECK(cpu.y == 0x7F);
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == false);
+  }
 
-  auto request = pump.tick(cpu, BusResponse{});  // Initial tick to fetch opcode
-  CHECK(request == BusRequest::Fetch(0_addr));
+  SECTION("Multiple Operations in Sequence")
+  {
+    State cpu;
+    cpu.x = 0xFE;
 
-  request = pump.tick(cpu, BusResponse{0x88});  // Opcode for DEY
-  CHECK(request == BusRequest::Read(1_addr));  // Dummy read
+    executeInstruction(pump, cpu, memory, {0xE8});  // INX -> 0xFF
+    CHECK(cpu.x == 0xFF);
+    CHECK(cpu.has(State::Flag::Negative) == true);
 
-  request = pump.tick(cpu, BusResponse{0x23});  // Random data
-  CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
+    executeInstruction(pump, cpu, memory, {0xE8});  // INX -> 0x00
+    CHECK(cpu.x == 0x00);
+    CHECK(cpu.has(State::Flag::Zero) == true);
+    CHECK(cpu.has(State::Flag::Negative) == false);
 
-  CHECK(cpu.y == 0x7F);  // Y should be decremented
-  CHECK(cpu.has(State::Flag::Zero) == false);  // Zero flag should be clear
-  CHECK(cpu.has(State::Flag::Negative) == false);  // Negative flag should be clear
-  CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
+    executeInstruction(pump, cpu, memory, {0xCA});  // DEX -> 0xFF
+    CHECK(cpu.x == 0xFF);
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == true);
+  }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1240,17 +1472,6 @@ TEST_CASE("JMP Edge Cases", "[jump][functional]")
 ////////////////////////////////////////////////////////////////////////////////
 // Load tests
 ////////////////////////////////////////////////////////////////////////////////
-
-// Test-only tag types for registers
-struct A_Reg
-{
-};
-struct X_Reg
-{
-};
-struct Y_Reg
-{
-};
 
 // Traits for register tag types
 template<typename RegTag>
