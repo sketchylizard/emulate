@@ -377,142 +377,350 @@ TEST_CASE("DEY - Decrement Y Register", "[implied]")
   CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
 }
 
-TEST_CASE("TAX - Transfer A to X", "[implied]")
+////////////////////////////////////////////////////////////////////////////////
+// Transfer Instructions - All Variants
+////////////////////////////////////////////////////////////////////////////////
+
+// Transfer operation tag types
+struct TAX_Transfer
 {
+};
+struct TAY_Transfer
+{
+};
+struct TXA_Transfer
+{
+};
+struct TYA_Transfer
+{
+};
+struct TXS_Transfer
+{
+};
+struct TSX_Transfer
+{
+};
+
+// Traits for transfer operations
+template<typename TransferTag>
+struct TransferTraits;
+
+template<>
+struct TransferTraits<TAX_Transfer>
+{
+  static constexpr const char* name = "TAX";
+  static constexpr Byte opcode = 0xAA;
+  static constexpr bool affects_flags = true;
+  static constexpr Byte State::* src_reg = &State::a;
+  static constexpr Byte State::* dst_reg = &State::x;
+  static constexpr bool involves_stack = false;
+};
+
+template<>
+struct TransferTraits<TAY_Transfer>
+{
+  static constexpr const char* name = "TAY";
+  static constexpr Byte opcode = 0xA8;
+  static constexpr bool affects_flags = true;
+  static constexpr Byte State::* src_reg = &State::a;
+  static constexpr Byte State::* dst_reg = &State::y;
+  static constexpr bool involves_stack = false;
+};
+
+template<>
+struct TransferTraits<TXA_Transfer>
+{
+  static constexpr const char* name = "TXA";
+  static constexpr Byte opcode = 0x8A;
+  static constexpr bool affects_flags = true;
+  static constexpr Byte State::* src_reg = &State::x;
+  static constexpr Byte State::* dst_reg = &State::a;
+  static constexpr bool involves_stack = false;
+};
+
+template<>
+struct TransferTraits<TYA_Transfer>
+{
+  static constexpr const char* name = "TYA";
+  static constexpr Byte opcode = 0x98;
+  static constexpr bool affects_flags = true;
+  static constexpr Byte State::* src_reg = &State::y;
+  static constexpr Byte State::* dst_reg = &State::a;
+  static constexpr bool involves_stack = false;
+};
+
+template<>
+struct TransferTraits<TXS_Transfer>
+{
+  static constexpr const char* name = "TXS";
+  static constexpr Byte opcode = 0x9A;
+  static constexpr bool affects_flags = false;  // TXS does NOT affect flags
+  static constexpr Byte State::* src_reg = &State::x;
+  static constexpr Byte State::* dst_reg = &State::sp;
+  static constexpr bool involves_stack = true;
+};
+
+template<>
+struct TransferTraits<TSX_Transfer>
+{
+  static constexpr const char* name = "TSX";
+  static constexpr Byte opcode = 0xBA;
+  static constexpr bool affects_flags = true;
+  static constexpr Byte State::* src_reg = &State::sp;
+  static constexpr Byte State::* dst_reg = &State::x;
+  static constexpr bool involves_stack = true;
+};
+
+TEMPLATE_TEST_CASE("Transfer Instructions - Basic Operation", "[transfer][implied]", TAX_Transfer, TAY_Transfer,
+    TXA_Transfer, TYA_Transfer, TXS_Transfer, TSX_Transfer)
+{
+  using Traits = TransferTraits<TestType>;
+
   MicrocodePump<mos6502> pump;
   State cpu;
-  cpu.a = 0x99;  // Set A to test value
-  cpu.x = 0x00;  // Clear X initially
 
-  auto request = pump.tick(cpu, BusResponse{});  // Initial tick to fetch opcode
-  CHECK(request == BusRequest::Fetch(0_addr));
+  SECTION("Normal Value Transfer")
+  {
+    // Set source to test value, destination to different value
+    (cpu.*(Traits::src_reg)) = 0x42;
+    (cpu.*(Traits::dst_reg)) = 0x00;
 
-  request = pump.tick(cpu, BusResponse{0xAA});  // Opcode for TAX
-  CHECK(request == BusRequest::Read(1_addr));  // Dummy read
+    auto request = pump.tick(cpu, BusResponse{});
+    CHECK(request == BusRequest::Fetch(0_addr));
 
-  request = pump.tick(cpu, BusResponse{0x23});  // Random data
-  CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
+    request = pump.tick(cpu, BusResponse{Traits::opcode});
+    CHECK(request == BusRequest::Read(1_addr));  // Dummy read
 
-  CHECK(cpu.x == 0x99);  // X should equal A
-  CHECK(cpu.a == 0x99);  // A should be unchanged
-  CHECK(cpu.has(State::Flag::Zero) == false);  // Zero flag should be clear
-  CHECK(cpu.has(State::Flag::Negative) == true);  // Negative flag should be set
-  CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
+    request = pump.tick(cpu, BusResponse{0x23});  // Random data
+    CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
+
+    // Check transfer occurred
+    CHECK((cpu.*(Traits::dst_reg)) == 0x42);
+    CHECK((cpu.*(Traits::src_reg)) == 0x42);  // Source unchanged
+
+    if constexpr (Traits::affects_flags)
+    {
+      CHECK(cpu.has(State::Flag::Zero) == false);
+      CHECK(cpu.has(State::Flag::Negative) == false);
+    }
+
+    CHECK(pump.cyclesSinceLastFetch() == 2);
+  }
+
+  SECTION("Zero Value Transfer")
+  {
+    (cpu.*(Traits::src_reg)) = 0x00;
+    (cpu.*(Traits::dst_reg)) = 0xFF;
+
+    auto request = pump.tick(cpu, BusResponse{});
+    request = pump.tick(cpu, BusResponse{Traits::opcode});
+    request = pump.tick(cpu, BusResponse{0x23});
+
+    CHECK((cpu.*(Traits::dst_reg)) == 0x00);
+    CHECK((cpu.*(Traits::src_reg)) == 0x00);
+
+    if constexpr (Traits::affects_flags)
+    {
+      CHECK(cpu.has(State::Flag::Zero) == true);
+      CHECK(cpu.has(State::Flag::Negative) == false);
+    }
+  }
+
+  SECTION("Negative Value Transfer")
+  {
+    (cpu.*(Traits::src_reg)) = 0x80;
+    (cpu.*(Traits::dst_reg)) = 0x00;
+
+    auto request = pump.tick(cpu, BusResponse{});
+    request = pump.tick(cpu, BusResponse{Traits::opcode});
+    request = pump.tick(cpu, BusResponse{0x23});
+
+    CHECK((cpu.*(Traits::dst_reg)) == 0x80);
+    CHECK((cpu.*(Traits::src_reg)) == 0x80);
+
+    if constexpr (Traits::affects_flags)
+    {
+      CHECK(cpu.has(State::Flag::Zero) == false);
+      CHECK(cpu.has(State::Flag::Negative) == true);
+    }
+  }
+
+  SECTION("Maximum Value Transfer")
+  {
+    (cpu.*(Traits::src_reg)) = 0xFF;
+    (cpu.*(Traits::dst_reg)) = 0x00;
+
+    auto request = pump.tick(cpu, BusResponse{});
+    request = pump.tick(cpu, BusResponse{Traits::opcode});
+    request = pump.tick(cpu, BusResponse{0x23});
+
+    CHECK((cpu.*(Traits::dst_reg)) == 0xFF);
+    CHECK((cpu.*(Traits::src_reg)) == 0xFF);
+
+    if constexpr (Traits::affects_flags)
+    {
+      CHECK(cpu.has(State::Flag::Zero) == false);
+      CHECK(cpu.has(State::Flag::Negative) == true);
+    }
+  }
 }
 
-TEST_CASE("TAY - Transfer A to Y", "[implied]")
+TEMPLATE_TEST_CASE("Transfer Instructions - Flag Preservation", "[transfer][flags]", TAX_Transfer, TAY_Transfer,
+    TXA_Transfer, TYA_Transfer, TXS_Transfer, TSX_Transfer)
 {
+  using Traits = TransferTraits<TestType>;
+
   MicrocodePump<mos6502> pump;
   State cpu;
-  cpu.a = 0x00;  // Set A to zero
-  cpu.y = 0xFF;  // Set Y to different value initially
 
-  auto request = pump.tick(cpu, BusResponse{});  // Initial tick to fetch opcode
-  CHECK(request == BusRequest::Fetch(0_addr));
+  SECTION("Non-NZ Flags Preserved")
+  {
+    // Set all non-NZ flags
+    cpu.p = static_cast<Byte>(State::Flag::Carry) | static_cast<Byte>(State::Flag::Interrupt) |
+            static_cast<Byte>(State::Flag::Decimal) | static_cast<Byte>(State::Flag::Overflow) |
+            static_cast<Byte>(State::Flag::Unused);
 
-  request = pump.tick(cpu, BusResponse{0xA8});  // Opcode for TAY
-  CHECK(request == BusRequest::Read(1_addr));  // Dummy read
+    auto original_flags = cpu.p;
 
-  request = pump.tick(cpu, BusResponse{0x23});  // Random data
-  CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
+    (cpu.*(Traits::src_reg)) = 0x42;  // Non-zero, positive value
 
-  CHECK(cpu.y == 0x00);  // Y should equal A
-  CHECK(cpu.a == 0x00);  // A should be unchanged
-  CHECK(cpu.has(State::Flag::Zero) == true);  // Zero flag should be set
-  CHECK(cpu.has(State::Flag::Negative) == false);  // Negative flag should be clear
-  CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
+    auto request = pump.tick(cpu, BusResponse{});
+    request = pump.tick(cpu, BusResponse{Traits::opcode});
+    request = pump.tick(cpu, BusResponse{0x23});
+
+    if constexpr (Traits::affects_flags)
+    {
+      // Only N and Z should potentially change
+      Byte flag_mask = static_cast<Byte>(State::Flag::Negative) | static_cast<Byte>(State::Flag::Zero);
+      CHECK((cpu.p & ~flag_mask) == (original_flags & ~flag_mask));
+
+      // Check that N and Z are set correctly
+      CHECK(cpu.has(State::Flag::Zero) == false);
+      CHECK(cpu.has(State::Flag::Negative) == false);
+    }
+    else
+    {
+      // TXS should not affect any flags
+      CHECK(cpu.p == original_flags);
+    }
+  }
+
+  SECTION("NZ Flags Clear When Appropriate")
+  {
+    if constexpr (Traits::affects_flags)
+    {
+      // Set N and Z flags initially
+      cpu.p = static_cast<Byte>(State::Flag::Negative) | static_cast<Byte>(State::Flag::Zero) |
+              static_cast<Byte>(State::Flag::Unused);
+
+      (cpu.*(Traits::src_reg)) = 0x42;  // Should clear both N and Z
+
+      auto request = pump.tick(cpu, BusResponse{});
+      request = pump.tick(cpu, BusResponse{Traits::opcode});
+      request = pump.tick(cpu, BusResponse{0x23});
+
+      CHECK(cpu.has(State::Flag::Zero) == false);
+      CHECK(cpu.has(State::Flag::Negative) == false);
+    }
+  }
 }
 
-TEST_CASE("TXA - Transfer X to A", "[implied]")
+TEMPLATE_TEST_CASE("Transfer Instructions - Register Independence", "[transfer][side-effects]", TAX_Transfer,
+    TAY_Transfer, TXA_Transfer, TYA_Transfer, TXS_Transfer, TSX_Transfer)
 {
+  using Traits = TransferTraits<TestType>;
+
   MicrocodePump<mos6502> pump;
   State cpu;
-  cpu.x = 0x42;  // Set X to test value
-  cpu.a = 0x00;  // Clear A initially
 
-  auto request = pump.tick(cpu, BusResponse{});  // Initial tick to fetch opcode
-  CHECK(request == BusRequest::Fetch(0_addr));
+  SECTION("Other Registers Unchanged")
+  {
+    // Set all registers to known values
+    cpu.a = 0x11;
+    cpu.x = 0x22;
+    cpu.y = 0x33;
+    cpu.sp = 0xEE;
 
-  request = pump.tick(cpu, BusResponse{0x8A});  // Opcode for TXA
-  CHECK(request == BusRequest::Read(1_addr));  // Dummy read
+    // Override source register
+    (cpu.*(Traits::src_reg)) = 0x99;
 
-  request = pump.tick(cpu, BusResponse{0x23});  // Random data
-  CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
+    auto request = pump.tick(cpu, BusResponse{});
+    request = pump.tick(cpu, BusResponse{Traits::opcode});
+    request = pump.tick(cpu, BusResponse{0x23});
 
-  CHECK(cpu.a == 0x42);  // A should equal X
-  CHECK(cpu.x == 0x42);  // X should be unchanged
-  CHECK(cpu.has(State::Flag::Zero) == false);  // Zero flag should be clear
-  CHECK(cpu.has(State::Flag::Negative) == false);  // Negative flag should be clear
-  CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
+    // Check that non-involved registers are unchanged
+    if (Traits::src_reg != &State::a && Traits::dst_reg != &State::a)
+      CHECK(cpu.a == 0x11);
+    if (Traits::src_reg != &State::x && Traits::dst_reg != &State::x)
+      CHECK(cpu.x == 0x22);
+    if (Traits::src_reg != &State::y && Traits::dst_reg != &State::y)
+      CHECK(cpu.y == 0x33);
+    if (Traits::src_reg != &State::sp && Traits::dst_reg != &State::sp)
+      CHECK(cpu.sp == 0xEE);
+
+    // Check that destination got source value
+    CHECK((cpu.*(Traits::dst_reg)) == 0x99);
+    CHECK((cpu.*(Traits::src_reg)) == 0x99);  // Source unchanged
+  }
 }
 
-TEST_CASE("TYA - Transfer Y to A", "[implied]")
+// Specific edge cases that were in original tests
+TEST_CASE("Transfer Edge Cases", "[transfer][edge]")
 {
+  std::array<Byte, 65536> memory_array{};
   MicrocodePump<mos6502> pump;
-  State cpu;
-  cpu.y = 0x80;  // Set Y to negative value
-  cpu.a = 0x00;  // Clear A initially
+  MemoryDevice memory(memory_array);
 
-  auto request = pump.tick(cpu, BusResponse{});  // Initial tick to fetch opcode
-  CHECK(request == BusRequest::Fetch(0_addr));
+  SECTION("TAX with A = 0x99 (from original test)")
+  {
+    State cpu;
+    cpu.a = 0x99;
+    cpu.x = 0x00;
 
-  request = pump.tick(cpu, BusResponse{0x98});  // Opcode for TYA
-  CHECK(request == BusRequest::Read(1_addr));  // Dummy read
+    executeInstruction(pump, cpu, memory, {0xAA});  // TAX
 
-  request = pump.tick(cpu, BusResponse{0x23});  // Random data
-  CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
+    CHECK(cpu.x == 0x99);
+    CHECK(cpu.a == 0x99);
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == true);  // 0x99 has bit 7 set
+  }
 
-  CHECK(cpu.a == 0x80);  // A should equal Y
-  CHECK(cpu.y == 0x80);  // Y should be unchanged
-  CHECK(cpu.has(State::Flag::Zero) == false);  // Zero flag should be clear
-  CHECK(cpu.has(State::Flag::Negative) == true);  // Negative flag should be set
-  CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
+  SECTION("TSX with SP = 0x00 (from original test)")
+  {
+    State cpu;
+    cpu.sp = 0x00;
+    cpu.x = 0xFF;
+
+    executeInstruction(pump, cpu, memory, {0xBA});  // TSX
+
+    CHECK(cpu.x == 0x00);
+    CHECK(cpu.sp == 0x00);
+    CHECK(cpu.has(State::Flag::Zero) == true);
+    CHECK(cpu.has(State::Flag::Negative) == false);
+  }
+
+  SECTION("TXS Flag Independence")
+  {
+    State cpu;
+    // Set N and Z flags
+    cpu.p = static_cast<Byte>(State::Flag::Negative) | static_cast<Byte>(State::Flag::Zero) |
+            static_cast<Byte>(State::Flag::Unused);
+    auto original_flags = cpu.p;
+
+    cpu.x = 0x42;  // Non-zero, positive (would normally clear N,Z if flags were affected)
+    cpu.sp = 0x00;
+
+    executeInstruction(pump, cpu, memory, {0x9A});  // TXS
+
+    CHECK(cpu.sp == 0x42);
+    CHECK(cpu.x == 0x42);
+    CHECK(cpu.p == original_flags);  // No flag changes at all
+  }
 }
 
-TEST_CASE("TXS - Transfer X to Stack Pointer", "[implied]")
-{
-  MicrocodePump<mos6502> pump;
-  State cpu;
-  cpu.x = 0xFE;  // Set X to test value
-  cpu.sp = 0x00;  // Clear SP initially
-
-  auto request = pump.tick(cpu, BusResponse{});  // Initial tick to fetch opcode
-  CHECK(request == BusRequest::Fetch(0_addr));
-
-  request = pump.tick(cpu, BusResponse{0x9A});  // Opcode for TXS
-  CHECK(request == BusRequest::Read(1_addr));  // Dummy read
-
-  request = pump.tick(cpu, BusResponse{0x23});  // Random data
-  CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
-
-  CHECK(cpu.sp == 0xFE);  // SP should equal X
-  CHECK(cpu.x == 0xFE);  // X should be unchanged
-  // TXS does NOT affect flags
-  CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
-}
-
-TEST_CASE("TSX - Transfer Stack Pointer to X", "[implied]")
-{
-  MicrocodePump<mos6502> pump;
-  State cpu;
-  cpu.sp = 0x00;  // Set SP to zero
-  cpu.x = 0xFF;  // Set X to different value initially
-
-  auto request = pump.tick(cpu, BusResponse{});  // Initial tick to fetch opcode
-  CHECK(request == BusRequest::Fetch(0_addr));
-
-  request = pump.tick(cpu, BusResponse{0xBA});  // Opcode for TSX
-  CHECK(request == BusRequest::Read(1_addr));  // Dummy read
-
-  request = pump.tick(cpu, BusResponse{0x23});  // Random data
-  CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
-
-  CHECK(cpu.x == 0x00);  // X should equal SP
-  CHECK(cpu.sp == 0x00);  // SP should be unchanged
-  CHECK(cpu.has(State::Flag::Zero) == true);  // Zero flag should be set
-  CHECK(cpu.has(State::Flag::Negative) == false);  // Negative flag should be clear
-  CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
-}
+////////////////////////////////////////////////////////////////////////////////
+// Branch Instructions - All Variants
+////////////////////////////////////////////////////////////////////////////////
 
 // Branch instruction data structure
 struct BranchInstruction

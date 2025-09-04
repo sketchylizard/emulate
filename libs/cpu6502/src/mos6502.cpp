@@ -248,7 +248,11 @@ static MicrocodeResponse transfer(State& cpu, Common::BusResponse /*response*/)
   auto s = (cpu.*src);
   auto& d = (cpu.*dst);
   d = s;
-  cpu.setZN(d);
+  if constexpr (dst != &State::sp)
+  {
+    // Only affect flags if not transferring to stack pointer
+    cpu.setZN(d);
+  }
   return {BusRequest::Read(cpu.pc)};  // Dummy read to consume cycle
 }
 
