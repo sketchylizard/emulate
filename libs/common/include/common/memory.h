@@ -149,30 +149,4 @@ MemoryDevice(std::vector<T>&, Address baseAddress = Address{0}) -> MemoryDevice<
 template<typename T, std::size_t N>
 MemoryDevice(T (&)[N], Address baseAddress = Address{0}) -> MemoryDevice<T>;
 
-#if 0
-
-// Factory functions for common cases
-template<size_t N>
-constexpr auto makeRam(std::array<Byte, N>& array, size_t baseAddress = 0)
-{
-  return MemoryDevice{array, baseAddress};
-}
-
-template<size_t N>
-constexpr auto makeRom(const std::array<Byte, N>& array, size_t baseAddress = 0)
-{
-  return MemoryDevice{array, baseAddress};
-}
-
-constexpr auto makeRam(std::span<Byte> span, size_t baseAddress = 0)
-{
-  return MemoryDevice{span, baseAddress};
-}
-
-constexpr auto makeRom(std::span<const Byte> span, size_t baseAddress = 0)
-{
-  return MemoryDevice{span, baseAddress};
-}
-#endif
-
 }  // namespace Common

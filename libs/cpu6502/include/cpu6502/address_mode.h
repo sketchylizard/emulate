@@ -168,4 +168,14 @@ struct AbsoluteJmp
   };
 };
 
+struct AbsoluteIndirectJmp
+{
+  static constexpr auto type = State::AddressModeType::Indirect;
+
+  static constexpr const Microcode ops[] = {
+      &AddressMode::requestOperandLow,
+      &AddressMode::requestOperandHigh,
+  };
+};
+
 }  // namespace cpu6502

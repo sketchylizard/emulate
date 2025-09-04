@@ -158,20 +158,18 @@ static MicrocodeResponse jmpAbsolute(State& cpu, Common::BusResponse response)
   return MicrocodeResponse{};
 }
 
-static MicrocodeResponse jmpIndirect4(State& cpu, Common::BusResponse response)
+static MicrocodeResponse jmpIndirect3(State& cpu, Common::BusResponse /*response*/)
 {
-  cpu.hi = response.data;
-  cpu.pc = Common::MakeAddress(cpu.lo, cpu.hi);
+  Address target = Common::MakeAddress(cpu.lo, cpu.hi);
+  // JMP (indirect) requires 3 bytes, so if we are jumping to the current instruction,
+  // it is a self-jump.
+  if (target == cpu.pc - 3)
+  {  // Self-jump detected
+    throw TrapException(target);
+  }
+  cpu.pc = target;
+
   return MicrocodeResponse{};
-}
-
-static MicrocodeResponse jmpIndirect3(State& cpu, Common::BusResponse response)
-{
-  cpu.lo = response.data;
-
-  // 6502 bug: high byte read wraps within the *same* page as ptr
-  cpu.hi = 0;  // this is wrong
-  return {BusRequest::Read(Common::MakeAddress(cpu.lo, cpu.hi)), jmpIndirect4};  // read target high (buggy wrap)
 }
 
 static MicrocodeResponse jmpIndirect2(State& cpu, Common::BusResponse response)
@@ -182,14 +180,26 @@ static MicrocodeResponse jmpIndirect2(State& cpu, Common::BusResponse response)
 
 static MicrocodeResponse jmpIndirect1(State& cpu, Common::BusResponse response)
 {
-  cpu.lo = response.data;
-  return {BusRequest::Read(cpu.pc++), jmpIndirect2};  // fetch ptr high
+  // Save the incoming low byte returned from the pointer address read
+  Byte data = response.data;
+
+  // Read the high byte of the pointer address (with wrap bug)
+  ++cpu.lo;
+  auto addr = Common::MakeAddress(cpu.lo, cpu.hi);
+  // Now store the low byte we got from the first read
+  cpu.lo = data;
+  return {BusRequest::Read(addr), jmpIndirect2};  // fetch ptr high
 }
 
-static MicrocodeResponse jmpIndirect(State& cpu, Common::BusResponse /*response*/)
+static MicrocodeResponse jmpIndirect(State& cpu, Common::BusResponse response)
 {
+  cpu.hi = response.data;
+
   // Fetch indirect address low byte
-  return {BusRequest::Read(cpu.pc++), jmpIndirect1};
+  // cpu.lo and cpu.hi already hold the two bytes that followed the opcode, the
+  // pointer address. We now need to load the byte at that address, then the byte at
+  // the next address (with the 6502 page wrap bug).
+  return {BusRequest::Read(MakeAddress(cpu.lo, cpu.hi)), jmpIndirect1};
 }
 
 template<Common::Byte State::* reg>
@@ -403,7 +413,7 @@ static constexpr auto c_instructions = []()
 
   // JMP Absolute<> and JMP Indirect
   add<AbsoluteJmp>(0x4C, "JMP", {jmpAbsolute}, table);
-  add<Implied>(0x6C, "JMP", {jmpIndirect}, table);
+  add<AbsoluteIndirectJmp>(0x6C, "JMP", {jmpIndirect}, table);
 
   // Branch instructions
   add<Relative>(0xD0, "BNE", {branch<Flag::Zero, false>}, table);
