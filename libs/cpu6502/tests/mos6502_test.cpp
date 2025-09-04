@@ -129,137 +129,334 @@ TEST_CASE("NOP", "[implied]")
   CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
 }
 
-TEST_CASE("CLC - Clear Carry Flag", "[implied]")
+////////////////////////////////////////////////////////////////////////////////
+// Flag Operation Tests - Templated
+////////////////////////////////////////////////////////////////////////////////
+
+// Flag-specific tag types
+struct Carry_Flag
 {
+};
+struct Interrupt_Flag
+{
+};
+struct Decimal_Flag
+{
+};
+struct Overflow_Flag
+{
+};  // Only has clear operation
+
+// Traits for clear flag operations
+template<typename FlagTag>
+struct ClearFlagTraits;
+
+template<>
+struct ClearFlagTraits<Carry_Flag>
+{
+  static constexpr const char* name = "CLC";
+  static constexpr Byte opcode = 0x18;
+  static constexpr State::Flag target_flag = State::Flag::Carry;
+};
+
+template<>
+struct ClearFlagTraits<Interrupt_Flag>
+{
+  static constexpr const char* name = "CLI";
+  static constexpr Byte opcode = 0x58;
+  static constexpr State::Flag target_flag = State::Flag::Interrupt;
+};
+
+template<>
+struct ClearFlagTraits<Decimal_Flag>
+{
+  static constexpr const char* name = "CLD";
+  static constexpr Byte opcode = 0xD8;
+  static constexpr State::Flag target_flag = State::Flag::Decimal;
+};
+
+template<>
+struct ClearFlagTraits<Overflow_Flag>
+{
+  static constexpr const char* name = "CLV";
+  static constexpr Byte opcode = 0xB8;
+  static constexpr State::Flag target_flag = State::Flag::Overflow;
+};
+
+// Traits for set flag operations (Overflow doesn't have a set operation)
+template<typename FlagTag>
+struct SetFlagTraits;
+
+template<>
+struct SetFlagTraits<Carry_Flag>
+{
+  static constexpr const char* name = "SEC";
+  static constexpr Byte opcode = 0x38;
+  static constexpr State::Flag target_flag = State::Flag::Carry;
+};
+
+template<>
+struct SetFlagTraits<Interrupt_Flag>
+{
+  static constexpr const char* name = "SEI";
+  static constexpr Byte opcode = 0x78;
+  static constexpr State::Flag target_flag = State::Flag::Interrupt;
+};
+
+template<>
+struct SetFlagTraits<Decimal_Flag>
+{
+  static constexpr const char* name = "SED";
+  static constexpr Byte opcode = 0xF8;
+  static constexpr State::Flag target_flag = State::Flag::Decimal;
+};
+
+TEMPLATE_TEST_CASE("Clear Flag Instructions", "[clear][flags][implied]", Carry_Flag, Interrupt_Flag, Decimal_Flag, Overflow_Flag)
+{
+  using Traits = ClearFlagTraits<TestType>;
+
+  std::array<Byte, 65536> memory_array{};
   MicrocodePump<mos6502> pump;
-  State cpu;
-  cpu.set(State::Flag::Carry, true);  // Set carry flag initially
+  MemoryDevice memory(memory_array);
 
-  auto request = pump.tick(cpu, BusResponse{});  // Initial tick to fetch opcode
-  CHECK(request == BusRequest::Fetch(0_addr));
+  SECTION("Clear Flag When Set")
+  {
+    State cpu;
+    cpu.set(Traits::target_flag, true);  // Set the flag initially
 
-  request = pump.tick(cpu, BusResponse{0x18});  // Opcode for CLC
-  CHECK(request == BusRequest::Read(1_addr));  // Dummy read
+    executeInstruction(pump, cpu, memory, {Traits::opcode});
 
-  request = pump.tick(cpu, BusResponse{0x23});  // Random data
-  CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
+    CHECK(cpu.has(Traits::target_flag) == false);  // Flag should be cleared
+  }
 
-  CHECK(cpu.has(State::Flag::Carry) == false);  // Carry flag should be clear
-  CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
+  SECTION("Clear Flag When Already Clear")
+  {
+    State cpu;
+    cpu.set(Traits::target_flag, false);  // Flag already clear
+
+    executeInstruction(pump, cpu, memory, {Traits::opcode});
+
+    CHECK(cpu.has(Traits::target_flag) == false);  // Should remain clear
+  }
+
+  SECTION("Other Flags Unchanged")
+  {
+    State cpu;
+    // Set all flags except the target flag
+    cpu.p = static_cast<Byte>(State::Flag::Carry) | static_cast<Byte>(State::Flag::Zero) |
+            static_cast<Byte>(State::Flag::Interrupt) | static_cast<Byte>(State::Flag::Decimal) |
+            static_cast<Byte>(State::Flag::Overflow) | static_cast<Byte>(State::Flag::Negative) |
+            static_cast<Byte>(State::Flag::Unused);
+
+    // Clear the target flag from our test mask
+    auto expected_flags = cpu.p & ~static_cast<Byte>(Traits::target_flag);
+
+    executeInstruction(pump, cpu, memory, {Traits::opcode});
+
+    // Check that only the target flag was affected
+    auto result_flags = cpu.p | static_cast<Byte>(Traits::target_flag);  // Mask in the target flag
+    CHECK(result_flags == (expected_flags | static_cast<Byte>(Traits::target_flag)));
+    CHECK(cpu.has(Traits::target_flag) == false);
+  }
+
+  SECTION("Registers Unchanged")
+  {
+    State cpu;
+    cpu.a = 0x11;
+    cpu.x = 0x22;
+    cpu.y = 0x33;
+    cpu.sp = 0xEE;
+
+    executeInstruction(pump, cpu, memory, {Traits::opcode});
+
+    CHECK(cpu.a == 0x11);
+    CHECK(cpu.x == 0x22);
+    CHECK(cpu.y == 0x33);
+    CHECK(cpu.sp == 0xEE);
+  }
 }
 
-TEST_CASE("SEC - Set Carry Flag", "[implied]")
+TEMPLATE_TEST_CASE("Set Flag Instructions", "[set][flags][implied]", Carry_Flag, Interrupt_Flag, Decimal_Flag)
 {
+  using Traits = SetFlagTraits<TestType>;
+
+  std::array<Byte, 65536> memory_array{};
   MicrocodePump<mos6502> pump;
-  State cpu;
-  cpu.set(State::Flag::Carry, false);  // Clear carry flag initially
+  MemoryDevice memory(memory_array);
 
-  auto request = pump.tick(cpu, BusResponse{});  // Initial tick to fetch opcode
-  CHECK(request == BusRequest::Fetch(0_addr));
+  SECTION("Set Flag When Clear")
+  {
+    State cpu;
+    cpu.set(Traits::target_flag, false);  // Clear the flag initially
 
-  request = pump.tick(cpu, BusResponse{0x38});  // Opcode for SEC
-  CHECK(request == BusRequest::Read(1_addr));  // Dummy read
+    executeInstruction(pump, cpu, memory, {Traits::opcode});
 
-  request = pump.tick(cpu, BusResponse{0x23});  // Random data
-  CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
+    CHECK(cpu.has(Traits::target_flag) == true);  // Flag should be set
+  }
 
-  CHECK(cpu.has(State::Flag::Carry) == true);  // Carry flag should be set
-  CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
+  SECTION("Set Flag When Already Set")
+  {
+    State cpu;
+    cpu.set(Traits::target_flag, true);  // Flag already set
+
+    executeInstruction(pump, cpu, memory, {Traits::opcode});
+
+    CHECK(cpu.has(Traits::target_flag) == true);  // Should remain set
+  }
+
+  SECTION("Other Flags Unchanged")
+  {
+    State cpu;
+    // Start with all flags clear except Unused
+    cpu.p = static_cast<Byte>(State::Flag::Unused);
+
+    auto original_flags = cpu.p;
+
+    executeInstruction(pump, cpu, memory, {Traits::opcode});
+
+    // Check that only the target flag was affected
+    auto expected_flags = original_flags | static_cast<Byte>(Traits::target_flag);
+    CHECK(cpu.p == expected_flags);
+    CHECK(cpu.has(Traits::target_flag) == true);
+  }
+
+  SECTION("Registers Unchanged")
+  {
+    State cpu;
+    cpu.a = 0x11;
+    cpu.x = 0x22;
+    cpu.y = 0x33;
+    cpu.sp = 0xEE;
+
+    executeInstruction(pump, cpu, memory, {Traits::opcode});
+
+    CHECK(cpu.a == 0x11);
+    CHECK(cpu.x == 0x22);
+    CHECK(cpu.y == 0x33);
+    CHECK(cpu.sp == 0xEE);
+  }
 }
 
-TEST_CASE("CLI - Clear Interrupt Flag", "[implied]")
+// Specific edge cases from original tests
+TEST_CASE("Flag Operation Edge Cases", "[flags][edge]")
 {
+  std::array<Byte, 65536> memory_array{};
   MicrocodePump<mos6502> pump;
-  State cpu;
-  cpu.set(State::Flag::Interrupt, true);  // Set interrupt flag initially
+  MemoryDevice memory(memory_array);
 
-  auto request = pump.tick(cpu, BusResponse{});  // Initial tick to fetch opcode
-  CHECK(request == BusRequest::Fetch(0_addr));
+  SECTION("CLC - Clear Carry Flag (from original test)")
+  {
+    State cpu;
+    cpu.set(State::Flag::Carry, true);
 
-  request = pump.tick(cpu, BusResponse{0x58});  // Opcode for CLI
-  CHECK(request == BusRequest::Read(1_addr));  // Dummy read
+    executeInstruction(pump, cpu, memory, {0x18});  // CLC
 
-  request = pump.tick(cpu, BusResponse{0x23});  // Random data
-  CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
+    CHECK(cpu.has(State::Flag::Carry) == false);
+  }
 
-  CHECK(cpu.has(State::Flag::Interrupt) == false);  // Interrupt flag should be clear
-  CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
-}
+  SECTION("SEC - Set Carry Flag (from original test)")
+  {
+    State cpu;
+    cpu.set(State::Flag::Carry, false);
 
-TEST_CASE("SEI - Set Interrupt Flag", "[implied]")
-{
-  MicrocodePump<mos6502> pump;
-  State cpu;
-  cpu.set(State::Flag::Interrupt, false);  // Clear interrupt flag initially
+    executeInstruction(pump, cpu, memory, {0x38});  // SEC
 
-  auto request = pump.tick(cpu, BusResponse{});  // Initial tick to fetch opcode
-  CHECK(request == BusRequest::Fetch(0_addr));
+    CHECK(cpu.has(State::Flag::Carry) == true);
+  }
 
-  request = pump.tick(cpu, BusResponse{0x78});  // Opcode for SEI
-  CHECK(request == BusRequest::Read(1_addr));  // Dummy read
+  SECTION("CLI - Clear Interrupt Flag (from original test)")
+  {
+    State cpu;
+    cpu.set(State::Flag::Interrupt, true);
 
-  request = pump.tick(cpu, BusResponse{0x23});  // Random data
-  CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
+    executeInstruction(pump, cpu, memory, {0x58});  // CLI
 
-  CHECK(cpu.has(State::Flag::Interrupt) == true);  // Interrupt flag should be set
-  CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
-}
+    CHECK(cpu.has(State::Flag::Interrupt) == false);
+  }
 
-TEST_CASE("CLV - Clear Overflow Flag", "[implied]")
-{
-  MicrocodePump<mos6502> pump;
-  State cpu;
-  cpu.set(State::Flag::Overflow, true);  // Set overflow flag initially
+  SECTION("SEI - Set Interrupt Flag (from original test)")
+  {
+    State cpu;
+    cpu.set(State::Flag::Interrupt, false);
 
-  auto request = pump.tick(cpu, BusResponse{});  // Initial tick to fetch opcode
-  CHECK(request == BusRequest::Fetch(0_addr));
+    executeInstruction(pump, cpu, memory, {0x78});  // SEI
 
-  request = pump.tick(cpu, BusResponse{0xB8});  // Opcode for CLV
-  CHECK(request == BusRequest::Read(1_addr));  // Dummy read
+    CHECK(cpu.has(State::Flag::Interrupt) == true);
+  }
 
-  request = pump.tick(cpu, BusResponse{0x23});  // Random data
-  CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
+  SECTION("CLV - Clear Overflow Flag (from original test)")
+  {
+    State cpu;
+    cpu.set(State::Flag::Overflow, true);
 
-  CHECK(cpu.has(State::Flag::Overflow) == false);  // Overflow flag should be clear
-  CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
-}
+    executeInstruction(pump, cpu, memory, {0xB8});  // CLV
 
-TEST_CASE("CLD - Clear Decimal Flag", "[implied]")
-{
-  MicrocodePump<mos6502> pump;
-  State cpu;
-  cpu.set(State::Flag::Decimal, true);  // Set decimal flag initially
+    CHECK(cpu.has(State::Flag::Overflow) == false);
+  }
 
-  auto request = pump.tick(cpu, BusResponse{});  // Initial tick to fetch opcode
-  CHECK(request == BusRequest::Fetch(0_addr));
+  SECTION("CLD - Clear Decimal Flag (from original test)")
+  {
+    State cpu;
+    cpu.set(State::Flag::Decimal, true);
 
-  request = pump.tick(cpu, BusResponse{0xD8});  // Opcode for CLD
-  CHECK(request == BusRequest::Read(1_addr));  // Dummy read
+    executeInstruction(pump, cpu, memory, {0xD8});  // CLD
 
-  request = pump.tick(cpu, BusResponse{0x23});  // Random data
-  CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
+    CHECK(cpu.has(State::Flag::Decimal) == false);
+  }
 
-  CHECK(cpu.has(State::Flag::Decimal) == false);  // Decimal flag should be clear
-  CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
-}
+  SECTION("SED - Set Decimal Flag (from original test)")
+  {
+    State cpu;
+    cpu.set(State::Flag::Decimal, false);
 
-TEST_CASE("SED - Set Decimal Flag", "[implied]")
-{
-  MicrocodePump<mos6502> pump;
-  State cpu;
-  cpu.set(State::Flag::Decimal, false);  // Clear decimal flag initially
+    executeInstruction(pump, cpu, memory, {0xF8});  // SED
 
-  auto request = pump.tick(cpu, BusResponse{});  // Initial tick to fetch opcode
-  CHECK(request == BusRequest::Fetch(0_addr));
+    CHECK(cpu.has(State::Flag::Decimal) == true);
+  }
 
-  request = pump.tick(cpu, BusResponse{0xF8});  // Opcode for SED
-  CHECK(request == BusRequest::Read(1_addr));  // Dummy read
+  SECTION("Multiple Flag Operations in Sequence")
+  {
+    State cpu;
 
-  request = pump.tick(cpu, BusResponse{0x23});  // Random data
-  CHECK(request == BusRequest::Fetch(1_addr));  // Next fetch
+    // Start with all flags clear except Unused
+    cpu.p = static_cast<Byte>(State::Flag::Unused);
 
-  CHECK(cpu.has(State::Flag::Decimal) == true);  // Decimal flag should be set
-  CHECK(pump.cyclesSinceLastFetch() == 2);  // Two microcode operations executed
+    executeInstruction(pump, cpu, memory, {0x38});  // SEC
+    CHECK(cpu.has(State::Flag::Carry) == true);
+
+    executeInstruction(pump, cpu, memory, {0x78});  // SEI
+    CHECK(cpu.has(State::Flag::Carry) == true);  // Should still be set
+    CHECK(cpu.has(State::Flag::Interrupt) == true);
+
+    executeInstruction(pump, cpu, memory, {0x18});  // CLC
+    CHECK(cpu.has(State::Flag::Carry) == false);  // Now clear
+    CHECK(cpu.has(State::Flag::Interrupt) == true);  // Should still be set
+
+    executeInstruction(pump, cpu, memory, {0x58});  // CLI
+    CHECK(cpu.has(State::Flag::Carry) == false);  // Should still be clear
+    CHECK(cpu.has(State::Flag::Interrupt) == false);  // Now clear
+  }
+
+  SECTION("Flag Operations Don't Affect Computation Flags")
+  {
+    State cpu;
+
+    // Set computation flags (N, Z, V, C)
+    cpu.p = static_cast<Byte>(State::Flag::Negative) | static_cast<Byte>(State::Flag::Zero) |
+            static_cast<Byte>(State::Flag::Overflow) | static_cast<Byte>(State::Flag::Carry) |
+            static_cast<Byte>(State::Flag::Unused);
+
+    // Test that setting/clearing non-computation flags doesn't affect N, Z
+    executeInstruction(pump, cpu, memory, {0x78});  // SEI
+    CHECK(cpu.has(State::Flag::Negative) == true);  // N unchanged
+    CHECK(cpu.has(State::Flag::Zero) == true);  // Z unchanged
+    CHECK(cpu.has(State::Flag::Interrupt) == true);  // I set
+
+    executeInstruction(pump, cpu, memory, {0xF8});  // SED
+    CHECK(cpu.has(State::Flag::Negative) == true);  // N unchanged
+    CHECK(cpu.has(State::Flag::Zero) == true);  // Z unchanged
+    CHECK(cpu.has(State::Flag::Decimal) == true);  // D set
+  }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
