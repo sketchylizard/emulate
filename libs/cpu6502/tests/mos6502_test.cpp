@@ -1188,9 +1188,9 @@ TEMPLATE_TEST_CASE("Load Register Zero Page Mode", "[load][zeropage]", A_Reg, X_
   SECTION("Zero Page Address $00")
   {
     State cpu;
-    memory_array[0x00] = 0x33;  // Data at zero page address $00
+    memory_array[0x10] = 0x33;  // Data at zero page address $10
 
-    executeInstruction(pump, cpu, memory, {Traits::zeropage_opcode, 0x00});
+    executeInstruction(pump, cpu, memory, {Traits::zeropage_opcode, 0x10});
 
     CHECK((cpu.*(Traits::reg)) == 0x33);
     CHECK(cpu.has(State::Flag::Zero) == false);
