@@ -458,6 +458,236 @@ struct DecrementMemory
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+// Shift/Rotate Instructions - Accumulator Mode (2 cycles)
+////////////////////////////////////////////////////////////////////////////////
+
+// ASL A - Arithmetic Shift Left Accumulator
+struct ShiftLeftAccumulator
+{
+  // Step 1: Shift accumulator left, dummy read
+  static MicrocodeResponse step1(State& cpu, Common::BusResponse /*response*/)
+  {
+    // C ← [7][6][5][4][3][2][1][0] ← 0
+    bool bit7 = (cpu.a & 0x80) != 0;
+    cpu.a <<= 1;  // Shift left, bit 0 becomes 0
+
+    cpu.set(State::Flag::Carry, bit7);  // Bit 7 → Carry
+    cpu.setZN(cpu.a);  // Set N and Z flags
+
+    return {BusRequest::Read(cpu.pc)};  // Dummy read
+  }
+
+  static constexpr Microcode ops[] = {step1};
+};
+
+// LSR A - Logical Shift Right Accumulator
+struct ShiftRightAccumulator
+{
+  // Step 1: Shift accumulator right, dummy read
+  static MicrocodeResponse step1(State& cpu, Common::BusResponse /*response*/)
+  {
+    // 0 → [7][6][5][4][3][2][1][0] → C
+    bool bit0 = (cpu.a & 0x01) != 0;
+    cpu.a >>= 1;  // Shift right, bit 7 becomes 0
+
+    cpu.set(State::Flag::Carry, bit0);  // Bit 0 → Carry
+    cpu.setZN(cpu.a);  // Set N and Z flags (N will always be 0)
+
+    return {BusRequest::Read(cpu.pc)};  // Dummy read
+  }
+
+  static constexpr Microcode ops[] = {step1};
+};
+
+// ROL A - Rotate Left Accumulator
+struct RotateLeftAccumulator
+{
+  // Step 1: Rotate accumulator left through carry, dummy read
+  static MicrocodeResponse step1(State& cpu, Common::BusResponse /*response*/)
+  {
+    // C ← [7][6][5][4][3][2][1][0] ← C
+    bool bit7 = (cpu.a & 0x80) != 0;
+    bool old_carry = cpu.has(State::Flag::Carry);
+
+    cpu.a <<= 1;  // Shift left
+    if (old_carry)
+    {
+      cpu.a |= 0x01;  // Carry → Bit 0
+    }
+
+    cpu.set(State::Flag::Carry, bit7);  // Bit 7 → Carry
+    cpu.setZN(cpu.a);  // Set N and Z flags
+
+    return {BusRequest::Read(cpu.pc)};  // Dummy read
+  }
+
+  static constexpr Microcode ops[] = {step1};
+};
+
+// ROR A - Rotate Right Accumulator
+struct RotateRightAccumulator
+{
+  // Step 1: Rotate accumulator right through carry, dummy read
+  static MicrocodeResponse step1(State& cpu, Common::BusResponse /*response*/)
+  {
+    // C → [7][6][5][4][3][2][1][0] → C
+    bool bit0 = (cpu.a & 0x01) != 0;
+    bool old_carry = cpu.has(State::Flag::Carry);
+
+    cpu.a >>= 1;  // Shift right
+    if (old_carry)
+    {
+      cpu.a |= 0x80;  // Carry → Bit 7
+    }
+
+    cpu.set(State::Flag::Carry, bit0);  // Bit 0 → Carry
+    cpu.setZN(cpu.a);  // Set N and Z flags
+
+    return {BusRequest::Read(cpu.pc)};  // Dummy read
+  }
+
+  static constexpr Microcode ops[] = {step1};
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// Shift/Rotate Instructions - Memory Mode (Read-Modify-Write)
+////////////////////////////////////////////////////////////////////////////////
+
+// ASL - Arithmetic Shift Left Memory
+struct ShiftLeft
+{
+  // Step 1: Read from memory, write unmodified value back (6502 quirk)
+  static MicrocodeResponse step1(State& cpu, Common::BusResponse response)
+  {
+    // Store original value for step2
+    cpu.operand = response.data;
+    Address effective_addr = Common::MakeAddress(cpu.lo, cpu.hi);
+
+    // 6502 quirk: Write the unmodified value back during the modify cycle
+    return {BusRequest::Write(effective_addr, cpu.operand)};
+  }
+
+  // Step 2: Write shifted value back to memory
+  static MicrocodeResponse step2(State& cpu, Common::BusResponse /*response*/)
+  {
+    // C ← [7][6][5][4][3][2][1][0] ← 0
+    bool bit7 = (cpu.operand & 0x80) != 0;
+    cpu.operand <<= 1;  // Shift left, bit 0 becomes 0
+
+    cpu.set(State::Flag::Carry, bit7);  // Bit 7 → Carry
+    cpu.setZN(cpu.operand);  // Set N and Z flags
+
+    // Write modified value back to memory
+    Address effective_addr = Common::MakeAddress(cpu.lo, cpu.hi);
+    return {BusRequest::Write(effective_addr, cpu.operand)};
+  }
+
+  static constexpr Microcode ops[] = {step1, step2};
+};
+
+// LSR - Logical Shift Right Memory
+struct ShiftRight
+{
+  // Step 1: Read from memory, write unmodified value back
+  static MicrocodeResponse step1(State& cpu, Common::BusResponse response)
+  {
+    // Store original value for step2
+    cpu.operand = response.data;
+    Address effective_addr = Common::MakeAddress(cpu.lo, cpu.hi);
+
+    return {BusRequest::Write(effective_addr, cpu.operand)};
+  }
+
+  // Step 2: Write shifted value back to memory
+  static MicrocodeResponse step2(State& cpu, Common::BusResponse /*response*/)
+  {
+    // 0 → [7][6][5][4][3][2][1][0] → C
+    bool bit0 = (cpu.operand & 0x01) != 0;
+    cpu.operand >>= 1;  // Shift right, bit 7 becomes 0
+
+    cpu.set(State::Flag::Carry, bit0);  // Bit 0 → Carry
+    cpu.setZN(cpu.operand);  // Set N and Z flags (N will always be 0)
+
+    Address effective_addr = Common::MakeAddress(cpu.lo, cpu.hi);
+    return {BusRequest::Write(effective_addr, cpu.operand)};
+  }
+
+  static constexpr Microcode ops[] = {step1, step2};
+};
+
+// ROL - Rotate Left Memory
+struct RotateLeft
+{
+  // Step 1: Read from memory, write unmodified value back
+  static MicrocodeResponse step1(State& cpu, Common::BusResponse response)
+  {
+    // Store original value for step2
+    cpu.operand = response.data;
+    Address effective_addr = Common::MakeAddress(cpu.lo, cpu.hi);
+
+    return {BusRequest::Write(effective_addr, cpu.operand)};
+  }
+
+  // Step 2: Write rotated value back to memory
+  static MicrocodeResponse step2(State& cpu, Common::BusResponse /*response*/)
+  {
+    // C ← [7][6][5][4][3][2][1][0] ← C
+    bool bit7 = (cpu.operand & 0x80) != 0;
+    bool old_carry = cpu.has(State::Flag::Carry);
+
+    cpu.operand <<= 1;  // Shift left
+    if (old_carry)
+    {
+      cpu.operand |= 0x01;  // Carry → Bit 0
+    }
+
+    cpu.set(State::Flag::Carry, bit7);  // Bit 7 → Carry
+    cpu.setZN(cpu.operand);  // Set N and Z flags
+
+    Address effective_addr = Common::MakeAddress(cpu.lo, cpu.hi);
+    return {BusRequest::Write(effective_addr, cpu.operand)};
+  }
+
+  static constexpr Microcode ops[] = {step1, step2};
+};
+
+// ROR - Rotate Right Memory
+struct RotateRight
+{
+  // Step 1: Read from memory, write unmodified value back
+  static MicrocodeResponse step1(State& cpu, Common::BusResponse response)
+  {
+    // Store original value for step2
+    cpu.operand = response.data;
+    Address effective_addr = Common::MakeAddress(cpu.lo, cpu.hi);
+
+    return {BusRequest::Write(effective_addr, cpu.operand)};
+  }
+
+  // Step 2: Write rotated value back to memory
+  static MicrocodeResponse step2(State& cpu, Common::BusResponse /*response*/)
+  {
+    // C → [7][6][5][4][3][2][1][0] → C
+    bool bit0 = (cpu.operand & 0x01) != 0;
+    bool old_carry = cpu.has(State::Flag::Carry);
+
+    cpu.operand >>= 1;  // Shift right
+    if (old_carry)
+    {
+      cpu.operand |= 0x80;  // Carry → Bit 7
+    }
+
+    cpu.set(State::Flag::Carry, bit0);  // Bit 0 → Carry
+    cpu.setZN(cpu.operand);  // Set N and Z flags
+
+    Address effective_addr = Common::MakeAddress(cpu.lo, cpu.hi);
+    return {BusRequest::Write(effective_addr, cpu.operand)};
+  }
+
+  static constexpr Microcode ops[] = {step1, step2};
+};
+
+////////////////////////////////////////////////////////////////////////////////
 // CPU implementation
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -707,6 +937,28 @@ static constexpr auto c_instructions = []()
       .add<ZeroPage<&State::x>, DecrementMemory>(0xD6, "DEC")  // DEC $nn,X
       .add<Absolute<>, DecrementMemory>(0xCE, "DEC")  // DEC $nnnn
       .add<Absolute<&State::x>, DecrementMemory>(0xDE, "DEC")  // DEC $nnnn,X
+      // Accumulator mode (2 cycles):
+      .add<Implied, ShiftLeftAccumulator>(0x0A, "ASL")
+      .add<Implied, ShiftRightAccumulator>(0x4A, "LSR")
+      .add<Implied, RotateLeftAccumulator>(0x2A, "ROL")
+      .add<Implied, RotateRightAccumulator>(0x6A, "ROR")
+      // Memory modes (5-7 cycles):
+      .add<ZeroPage<>, ShiftLeft>(0x06, "ASL")  // ASL $nn
+      .add<ZeroPage<&State::x>, ShiftLeft>(0x16, "ASL")  // ASL $nn,X
+      .add<Absolute<>, ShiftLeft>(0x0E, "ASL")  // ASL $nnnn
+      .add<Absolute<&State::x>, ShiftLeft>(0x1E, "ASL")  // ASL $nnnn,X
+      .add<ZeroPage<>, ShiftRight>(0x46, "LSR")  // LSR $nn
+      .add<ZeroPage<&State::x>, ShiftRight>(0x56, "LSR")  // LSR $nn,X
+      .add<Absolute<>, ShiftRight>(0x4E, "LSR")  // LSR $nnnn
+      .add<Absolute<&State::x>, ShiftRight>(0x5E, "LSR")  // LSR $nnnn,X
+      .add<ZeroPage<>, RotateLeft>(0x26, "ROL")  // ROL $nn
+      .add<ZeroPage<&State::x>, RotateLeft>(0x36, "ROL")  // ROL $nn,X
+      .add<Absolute<>, RotateLeft>(0x2E, "ROL")  // ROL $nnnn
+      .add<Absolute<&State::x>, RotateLeft>(0x3E, "ROL")  // ROL $nnnn,X
+      .add<ZeroPage<>, RotateRight>(0x66, "ROR")  // ROR $nn
+      .add<ZeroPage<&State::x>, RotateRight>(0x76, "ROR")  // ROR $nn,X
+      .add<Absolute<>, RotateRight>(0x6E, "ROR")  // ROR $nnnn
+      .add<Absolute<&State::x>, RotateRight>(0x7E, "ROR")  // ROR $nnnn,X
       ;
 
   // Add more instructions as needed

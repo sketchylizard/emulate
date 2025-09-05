@@ -3371,3 +3371,568 @@ TEST_CASE("INC/DEC Memory - Edge Cases", "[inc][dec][memory][edge]")
     CHECK(memory_array[0x0100] == 0x66);  // Unchanged
   }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// Shift/Rotate Instruction Tests - Accumulator Mode
+////////////////////////////////////////////////////////////////////////////////
+
+TEST_CASE("ASL A - Arithmetic Shift Left Accumulator", "[shift][asl][accumulator]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Normal Shift Left")
+  {
+    State cpu;
+    cpu.a = 0x42;  // 01000010
+
+    executeInstruction(pump, cpu, memory, {0x0A});  // ASL A
+
+    CHECK(cpu.a == 0x84);  // 10000100
+    CHECK(cpu.has(State::Flag::Carry) == false);  // Bit 7 was 0
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == true);  // Result bit 7 is 1
+  }
+
+  SECTION("Shift with Carry Out")
+  {
+    State cpu;
+    cpu.a = 0x80;  // 10000000
+
+    executeInstruction(pump, cpu, memory, {0x0A});  // ASL A
+
+    CHECK(cpu.a == 0x00);  // 00000000
+    CHECK(cpu.has(State::Flag::Carry) == true);  // Bit 7 was 1
+    CHECK(cpu.has(State::Flag::Zero) == true);
+    CHECK(cpu.has(State::Flag::Negative) == false);
+  }
+
+  SECTION("Multiply by 2 Effect")
+  {
+    State cpu;
+    cpu.a = 0x15;  // 21 decimal
+
+    executeInstruction(pump, cpu, memory, {0x0A});  // ASL A
+
+    CHECK(cpu.a == 0x2A);  // 42 decimal (21 * 2)
+    CHECK(cpu.has(State::Flag::Carry) == false);
+  }
+
+  SECTION("Maximum Value Shift")
+  {
+    State cpu;
+    cpu.a = 0xFF;  // 11111111
+
+    executeInstruction(pump, cpu, memory, {0x0A});  // ASL A
+
+    CHECK(cpu.a == 0xFE);  // 11111110
+    CHECK(cpu.has(State::Flag::Carry) == true);  // Bit 7 was 1
+    CHECK(cpu.has(State::Flag::Negative) == true);
+  }
+}
+
+TEST_CASE("LSR A - Logical Shift Right Accumulator", "[shift][lsr][accumulator]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Normal Shift Right")
+  {
+    State cpu;
+    cpu.a = 0x42;  // 01000010
+
+    executeInstruction(pump, cpu, memory, {0x4A});  // LSR A
+
+    CHECK(cpu.a == 0x21);  // 00100001
+    CHECK(cpu.has(State::Flag::Carry) == false);  // Bit 0 was 0
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == false);  // Always 0 after LSR
+  }
+
+  SECTION("Shift with Carry Out")
+  {
+    State cpu;
+    cpu.a = 0x01;  // 00000001
+
+    executeInstruction(pump, cpu, memory, {0x4A});  // LSR A
+
+    CHECK(cpu.a == 0x00);  // 00000000
+    CHECK(cpu.has(State::Flag::Carry) == true);  // Bit 0 was 1
+    CHECK(cpu.has(State::Flag::Zero) == true);
+    CHECK(cpu.has(State::Flag::Negative) == false);
+  }
+
+  SECTION("Divide by 2 Effect")
+  {
+    State cpu;
+    cpu.a = 0x2A;  // 42 decimal
+
+    executeInstruction(pump, cpu, memory, {0x4A});  // LSR A
+
+    CHECK(cpu.a == 0x15);  // 21 decimal (42 / 2)
+    CHECK(cpu.has(State::Flag::Carry) == false);
+  }
+
+  SECTION("Negative Value Always Becomes Positive")
+  {
+    State cpu;
+    cpu.a = 0xFF;  // 11111111 (negative)
+
+    executeInstruction(pump, cpu, memory, {0x4A});  // LSR A
+
+    CHECK(cpu.a == 0x7F);  // 01111111 (positive)
+    CHECK(cpu.has(State::Flag::Carry) == true);  // Bit 0 was 1
+    CHECK(cpu.has(State::Flag::Negative) == false);  // Always positive after LSR
+  }
+}
+
+TEST_CASE("ROL A - Rotate Left Accumulator", "[rotate][rol][accumulator]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Normal Rotate Left with Carry Clear")
+  {
+    State cpu;
+    cpu.a = 0x42;  // 01000010
+    cpu.set(State::Flag::Carry, false);
+
+    executeInstruction(pump, cpu, memory, {0x2A});  // ROL A
+
+    CHECK(cpu.a == 0x84);  // 10000100
+    CHECK(cpu.has(State::Flag::Carry) == false);  // Bit 7 was 0
+    CHECK(cpu.has(State::Flag::Negative) == true);  // Result bit 7 is 1
+  }
+
+  SECTION("Normal Rotate Left with Carry Set")
+  {
+    State cpu;
+    cpu.a = 0x42;  // 01000010
+    cpu.set(State::Flag::Carry, true);
+
+    executeInstruction(pump, cpu, memory, {0x2A});  // ROL A
+
+    CHECK(cpu.a == 0x85);  // 10000101 (carry became bit 0)
+    CHECK(cpu.has(State::Flag::Carry) == false);  // Bit 7 was 0
+    CHECK(cpu.has(State::Flag::Negative) == true);
+  }
+
+  SECTION("9-bit Rotation Pattern")
+  {
+    State cpu;
+    cpu.a = 0x80;  // 10000000
+    cpu.set(State::Flag::Carry, true);
+
+    executeInstruction(pump, cpu, memory, {0x2A});  // ROL A
+
+    CHECK(cpu.a == 0x01);  // 00000001 (carry became bit 0)
+    CHECK(cpu.has(State::Flag::Carry) == true);  // Bit 7 was 1
+    CHECK(cpu.has(State::Flag::Negative) == false);
+  }
+}
+
+TEST_CASE("ROR A - Rotate Right Accumulator", "[rotate][ror][accumulator]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Normal Rotate Right with Carry Clear")
+  {
+    State cpu;
+    cpu.a = 0x42;  // 01000010
+    cpu.set(State::Flag::Carry, false);
+
+    executeInstruction(pump, cpu, memory, {0x6A});  // ROR A
+
+    CHECK(cpu.a == 0x21);  // 00100001
+    CHECK(cpu.has(State::Flag::Carry) == false);  // Bit 0 was 0
+    CHECK(cpu.has(State::Flag::Negative) == false);
+  }
+
+  SECTION("Normal Rotate Right with Carry Set")
+  {
+    State cpu;
+    cpu.a = 0x42;  // 01000010
+    cpu.set(State::Flag::Carry, true);
+
+    executeInstruction(pump, cpu, memory, {0x6A});  // ROR A
+
+    CHECK(cpu.a == 0xA1);  // 10100001 (carry became bit 7)
+    CHECK(cpu.has(State::Flag::Carry) == false);  // Bit 0 was 0
+    CHECK(cpu.has(State::Flag::Negative) == true);  // Carry made bit 7 = 1
+  }
+
+  SECTION("9-bit Rotation Pattern")
+  {
+    State cpu;
+    cpu.a = 0x01;  // 00000001
+    cpu.set(State::Flag::Carry, true);
+
+    executeInstruction(pump, cpu, memory, {0x6A});  // ROR A
+
+    CHECK(cpu.a == 0x80);  // 10000000 (carry became bit 7)
+    CHECK(cpu.has(State::Flag::Carry) == true);  // Bit 0 was 1
+    CHECK(cpu.has(State::Flag::Negative) == true);
+  }
+}
+
+TEST_CASE("Shift/Rotate Accumulator - Flag Preservation", "[shift][rotate][accumulator][flags]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Non-CNZ Flags Preserved")
+  {
+    State cpu;
+    // Set non-CNZ flags
+    cpu.p = static_cast<Byte>(State::Flag::Interrupt) | static_cast<Byte>(State::Flag::Decimal) |
+            static_cast<Byte>(State::Flag::Overflow) | static_cast<Byte>(State::Flag::Unused);
+
+    auto original_flags = cpu.p;
+    cpu.a = 0x42;
+
+    executeInstruction(pump, cpu, memory, {0x0A});  // ASL A
+
+    // Only C, N, Z should potentially change
+    Byte flag_mask = static_cast<Byte>(State::Flag::Carry) | static_cast<Byte>(State::Flag::Negative) |
+                     static_cast<Byte>(State::Flag::Zero);
+    CHECK((cpu.p & ~flag_mask) == (original_flags & ~flag_mask));
+  }
+
+  SECTION("Registers Unchanged")
+  {
+    State cpu;
+    cpu.a = 0x42;
+    cpu.x = 0x11;
+    cpu.y = 0x22;
+    cpu.sp = 0xEE;
+
+    executeInstruction(pump, cpu, memory, {0x2A});  // ROL A
+
+    CHECK(cpu.x == 0x11);  // Other registers unchanged
+    CHECK(cpu.y == 0x22);
+    CHECK(cpu.sp == 0xEE);
+    CHECK(cpu.a != 0x42);  // Accumulator should change
+  }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Shift/Rotate Instruction Tests - Memory Mode
+////////////////////////////////////////////////////////////////////////////////
+
+TEST_CASE("ASL Memory - Zero Page", "[shift][asl][memory][zeropage]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Normal Memory Shift")
+  {
+    State cpu;
+    memory_array[0x80] = 0x42;  // 01000010
+
+    executeInstruction(pump, cpu, memory, {0x06, 0x80});  // ASL $80
+
+    CHECK(memory_array[0x80] == 0x84);  // 10000100
+    CHECK(cpu.has(State::Flag::Carry) == false);
+    CHECK(cpu.has(State::Flag::Negative) == true);
+  }
+
+  SECTION("Memory Shift with Carry")
+  {
+    State cpu;
+    memory_array[0x50] = 0x80;  // 10000000
+
+    executeInstruction(pump, cpu, memory, {0x06, 0x50});  // ASL $50
+
+    CHECK(memory_array[0x50] == 0x00);  // 00000000
+    CHECK(cpu.has(State::Flag::Carry) == true);
+    CHECK(cpu.has(State::Flag::Zero) == true);
+  }
+}
+
+TEST_CASE("ASL Memory - Zero Page,X", "[shift][asl][memory][zeropage][indexed]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Indexed Memory Shift")
+  {
+    State cpu;
+    cpu.x = 0x05;
+    memory_array[0x85] = 0x33;  // Data at $80 + 5 = $85
+
+    executeInstruction(pump, cpu, memory, {0x16, 0x80});  // ASL $80,X
+
+    CHECK(memory_array[0x85] == 0x66);  // 0x33 << 1 = 0x66
+    CHECK(cpu.has(State::Flag::Carry) == false);
+  }
+
+  SECTION("Zero Page Wraparound")
+  {
+    State cpu;
+    cpu.x = 0x90;
+    memory_array[0x10] = 0x44;  // $80 + $90 = $110 -> $10 (wraparound)
+
+    executeInstruction(pump, cpu, memory, {0x16, 0x80});  // ASL $80,X
+
+    CHECK(memory_array[0x10] == 0x88);  // 0x44 << 1 = 0x88
+    CHECK(memory_array[0x110] == 0x00);  // Should NOT affect this address
+  }
+}
+
+TEST_CASE("ASL Memory - Absolute", "[shift][asl][memory][absolute]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Absolute Memory Shift")
+  {
+    State cpu;
+    memory_array[0x1234] = 0x55;
+
+    executeInstruction(pump, cpu, memory, {0x0E, 0x34, 0x12});  // ASL $1234
+
+    CHECK(memory_array[0x1234] == 0xAA);  // 0x55 << 1 = 0xAA
+    CHECK(cpu.has(State::Flag::Carry) == false);
+    CHECK(cpu.has(State::Flag::Negative) == true);
+  }
+}
+
+TEST_CASE("ASL Memory - Absolute,X", "[shift][asl][memory][absolute][indexed]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Absolute Indexed No Page Crossing")
+  {
+    State cpu;
+    cpu.x = 0x05;
+    memory_array[0x3025] = 0x11;  // $3020 + 5 = $3025
+
+    executeInstruction(pump, cpu, memory, {0x1E, 0x20, 0x30});  // ASL $3020,X
+
+    CHECK(memory_array[0x3025] == 0x22);  // 0x11 << 1 = 0x22
+  }
+
+  SECTION("Absolute Indexed Page Crossing")
+  {
+    State cpu;
+    cpu.x = 0x20;
+    memory_array[0x2110] = 0x33;  // $20F0 + $20 = $2110
+
+    executeInstruction(pump, cpu, memory, {0x1E, 0xF0, 0x20});  // ASL $20F0,X
+
+    CHECK(memory_array[0x2110] == 0x66);  // 0x33 << 1 = 0x66
+  }
+}
+
+TEST_CASE("LSR Memory - All Addressing Modes", "[shift][lsr][memory]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Zero Page")
+  {
+    State cpu;
+    memory_array[0x80] = 0x84;  // 10000100
+
+    executeInstruction(pump, cpu, memory, {0x46, 0x80});  // LSR $80
+
+    CHECK(memory_array[0x80] == 0x42);  // 01000010
+    CHECK(cpu.has(State::Flag::Carry) == false);
+    CHECK(cpu.has(State::Flag::Negative) == false);  // Always 0 after LSR
+  }
+
+  SECTION("Zero Page,X")
+  {
+    State cpu;
+    cpu.x = 0x03;
+    memory_array[0x83] = 0xFF;  // $80 + 3 = $83
+
+    executeInstruction(pump, cpu, memory, {0x56, 0x80});  // LSR $80,X
+
+    CHECK(memory_array[0x83] == 0x7F);  // 0xFF >> 1 = 0x7F
+    CHECK(cpu.has(State::Flag::Carry) == true);  // Bit 0 was 1
+  }
+
+  SECTION("Absolute")
+  {
+    State cpu;
+    memory_array[0x5678] = 0x01;
+
+    executeInstruction(pump, cpu, memory, {0x4E, 0x78, 0x56});  // LSR $5678
+
+    CHECK(memory_array[0x5678] == 0x00);
+    CHECK(cpu.has(State::Flag::Carry) == true);
+    CHECK(cpu.has(State::Flag::Zero) == true);
+  }
+
+  SECTION("Absolute,X")
+  {
+    State cpu;
+    cpu.x = 0x10;
+    memory_array[0x4010] = 0xAA;  // $4000 + $10 = $4010
+
+    executeInstruction(pump, cpu, memory, {0x5E, 0x00, 0x40});  // LSR $4000,X
+
+    CHECK(memory_array[0x4010] == 0x55);  // 0xAA >> 1 = 0x55
+    CHECK(cpu.has(State::Flag::Carry) == false);
+  }
+}
+
+TEST_CASE("ROL Memory - All Addressing Modes", "[rotate][rol][memory]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Zero Page with Carry Clear")
+  {
+    State cpu;
+    cpu.set(State::Flag::Carry, false);
+    memory_array[0x90] = 0x42;  // 01000010
+
+    executeInstruction(pump, cpu, memory, {0x26, 0x90});  // ROL $90
+
+    CHECK(memory_array[0x90] == 0x84);  // 10000100
+    CHECK(cpu.has(State::Flag::Carry) == false);
+    CHECK(cpu.has(State::Flag::Negative) == true);
+  }
+
+  SECTION("Zero Page with Carry Set")
+  {
+    State cpu;
+    cpu.set(State::Flag::Carry, true);
+    memory_array[0x90] = 0x42;  // 01000010
+
+    executeInstruction(pump, cpu, memory, {0x26, 0x90});  // ROL $90
+
+    CHECK(memory_array[0x90] == 0x85);  // 10000101 (carry → bit 0)
+    CHECK(cpu.has(State::Flag::Carry) == false);
+  }
+
+  SECTION("Absolute with 9-bit Rotation")
+  {
+    State cpu;
+    cpu.set(State::Flag::Carry, true);
+    memory_array[0x1000] = 0x80;  // 10000000
+
+    executeInstruction(pump, cpu, memory, {0x2E, 0x00, 0x10});  // ROL $1000
+
+    CHECK(memory_array[0x1000] == 0x01);  // 00000001 (carry → bit 0)
+    CHECK(cpu.has(State::Flag::Carry) == true);  // Bit 7 → carry
+  }
+}
+
+TEST_CASE("ROR Memory - All Addressing Modes", "[rotate][ror][memory]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Zero Page with Carry Clear")
+  {
+    State cpu;
+    cpu.set(State::Flag::Carry, false);
+    memory_array[0xA0] = 0x42;  // 01000010
+
+    executeInstruction(pump, cpu, memory, {0x66, 0xA0});  // ROR $A0
+
+    CHECK(memory_array[0xA0] == 0x21);  // 00100001
+    CHECK(cpu.has(State::Flag::Carry) == false);
+    CHECK(cpu.has(State::Flag::Negative) == false);
+  }
+
+  SECTION("Zero Page with Carry Set")
+  {
+    State cpu;
+    cpu.set(State::Flag::Carry, true);
+    memory_array[0xA0] = 0x42;  // 01000010
+
+    executeInstruction(pump, cpu, memory, {0x66, 0xA0});  // ROR $A0
+
+    CHECK(memory_array[0xA0] == 0xA1);  // 10100001 (carry → bit 7)
+    CHECK(cpu.has(State::Flag::Carry) == false);
+    CHECK(cpu.has(State::Flag::Negative) == true);
+  }
+
+  SECTION("Absolute,X with 9-bit Rotation")
+  {
+    State cpu;
+    cpu.x = 0x05;
+    cpu.set(State::Flag::Carry, true);
+    memory_array[0x2005] = 0x01;  // $2000 + 5 = $2005
+
+    executeInstruction(pump, cpu, memory, {0x7E, 0x00, 0x20});  // ROR $2000,X
+
+    CHECK(memory_array[0x2005] == 0x80);  // 10000000 (carry → bit 7)
+    CHECK(cpu.has(State::Flag::Carry) == true);  // Bit 0 → carry
+    CHECK(cpu.has(State::Flag::Negative) == true);
+  }
+}
+
+TEST_CASE("Shift/Rotate Memory - Edge Cases", "[shift][rotate][memory][edge]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Multi-byte Shift Simulation")
+  {
+    State cpu;
+    // Simulate 16-bit left shift: ASL low, ROL high
+    memory_array[0x80] = 0x55;  // Low byte
+    memory_array[0x81] = 0xAA;  // High byte
+
+    // Shift low byte first
+    executeInstruction(pump, cpu, memory, {0x06, 0x80});  // ASL $80
+    CHECK(memory_array[0x80] == 0xAA);
+    CHECK(cpu.has(State::Flag::Carry) == false);  // No carry from bit 7
+
+    // Rotate high byte (includes carry from low byte)
+    executeInstruction(pump, cpu, memory, {0x26, 0x81});  // ROL $81
+    CHECK(memory_array[0x81] == 0x54);  // 0xAA rotated left = 0x54 (bit 7→carry, carry was 0→bit 0)
+    CHECK(cpu.has(State::Flag::Carry) == true);  // Bit 7 of high byte → carry
+  }
+
+  SECTION("All Flags Test Pattern")
+  {
+    State cpu;
+    memory_array[0x90] = 0x80;  // 10000000
+
+    executeInstruction(pump, cpu, memory, {0x06, 0x90});  // ASL $90
+
+    CHECK(memory_array[0x90] == 0x00);
+    CHECK(cpu.has(State::Flag::Carry) == true);  // Bit 7 → carry
+    CHECK(cpu.has(State::Flag::Zero) == true);  // Result is zero
+    CHECK(cpu.has(State::Flag::Negative) == false);  // Result bit 7 is 0
+  }
+
+  SECTION("Registers Unchanged by Memory Operations")
+  {
+    State cpu;
+    cpu.a = 0x11;
+    cpu.x = 0x22;
+    cpu.y = 0x33;
+    cpu.sp = 0xEE;
+    memory_array[0xB0] = 0x77;
+
+    executeInstruction(pump, cpu, memory, {0x46, 0xB0});  // LSR $B0
+
+    CHECK(cpu.a == 0x11);  // All registers unchanged
+    CHECK(cpu.x == 0x22);
+    CHECK(cpu.y == 0x33);
+    CHECK(cpu.sp == 0xEE);
+    CHECK(memory_array[0xB0] == 0x3B);  // Only memory changed (0x77 >> 1 = 0x3B)
+  }
+}
