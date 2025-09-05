@@ -263,35 +263,144 @@ static MicrocodeResponse eor(State& cpu, Common::BusResponse response)
   return {BusRequest::Read(cpu.pc)};  // Dummy read to consume cycle
 }
 
-static MicrocodeResponse pha(State& cpu, Common::BusResponse /*response*/)
+// Templated push operation following your struct pattern
+template<Common::Byte State::* SourceReg, bool SetBreakFlag = false>
+struct PushOp
 {
-  auto extraCycle = [](State& cpu1, Common::BusResponse /*response1*/) -> MicrocodeResponse
+  // Step 1: Dummy read to consume cycle
+  static MicrocodeResponse step1(State& cpu, Common::BusResponse /*response*/)
   {
-    cpu1.lo = cpu1.sp--;
-    cpu1.hi = 0x01;
-    auto effectiveAddress = Common::MakeAddress(cpu1.lo, cpu1.hi);
-    return {Common::BusRequest::Write(effectiveAddress, cpu1.a)};
-  };
-  return {BusRequest::Read(cpu.pc), extraCycle};  // Dummy read to consume cycle
-}
+    return {BusRequest::Read(cpu.pc)};
+  }
 
-static MicrocodeResponse pla(State& cpu, Common::BusResponse /*response*/)
-{
-  auto extraCycle1 = [](State& cpu1, Common::BusResponse /*response1*/) -> MicrocodeResponse
+  // Step 2: Write register value to stack
+  static MicrocodeResponse step2(State& cpu, Common::BusResponse /*response*/)
   {
-    auto extraCycle2 = [](State& cpu2, Common::BusResponse response2) -> MicrocodeResponse
+    Byte data = (cpu.*SourceReg);
+
+    // Apply Break flag modification for PHP
+    if constexpr (SetBreakFlag)
     {
-      cpu2.a = response2.data;
-      cpu2.setZN(cpu2.a);
-      return MicrocodeResponse{};
-    };
-    cpu1.lo = cpu1.sp;
-    cpu1.hi = 0x01;
-    return {Common::BusRequest::Write(Common::MakeAddress(cpu1.lo, cpu1.hi), cpu1.a), extraCycle2};
-  };
-  cpu.sp++;
-  return {BusRequest::Read(cpu.pc), extraCycle1};  // Dummy read to consume cycle
-}
+      data |= static_cast<Byte>(State::Flag::Break);
+    }
+
+    return {BusRequest::Write(Common::MakeAddress(cpu.sp--, 0x01), data)};
+  }
+
+  static constexpr Microcode ops[] = {step1, step2};
+};
+
+// Similar pattern for pull operations
+template<Common::Byte State::* TargetReg, bool ClearBreakFlag = false, bool SetNZFlags = false>
+struct PullOp
+{
+  // Step 1: Dummy read, increment SP
+  static MicrocodeResponse step1(State& cpu, Common::BusResponse /*response*/)
+  {
+    ++cpu.sp;  // Pre-increment for pull
+    return {BusRequest::Read(cpu.pc)};
+  }
+
+  // Step 2: Read from stack
+  static MicrocodeResponse step2(State& cpu, Common::BusResponse /*response*/)
+  {
+    return {BusRequest::Read(Common::MakeAddress(cpu.sp, 0x01))};
+  }
+
+  // Step 3: Store data and set flags if needed
+  static MicrocodeResponse step3(State& cpu, Common::BusResponse response)
+  {
+    Byte data = response.data;
+
+    // Apply Break flag clearing for PLP
+    if constexpr (ClearBreakFlag)
+    {
+      data &= ~static_cast<Byte>(State::Flag::Break);
+    }
+
+    // Store in target register
+    (cpu.*TargetReg) = data;
+
+    // Update N/Z flags for PLA
+    if constexpr (SetNZFlags)
+    {
+      cpu.setZN(data);
+    }
+
+    return {BusRequest::Read(cpu.pc)};  // Final dummy read
+  }
+
+  static constexpr Microcode ops[] = {step1, step2, step3};
+};
+
+// JSR - Jump to Subroutine (6 cycles)
+struct jsr
+{
+  // Step 4: Push return address high byte (PC-1)
+  static MicrocodeResponse step4(State& cpu, Common::BusResponse /*response*/)
+  {
+    // JSR pushes PC-1 where PC currently points past the JSR instruction
+    Byte return_addr_high = Common::HiByte(static_cast<uint16_t>(cpu.pc - 1));
+    return {BusRequest::Write(Common::MakeAddress(cpu.sp--, 0x01), return_addr_high)};
+  }
+
+  // Step 5: Push return address low byte and jump
+  static MicrocodeResponse step5(State& cpu, Common::BusResponse /*response*/)
+  {
+    Byte return_addr_low = Common::LoByte(static_cast<uint16_t>(cpu.pc - 1));
+
+    // Calculate jump target and perform self-jump detection
+    auto newPC = Common::MakeAddress(cpu.lo, cpu.hi);
+    if (newPC == cpu.pc - 3)  // JSR is 3 bytes long
+    {
+      throw TrapException(newPC);
+    }
+
+    // Set new PC
+    cpu.pc = newPC;
+
+    // Push return address low byte
+    return {BusRequest::Write(Common::MakeAddress(cpu.sp--, 0x01), return_addr_low)};
+  }
+
+  static constexpr Microcode ops[] = {step4, step5};
+};
+
+// RTS - Return from Subroutine (6 cycles)
+struct rts
+{
+  // Step 1: Dummy read from next instruction
+  static MicrocodeResponse step1(State& cpu, Common::BusResponse /*response*/)
+  {
+    // Increment SP in preparation for pull
+    return {BusRequest::Read(Common::MakeAddress(++cpu.sp, 0x01))};
+  }
+
+  // Step 2: Dummy read from stack, increment SP
+  static MicrocodeResponse step2(State& cpu, Common::BusResponse response)
+  {
+    cpu.lo = response.data;
+    // Increment SP in preparation for pull
+    return {BusRequest::Read(Common::MakeAddress(++cpu.sp, 0x01))};
+  }
+
+  // Step 3: Pull return address low byte
+  static MicrocodeResponse step3(State& cpu, Common::BusResponse response)
+  {
+    cpu.hi = response.data;
+    cpu.pc = Common::MakeAddress(cpu.lo, cpu.hi);
+    return {BusRequest::Read(cpu.pc)};
+  }
+
+  // Step 4: Store low byte, pull return address high byte
+  static MicrocodeResponse step4(State& cpu, Common::BusResponse /*response*/)
+  {
+    cpu.pc = Common::MakeAddress(cpu.lo, cpu.hi) + 1;
+    return {BusRequest::Read(cpu.pc)};
+  }
+
+  static constexpr Microcode ops[] = {step1, step2, step3, step4};
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 // CPU implementation
@@ -310,8 +419,7 @@ constexpr void add(Common::Byte opcode, const char* mnemonic, std::initializer_l
   std::span<const Microcode> addressingOps = Mode::ops;
 
   // Check total size at compile time
-  constexpr size_t maxOps = sizeof(Instruction::ops) / sizeof(Instruction::ops[0]);
-  if (addressingOps.size() + operations.size() > maxOps)
+  if (addressingOps.size() + operations.size() > Instruction::c_maxOperations)
   {
     throw std::runtime_error("Too many microcode operations for instruction");
   }
@@ -335,11 +443,55 @@ constexpr void add(Common::Byte opcode, const char* mnemonic, std::initializer_l
   }
 
   // Fill remaining slots with nullptr
-  for (; index < maxOps; ++index)
+  for (; index < Instruction::c_maxOperations; ++index)
   {
     instr.ops[index] = nullptr;
   }
 }
+
+struct Builder
+{
+  InstructionTable& table;
+
+  template<typename Mode, typename Cmd>
+  constexpr Builder& add(Common::Byte opcode, const char* mnemonic)
+  {
+    // Get the addressing mode microcode based on template parameter
+    std::span<const Microcode> addressingOps = Mode::ops;
+    std::span<const Microcode> operations = Cmd::ops;
+
+    // Check total size at compile time
+    if (addressingOps.size() + operations.size() > Instruction::c_maxOperations)
+    {
+      throw std::runtime_error("Too many microcode operations for instruction");
+    }
+
+    Instruction& instr = table[opcode];
+    instr.opcode = opcode;
+    instr.mnemonic = mnemonic;
+    instr.addressMode = Mode::type;
+
+    // Copy addressing microcode first
+    size_t index = 0;
+    for (auto op : addressingOps)
+    {
+      instr.ops[index++] = op;
+    }
+
+    // Copy operation microcode
+    for (auto op : operations)
+    {
+      instr.ops[index++] = op;
+    }
+
+    // Fill remaining slots with nullptr
+    for (; index < Instruction::c_maxOperations; ++index)
+    {
+      instr.ops[index] = nullptr;
+    }
+    return *this;
+  }
+};
 
 }  // namespace
 
@@ -484,8 +636,14 @@ static constexpr auto c_instructions = []()
   // add<IndirectZpX>(0x41, "EOR", {eor}, table);
   // add<IndirectZpY>(0x51, "EOR", {eor}, table);
 
-  add<Implied>(0x48, "PHA", {pha}, table);
-  add<Implied>(0x68, "PLA", {pla}, table);
+  Builder builder{table};
+  builder  //
+      .add<Implied, PullOp<&State::a, false, true>>(0x68, "PLA")
+      .add<Implied, PushOp<&State::a, false>>(0x48, "PHA")
+      .add<Implied, PullOp<&State::p, true, false>>(0x28, "PLP")
+      .add<Implied, PushOp<&State::p, true>>(0x08, "PHP")
+      .add<Absolute<>, jsr>(0x20, "JSR")  // Note: JSR uses absolute addressing for the target
+      .add<Implied, rts>(0x60, "RTS");
 
   // Add more instructions as needed
 

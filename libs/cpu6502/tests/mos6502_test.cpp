@@ -2507,3 +2507,466 @@ TEST_CASE("Store Edge Cases", "[store][edge]")
     CHECK(memory_array[0x12] == 0x33);  // Y
   }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// Stack Operation Tests
+////////////////////////////////////////////////////////////////////////////////
+
+TEST_CASE("PHA/PLA - Push/Pull Accumulator", "[stack][pha][pla]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Basic Push/Pull Cycle")
+  {
+    State cpu;
+    cpu.a = 0x42;
+    cpu.sp = 0xFF;  // Start with full stack
+
+    // Push accumulator
+    executeInstruction(pump, cpu, memory, {0x48});  // PHA
+
+    CHECK(cpu.sp == 0xFE);  // Stack pointer should decrement
+    CHECK(memory_array[0x01FF] == 0x42);  // Value should be on stack
+    CHECK(cpu.a == 0x42);  // Accumulator unchanged
+
+    // Change accumulator to verify pull works
+    cpu.a = 0x00;
+
+    // Pull accumulator
+    executeInstruction(pump, cpu, memory, {0x68});  // PLA
+
+    CHECK(cpu.sp == 0xFF);  // Stack pointer should increment
+    CHECK(cpu.a == 0x42);  // Accumulator should be restored
+    CHECK(cpu.has(State::Flag::Zero) == false);  // Flags should be updated
+    CHECK(cpu.has(State::Flag::Negative) == false);
+  }
+
+  SECTION("PLA Flag Effects - Zero")
+  {
+    State cpu;
+    cpu.sp = 0xFE;  // Stack has one item
+    memory_array[0x01FF] = 0x00;  // Zero value on stack
+    cpu.a = 0x42;  // Non-zero accumulator
+
+    executeInstruction(pump, cpu, memory, {0x68});  // PLA
+
+    CHECK(cpu.a == 0x00);
+    CHECK(cpu.has(State::Flag::Zero) == true);
+    CHECK(cpu.has(State::Flag::Negative) == false);
+  }
+
+  SECTION("PLA Flag Effects - Negative")
+  {
+    State cpu;
+    cpu.sp = 0xFE;  // Stack has one item
+    memory_array[0x01FF] = 0x80;  // Negative value on stack
+    cpu.a = 0x42;  // Positive accumulator
+
+    executeInstruction(pump, cpu, memory, {0x68});  // PLA
+
+    CHECK(cpu.a == 0x80);
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == true);
+  }
+
+  SECTION("Multiple Push/Pull Operations")
+  {
+    State cpu;
+    cpu.sp = 0xFF;
+
+    // Push three values
+    cpu.a = 0x11;
+    executeInstruction(pump, cpu, memory, {0x48});  // PHA
+    CHECK(cpu.sp == 0xFE);
+    CHECK(memory_array[0x01FF] == 0x11);
+
+    cpu.a = 0x22;
+    executeInstruction(pump, cpu, memory, {0x48});  // PHA
+    CHECK(cpu.sp == 0xFD);
+    CHECK(memory_array[0x01FE] == 0x22);
+
+    cpu.a = 0x33;
+    executeInstruction(pump, cpu, memory, {0x48});  // PHA
+    CHECK(cpu.sp == 0xFC);
+    CHECK(memory_array[0x01FD] == 0x33);
+
+    // Pull them back in LIFO order
+    executeInstruction(pump, cpu, memory, {0x68});  // PLA
+    CHECK(cpu.a == 0x33);
+    CHECK(cpu.sp == 0xFD);
+
+    executeInstruction(pump, cpu, memory, {0x68});  // PLA
+    CHECK(cpu.a == 0x22);
+    CHECK(cpu.sp == 0xFE);
+
+    executeInstruction(pump, cpu, memory, {0x68});  // PLA
+    CHECK(cpu.a == 0x11);
+    CHECK(cpu.sp == 0xFF);
+  }
+
+  SECTION("PHA Doesn't Affect Flags")
+  {
+    State cpu;
+    cpu.a = 0x42;
+    cpu.sp = 0xFF;
+
+    // Set all flags to known state
+    cpu.p = static_cast<Byte>(State::Flag::Carry) | static_cast<Byte>(State::Flag::Zero) |
+            static_cast<Byte>(State::Flag::Interrupt) | static_cast<Byte>(State::Flag::Decimal) |
+            static_cast<Byte>(State::Flag::Overflow) | static_cast<Byte>(State::Flag::Negative) |
+            static_cast<Byte>(State::Flag::Unused);
+    auto original_flags = cpu.p;
+
+    executeInstruction(pump, cpu, memory, {0x48});  // PHA
+
+    CHECK(cpu.p == original_flags);  // Flags should be unchanged
+    CHECK(memory_array[0x01FF] == 0x42);
+  }
+
+  SECTION("Other Registers Unchanged")
+  {
+    State cpu;
+    cpu.a = 0x42;
+    cpu.x = 0x11;
+    cpu.y = 0x22;
+    cpu.sp = 0xFF;
+
+    executeInstruction(pump, cpu, memory, {0x48});  // PHA
+
+    CHECK(cpu.a == 0x42);  // Accumulator unchanged
+    CHECK(cpu.x == 0x11);  // X unchanged
+    CHECK(cpu.y == 0x22);  // Y unchanged
+    // SP should change for push operations
+  }
+}
+
+TEST_CASE("PHP/PLP - Push/Pull Processor Status", "[stack][php][plp]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Basic Push/Pull Processor Status")
+  {
+    State cpu;
+    cpu.sp = 0xFF;
+
+    // Set specific flags
+    cpu.set(State::Flag::Carry, true);
+    cpu.set(State::Flag::Zero, true);
+    cpu.set(State::Flag::Interrupt, true);
+    cpu.set(State::Flag::Unused, true);
+    auto original_flags = cpu.p;
+
+    executeInstruction(pump, cpu, memory, {0x08});  // PHP
+
+    CHECK(cpu.sp == 0xFE);
+    // PHP sets the B flag when pushed
+    auto expected_pushed = original_flags | static_cast<Byte>(State::Flag::Break);
+    CHECK(memory_array[0x01FF] == expected_pushed);
+    CHECK(cpu.p == original_flags);  // CPU flags unchanged by PHP
+
+    // Change flags to verify pull works
+    cpu.p = static_cast<Byte>(State::Flag::Negative) | static_cast<Byte>(State::Flag::Unused);
+
+    executeInstruction(pump, cpu, memory, {0x28});  // PLP
+
+    CHECK(cpu.sp == 0xFF);
+    // PLP clears the B flag when pulled
+    auto expected_pulled = expected_pushed & ~static_cast<Byte>(State::Flag::Break);
+    CHECK(cpu.p == expected_pulled);
+  }
+
+  SECTION("PHP Always Sets Break Flag in Pushed Value")
+  {
+    State cpu;
+    cpu.sp = 0xFF;
+    cpu.p = static_cast<Byte>(State::Flag::Carry) | static_cast<Byte>(State::Flag::Unused);
+    // Deliberately NOT setting Break flag
+
+    executeInstruction(pump, cpu, memory, {0x08});  // PHP
+
+    // Break flag should be set in the pushed value
+    CHECK(memory_array[0x01FF] & static_cast<Byte>(State::Flag::Break));
+  }
+
+  SECTION("PLP Ignores Break Flag from Stack")
+  {
+    State cpu;
+    cpu.sp = 0xFE;
+    // Put value with Break flag set on stack
+    memory_array[0x01FF] = static_cast<Byte>(State::Flag::Break) | static_cast<Byte>(State::Flag::Carry) |
+                           static_cast<Byte>(State::Flag::Unused);
+
+    cpu.p = static_cast<Byte>(State::Flag::Zero) | static_cast<Byte>(State::Flag::Unused);
+
+    executeInstruction(pump, cpu, memory, {0x28});  // PLP
+
+    // Break flag should not be set in processor status
+    CHECK(!cpu.has(State::Flag::Break));
+    CHECK(cpu.has(State::Flag::Carry));  // Other flags should be restored
+  }
+
+  SECTION("Registers Unchanged by PHP/PLP")
+  {
+    State cpu;
+    cpu.a = 0x11;
+    cpu.x = 0x22;
+    cpu.y = 0x33;
+    cpu.sp = 0xFF;
+
+    executeInstruction(pump, cpu, memory, {0x08});  // PHP
+    executeInstruction(pump, cpu, memory, {0x28});  // PLP
+
+    CHECK(cpu.a == 0x11);
+    CHECK(cpu.x == 0x22);
+    CHECK(cpu.y == 0x33);
+    CHECK(cpu.sp == 0xFF);  // Should be back to original
+  }
+}
+
+TEST_CASE("JSR/RTS - Jump to Subroutine/Return", "[stack][jsr][rts]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Basic Subroutine Call and Return")
+  {
+    State cpu;
+    cpu.pc = 0x1000_addr;
+    cpu.sp = 0xFF;
+
+    // JSR $2000 - should push return address and jump
+    auto addressOfNextInstruction = executeInstruction(pump, cpu, memory, {0x20, 0x00, 0x20});  // JSR $2000
+
+    CHECK(addressOfNextInstruction == 0x2000_addr);  // Should be at subroutine
+    CHECK(cpu.sp == 0xFD);  // Stack pointer decremented by 2
+
+    // Check return address on stack (PC-1 of next instruction after JSR)
+    // JSR pushes PC-1, where PC points to the last byte of the JSR instruction
+    CHECK(memory_array[0x01FF] == 0x10);  // High byte of return address
+    CHECK(memory_array[0x01FE] == 0x02);  // Low byte of return address (PC was at $1003-1 = $1002)
+
+    // RTS should restore PC and return to next instruction after JSR
+    addressOfNextInstruction = executeInstruction(pump, cpu, memory, {0x60});  // RTS
+
+    CHECK(cpu.sp == 0xFF);  // Stack pointer should be restored
+    CHECK(addressOfNextInstruction == 0x1003_addr);
+  }
+
+  SECTION("Nested Subroutine Calls")
+  {
+    State cpu;
+    cpu.pc = 0x1000_addr;
+    cpu.sp = 0xFF;
+
+    // First JSR
+    executeInstruction(pump, cpu, memory, {0x20, 0x00, 0x20});  // JSR $2000
+    CHECK(cpu.sp == 0xFD);
+
+    // Second JSR from within first subroutine
+    executeInstruction(pump, cpu, memory, {0x20, 0x00, 0x30});  // JSR $3000
+    CHECK(cpu.sp == 0xFB);  // Stack should have two return addresses
+
+    // Return from second subroutine
+    executeInstruction(pump, cpu, memory, {0x60});  // RTS
+    CHECK(cpu.sp == 0xFD);  // Should restore to first level
+
+    // Return from first subroutine
+    executeInstruction(pump, cpu, memory, {0x60});  // RTS
+    CHECK(cpu.sp == 0xFF);  // Should restore to original level
+  }
+
+  SECTION("JSR/RTS Don't Affect Flags")
+  {
+    State cpu;
+    cpu.pc = 0x1000_addr;
+    cpu.sp = 0xFF;
+
+    // Set all flags
+    cpu.p = static_cast<Byte>(State::Flag::Carry) | static_cast<Byte>(State::Flag::Zero) |
+            static_cast<Byte>(State::Flag::Interrupt) | static_cast<Byte>(State::Flag::Decimal) |
+            static_cast<Byte>(State::Flag::Overflow) | static_cast<Byte>(State::Flag::Negative) |
+            static_cast<Byte>(State::Flag::Unused);
+    auto original_flags = cpu.p;
+
+    executeInstruction(pump, cpu, memory, {0x20, 0x00, 0x20});  // JSR
+    CHECK(cpu.p == original_flags);
+
+    executeInstruction(pump, cpu, memory, {0x60});  // RTS
+    CHECK(cpu.p == original_flags);
+  }
+
+  SECTION("JSR/RTS Don't Affect Registers")
+  {
+    State cpu;
+    cpu.pc = 0x1000_addr;
+    cpu.sp = 0xFF;
+    cpu.a = 0x11;
+    cpu.x = 0x22;
+    cpu.y = 0x33;
+
+    executeInstruction(pump, cpu, memory, {0x20, 0x00, 0x20});  // JSR
+    CHECK(cpu.a == 0x11);
+    CHECK(cpu.x == 0x22);
+    CHECK(cpu.y == 0x33);
+
+    executeInstruction(pump, cpu, memory, {0x60});  // RTS
+    CHECK(cpu.a == 0x11);
+    CHECK(cpu.x == 0x22);
+    CHECK(cpu.y == 0x33);
+  }
+}
+
+TEST_CASE("Stack Pointer Edge Cases", "[stack][edge]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Stack Wraparound on Push")
+  {
+    State cpu;
+    cpu.a = 0x42;
+    cpu.sp = 0x00;  // Stack pointer at bottom
+
+    executeInstruction(pump, cpu, memory, {0x48});  // PHA
+
+    CHECK(cpu.sp == 0xFF);  // Should wrap around
+    CHECK(memory_array[0x0100] == 0x42);  // Should write to $0100
+  }
+
+  SECTION("Stack Wraparound on Pull")
+  {
+    State cpu;
+    cpu.sp = 0xFF;  // Stack pointer at top
+    memory_array[0x0100] = 0x55;  // Data at wraparound location
+
+    executeInstruction(pump, cpu, memory, {0x68});  // PLA
+
+    CHECK(cpu.sp == 0x00);  // Should wrap to 0x00
+    CHECK(cpu.a == 0x55);  // Should read from $0100
+  }
+
+  SECTION("Stack Boundary Behavior")
+  {
+    State cpu;
+    cpu.sp = 0x01;
+
+    // Fill some stack locations
+    memory_array[0x0102] = 0x11;  // ← Should be here, not 0x0101
+    memory_array[0x0103] = 0x22;  // ← And here, not 0x0100
+    memory_array[0x01FF] = 0x33;
+
+    // First PLA: SP 0x01→0x02, reads from $0102
+    executeInstruction(pump, cpu, memory, {0x68});  // PLA
+    CHECK(cpu.a == 0x11);
+    CHECK(cpu.sp == 0x02);
+
+    // Second PLA: SP 0x02→0x03, reads from $0103
+    executeInstruction(pump, cpu, memory, {0x68});  // PLA
+    CHECK(cpu.a == 0x22);
+    CHECK(cpu.sp == 0x03);
+  }
+
+  SECTION("Deep Stack Usage")
+  {
+    State cpu;
+    cpu.sp = 0xFF;
+
+    // Push 256 values to completely fill stack
+    for (int i = 0; i < 128; i++)  // Test a reasonable number
+    {
+      cpu.a = static_cast<Byte>(i);
+      executeInstruction(pump, cpu, memory, {0x48});  // PHA
+    }
+
+    CHECK(cpu.sp == (0xFF - 128));  // Should be decremented appropriately
+
+    // Pull them back and verify LIFO order
+    for (int i = 127; i >= 0; i--)
+    {
+      executeInstruction(pump, cpu, memory, {0x68});  // PLA
+      CHECK(cpu.a == static_cast<Byte>(i));
+    }
+
+    CHECK(cpu.sp == 0xFF);  // Should be back to original
+  }
+}
+
+TEST_CASE("Mixed Stack Operations", "[stack][integration]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Interleaved Push/Pull Operations")
+  {
+    State cpu;
+    cpu.sp = 0xFF;
+
+    // Push A
+    cpu.a = 0x11;
+    executeInstruction(pump, cpu, memory, {0x48});  // PHA
+    CHECK(cpu.sp == 0xFE);
+
+    // Push flags
+    cpu.p = static_cast<Byte>(State::Flag::Carry) | static_cast<Byte>(State::Flag::Unused);
+    executeInstruction(pump, cpu, memory, {0x08});  // PHP
+    CHECK(cpu.sp == 0xFD);
+
+    // Push A again (different value)
+    cpu.a = 0x22;
+    executeInstruction(pump, cpu, memory, {0x48});  // PHA
+    CHECK(cpu.sp == 0xFC);
+
+    // Pull in reverse order
+    executeInstruction(pump, cpu, memory, {0x68});  // PLA
+    CHECK(cpu.a == 0x22);
+    CHECK(cpu.sp == 0xFD);
+
+    executeInstruction(pump, cpu, memory, {0x28});  // PLP
+    CHECK(cpu.has(State::Flag::Carry) == true);
+    CHECK(cpu.sp == 0xFE);
+
+    executeInstruction(pump, cpu, memory, {0x68});  // PLA
+    CHECK(cpu.a == 0x11);
+    CHECK(cpu.sp == 0xFF);
+  }
+
+  SECTION("Subroutine with Stack Usage")
+  {
+    State cpu;
+    cpu.pc = 0x1000_addr;
+    cpu.sp = 0xFF;
+    cpu.a = 0x42;
+
+    // Call subroutine
+    executeInstruction(pump, cpu, memory, {0x20, 0x00, 0x20});  // JSR $2000
+    CHECK(cpu.sp == 0xFD);  // Return address on stack
+
+    // In subroutine: save A on stack
+    executeInstruction(pump, cpu, memory, {0x48});  // PHA
+    CHECK(cpu.sp == 0xFC);  // A value on stack too
+
+    // In subroutine: save flags
+    executeInstruction(pump, cpu, memory, {0x08});  // PHP
+    CHECK(cpu.sp == 0xFB);  // Flags on stack
+
+    // Restore flags
+    executeInstruction(pump, cpu, memory, {0x28});  // PLP
+    CHECK(cpu.sp == 0xFC);
+
+    // Restore A
+    executeInstruction(pump, cpu, memory, {0x68});  // PLA
+    CHECK(cpu.a == 0x42);
+    CHECK(cpu.sp == 0xFD);
+
+    // Return from subroutine
+    executeInstruction(pump, cpu, memory, {0x60});  // RTS
+    CHECK(cpu.sp == 0xFF);  // Back to original stack level
+  }
+}
