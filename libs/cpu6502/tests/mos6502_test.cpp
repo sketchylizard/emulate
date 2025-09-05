@@ -2970,3 +2970,404 @@ TEST_CASE("Mixed Stack Operations", "[stack][integration]")
     CHECK(cpu.sp == 0xFF);  // Back to original stack level
   }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// INC/DEC Memory Instruction Tests
+////////////////////////////////////////////////////////////////////////////////
+
+TEST_CASE("INC Memory - Zero Page", "[inc][memory][zeropage]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Normal Increment")
+  {
+    State cpu;
+    memory_array[0x80] = 0x42;  // Initial value at $80
+
+    executeInstruction(pump, cpu, memory, {0xE6, 0x80});  // INC $80
+
+    CHECK(memory_array[0x80] == 0x43);  // Memory incremented
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == false);
+  }
+
+  SECTION("Increment to Zero (Wraparound)")
+  {
+    State cpu;
+    memory_array[0x50] = 0xFF;
+
+    executeInstruction(pump, cpu, memory, {0xE6, 0x50});  // INC $50
+
+    CHECK(memory_array[0x50] == 0x00);
+    CHECK(cpu.has(State::Flag::Zero) == true);
+    CHECK(cpu.has(State::Flag::Negative) == false);
+  }
+
+  SECTION("Increment to Negative")
+  {
+    State cpu;
+    memory_array[0x60] = 0x7F;
+
+    executeInstruction(pump, cpu, memory, {0xE6, 0x60});  // INC $60
+
+    CHECK(memory_array[0x60] == 0x80);
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == true);
+  }
+
+  SECTION("Registers Unchanged")
+  {
+    State cpu;
+    cpu.a = 0x11;
+    cpu.x = 0x22;
+    cpu.y = 0x33;
+    cpu.sp = 0xEE;
+    memory_array[0x70] = 0x42;
+
+    executeInstruction(pump, cpu, memory, {0xE6, 0x70});  // INC $70
+
+    CHECK(cpu.a == 0x11);  // All registers unchanged
+    CHECK(cpu.x == 0x22);
+    CHECK(cpu.y == 0x33);
+    CHECK(cpu.sp == 0xEE);
+    CHECK(memory_array[0x70] == 0x43);  // Only memory changed
+  }
+}
+
+TEST_CASE("INC Memory - Zero Page,X", "[inc][memory][zeropage][indexed]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Normal Indexed Increment")
+  {
+    State cpu;
+    cpu.x = 0x05;
+    memory_array[0x85] = 0x33;  // Data at $80 + 5 = $85
+
+    executeInstruction(pump, cpu, memory, {0xF6, 0x80});  // INC $80,X
+
+    CHECK(memory_array[0x85] == 0x34);
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == false);
+  }
+
+  SECTION("Zero Page Wraparound")
+  {
+    State cpu;
+    cpu.x = 0x90;
+    memory_array[0x10] = 0x77;  // $80 + $90 = $110 -> $10 (wraparound)
+
+    executeInstruction(pump, cpu, memory, {0xF6, 0x80});  // INC $80,X
+
+    CHECK(memory_array[0x10] == 0x78);
+    CHECK(memory_array[0x110] == 0x00);  // Should NOT affect this address
+  }
+
+  SECTION("Index Zero")
+  {
+    State cpu;
+    cpu.x = 0x00;
+    memory_array[0x90] = 0x44;
+
+    executeInstruction(pump, cpu, memory, {0xF6, 0x90});  // INC $90,X
+
+    CHECK(memory_array[0x90] == 0x45);
+  }
+}
+
+TEST_CASE("INC Memory - Absolute", "[inc][memory][absolute]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Normal Absolute Increment")
+  {
+    State cpu;
+    memory_array[0x1234] = 0xAB;
+
+    executeInstruction(pump, cpu, memory, {0xEE, 0x34, 0x12});  // INC $1234
+
+    CHECK(memory_array[0x1234] == 0xAC);
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == true);  // 0xAC is negative
+  }
+
+  SECTION("High Memory Address")
+  {
+    State cpu;
+    memory_array[0xFFFF] = 0xFE;
+
+    executeInstruction(pump, cpu, memory, {0xEE, 0xFF, 0xFF});  // INC $FFFF
+
+    CHECK(memory_array[0xFFFF] == 0xFF);
+    CHECK(cpu.has(State::Flag::Negative) == true);
+  }
+}
+
+TEST_CASE("INC Memory - Absolute,X", "[inc][memory][absolute][indexed]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("No Page Crossing")
+  {
+    State cpu;
+    cpu.x = 0x05;
+    memory_array[0x3025] = 0x55;  // $3020 + 5 = $3025
+
+    executeInstruction(pump, cpu, memory, {0xFE, 0x20, 0x30});  // INC $3020,X
+
+    CHECK(memory_array[0x3025] == 0x56);
+  }
+
+  SECTION("Page Crossing")
+  {
+    State cpu;
+    cpu.x = 0x20;
+    memory_array[0x2110] = 0xCC;  // $20F0 + $20 = $2110
+
+    executeInstruction(pump, cpu, memory, {0xFE, 0xF0, 0x20});  // INC $20F0,X
+
+    CHECK(memory_array[0x2110] == 0xCD);
+  }
+}
+
+TEST_CASE("DEC Memory - Zero Page", "[dec][memory][zeropage]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Normal Decrement")
+  {
+    State cpu;
+    memory_array[0x80] = 0x43;
+
+    executeInstruction(pump, cpu, memory, {0xC6, 0x80});  // DEC $80
+
+    CHECK(memory_array[0x80] == 0x42);
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == false);
+  }
+
+  SECTION("Decrement to Zero")
+  {
+    State cpu;
+    memory_array[0x50] = 0x01;
+
+    executeInstruction(pump, cpu, memory, {0xC6, 0x50});  // DEC $50
+
+    CHECK(memory_array[0x50] == 0x00);
+    CHECK(cpu.has(State::Flag::Zero) == true);
+    CHECK(cpu.has(State::Flag::Negative) == false);
+  }
+
+  SECTION("Decrement Underflow")
+  {
+    State cpu;
+    memory_array[0x60] = 0x00;
+
+    executeInstruction(pump, cpu, memory, {0xC6, 0x60});  // DEC $60
+
+    CHECK(memory_array[0x60] == 0xFF);
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == true);
+  }
+
+  SECTION("Decrement from Negative to Positive")
+  {
+    State cpu;
+    memory_array[0x70] = 0x80;
+
+    executeInstruction(pump, cpu, memory, {0xC6, 0x70});  // DEC $70
+
+    CHECK(memory_array[0x70] == 0x7F);
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == false);
+  }
+}
+
+TEST_CASE("DEC Memory - Zero Page,X", "[dec][memory][zeropage][indexed]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Normal Indexed Decrement")
+  {
+    State cpu;
+    cpu.x = 0x05;
+    memory_array[0x85] = 0x77;  // Data at $80 + 5 = $85
+
+    executeInstruction(pump, cpu, memory, {0xD6, 0x80});  // DEC $80,X
+
+    CHECK(memory_array[0x85] == 0x76);
+  }
+
+  SECTION("Wraparound with Index")
+  {
+    State cpu;
+    cpu.x = 0xFF;
+    memory_array[0x7F] = 0xAA;  // $80 + $FF = $17F -> $7F
+
+    executeInstruction(pump, cpu, memory, {0xD6, 0x80});  // DEC $80,X
+
+    CHECK(memory_array[0x7F] == 0xA9);
+  }
+}
+
+TEST_CASE("DEC Memory - Absolute", "[dec][memory][absolute]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Normal Absolute Decrement")
+  {
+    State cpu;
+    memory_array[0x1234] = 0xCD;
+
+    executeInstruction(pump, cpu, memory, {0xCE, 0x34, 0x12});  // DEC $1234
+
+    CHECK(memory_array[0x1234] == 0xCC);
+    CHECK(cpu.has(State::Flag::Negative) == true);
+  }
+
+  SECTION("Low Memory Address")
+  {
+    State cpu;
+    memory_array[0x0200] = 0x11;
+
+    executeInstruction(pump, cpu, memory, {0xCE, 0x00, 0x02});  // DEC $0200
+
+    CHECK(memory_array[0x0200] == 0x10);
+  }
+}
+
+TEST_CASE("DEC Memory - Absolute,X", "[dec][memory][absolute][indexed]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("No Page Crossing")
+  {
+    State cpu;
+    cpu.x = 0x10;
+    memory_array[0x4010] = 0xDD;  // $4000 + $10 = $4010
+
+    executeInstruction(pump, cpu, memory, {0xDE, 0x00, 0x40});  // DEC $4000,X
+
+    CHECK(memory_array[0x4010] == 0xDC);
+  }
+
+  SECTION("Page Crossing")
+  {
+    State cpu;
+    cpu.x = 0xFF;
+    memory_array[0x50FF] = 0xEE;  // $5000 + $FF = $50FF
+
+    executeInstruction(pump, cpu, memory, {0xDE, 0x00, 0x50});  // DEC $5000,X
+
+    CHECK(memory_array[0x50FF] == 0xED);
+  }
+}
+
+TEST_CASE("INC/DEC Memory - Flag Preservation", "[inc][dec][memory][flags]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Non-NZ Flags Preserved")
+  {
+    State cpu;
+    // Set all non-NZ flags
+    cpu.p = static_cast<Byte>(State::Flag::Carry) | static_cast<Byte>(State::Flag::Interrupt) |
+            static_cast<Byte>(State::Flag::Decimal) | static_cast<Byte>(State::Flag::Overflow) |
+            static_cast<Byte>(State::Flag::Unused);
+
+    auto original_flags = cpu.p;
+    memory_array[0x80] = 0x42;
+
+    executeInstruction(pump, cpu, memory, {0xE6, 0x80});  // INC $80
+
+    // Only N and Z should potentially change
+    Byte flag_mask = static_cast<Byte>(State::Flag::Negative) | static_cast<Byte>(State::Flag::Zero);
+    CHECK((cpu.p & ~flag_mask) == (original_flags & ~flag_mask));
+    CHECK(memory_array[0x80] == 0x43);
+  }
+
+  SECTION("Carry Flag Not Affected by Wraparound")
+  {
+    State cpu;
+    cpu.p = static_cast<Byte>(State::Flag::Unused);  // Clear all flags
+    memory_array[0x90] = 0xFF;
+
+    executeInstruction(pump, cpu, memory, {0xE6, 0x90});  // INC $90 (0xFF -> 0x00)
+
+    CHECK(memory_array[0x90] == 0x00);
+    CHECK(cpu.has(State::Flag::Zero) == true);
+    CHECK(cpu.has(State::Flag::Carry) == false);  // Carry should NOT be affected
+  }
+}
+
+TEST_CASE("INC/DEC Memory - Edge Cases", "[inc][dec][memory][edge]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Multiple Operations on Same Location")
+  {
+    State cpu;
+    memory_array[0xA0] = 0xFE;
+
+    executeInstruction(pump, cpu, memory, {0xE6, 0xA0});  // INC $A0 -> 0xFF
+    CHECK(memory_array[0xA0] == 0xFF);
+    CHECK(cpu.has(State::Flag::Negative) == true);
+
+    executeInstruction(pump, cpu, memory, {0xE6, 0xA0});  // INC $A0 -> 0x00
+    CHECK(memory_array[0xA0] == 0x00);
+    CHECK(cpu.has(State::Flag::Zero) == true);
+    CHECK(cpu.has(State::Flag::Negative) == false);
+
+    executeInstruction(pump, cpu, memory, {0xC6, 0xA0});  // DEC $A0 -> 0xFF
+    CHECK(memory_array[0xA0] == 0xFF);
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == true);
+  }
+
+  SECTION("INC/DEC vs Register Operations")
+  {
+    State cpu;
+    cpu.x = 0x42;
+    memory_array[0xB0] = 0x42;
+
+    // Both start with same value
+    executeInstruction(pump, cpu, memory, {0xE8});  // INX
+    executeInstruction(pump, cpu, memory, {0xE6, 0xB0});  // INC $B0
+
+    // Both should have incremented
+    CHECK(cpu.x == 0x43);
+    CHECK(memory_array[0xB0] == 0x43);
+  }
+
+  SECTION("Cross-Page Address Calculations")
+  {
+    State cpu;
+    cpu.x = 0x01;
+    memory_array[0x00FF] = 0x55;  // At page boundary
+    memory_array[0x0100] = 0x66;  // Next page
+
+    executeInstruction(pump, cpu, memory, {0xF6, 0xFE});  // INC $FE,X -> INC $FF
+    CHECK(memory_array[0x00FF] == 0x56);
+    CHECK(memory_array[0x0100] == 0x66);  // Unchanged
+  }
+}

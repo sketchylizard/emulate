@@ -402,6 +402,61 @@ struct rts
   static constexpr Microcode ops[] = {step1, step2, step3, step4};
 };
 
+// IncrementMemory - Increment Memory Location
+struct IncrementMemory
+{
+  // Step 1: Read from memory, write unmodified value back (6502 quirk)
+  static MicrocodeResponse step1(State& cpu, Common::BusResponse response)
+  {
+    // Store original value
+    cpu.operand = response.data;
+    Address effective_addr = Common::MakeAddress(cpu.lo, cpu.hi);
+
+    // 6502 quirk: Write the unmodified value back during the modify cycle
+    return {BusRequest::Write(effective_addr, cpu.operand)};
+  }
+
+  // Step 2: Write incremented value back to memory
+  static MicrocodeResponse step2(State& cpu, Common::BusResponse /*response*/)
+  {
+    ++cpu.operand;  // Increment the stored value
+    cpu.setZN(cpu.operand);  // Set N and Z flags based on result
+
+    // Reconstruct effective address and write modified value
+    // Note: This assumes addressing mode left address info in reconstructible form
+    return {BusRequest::Write(Common::MakeAddress(cpu.lo, cpu.hi), cpu.operand)};
+  }
+
+  static constexpr Microcode ops[] = {step1, step2};
+};
+
+// DecrementMemory - Decrement Memory Location
+struct DecrementMemory
+{
+  // Step 1: Read from memory, write unmodified value back (6502 quirk)
+  static MicrocodeResponse step1(State& cpu, Common::BusResponse response)
+  {
+    // Store original value for step2
+    cpu.operand = response.data;
+    Address effective_addr = Common::MakeAddress(cpu.lo, cpu.hi);
+
+    // 6502 quirk: Write the unmodified value back during the modify cycle
+    return {BusRequest::Write(effective_addr, cpu.operand)};
+  }
+
+  // Step 2: Write decremented value back to memory
+  static MicrocodeResponse step2(State& cpu, Common::BusResponse /*response*/)
+  {
+    --cpu.operand;  // Decrement the stored value
+    cpu.setZN(cpu.operand);  // Set N and Z flags based on result
+
+    // Reconstruct effective address and write modified value
+    return {BusRequest::Write(Common::MakeAddress(cpu.lo, cpu.hi), cpu.operand)};
+  }
+
+  static constexpr Microcode ops[] = {step1, step2};
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 // CPU implementation
 ////////////////////////////////////////////////////////////////////////////////
@@ -643,7 +698,16 @@ static constexpr auto c_instructions = []()
       .add<Implied, PullOp<&State::p, true, false>>(0x28, "PLP")
       .add<Implied, PushOp<&State::p, true>>(0x08, "PHP")
       .add<Absolute<>, jsr>(0x20, "JSR")  // Note: JSR uses absolute addressing for the target
-      .add<Implied, rts>(0x60, "RTS");
+      .add<Implied, rts>(0x60, "RTS")
+      .add<ZeroPage<>, IncrementMemory>(0xE6, "INC")  // INC $nn
+      .add<ZeroPage<&State::x>, IncrementMemory>(0xF6, "INC")  // INC $nn,X
+      .add<Absolute<>, IncrementMemory>(0xEE, "INC")  // INC $nnnn
+      .add<Absolute<&State::x>, IncrementMemory>(0xFE, "INC")  // INC $nnnn,X
+      .add<ZeroPage<>, DecrementMemory>(0xC6, "DEC")  // DEC $nn
+      .add<ZeroPage<&State::x>, DecrementMemory>(0xD6, "DEC")  // DEC $nn,X
+      .add<Absolute<>, DecrementMemory>(0xCE, "DEC")  // DEC $nnnn
+      .add<Absolute<&State::x>, DecrementMemory>(0xDE, "DEC")  // DEC $nnnn,X
+      ;
 
   // Add more instructions as needed
 

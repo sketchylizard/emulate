@@ -58,8 +58,12 @@ struct State
   Common::Byte sp{0};
   Common::Byte p{static_cast<Common::Byte>(Flag::Unused)};  // keep U set
 
+  // Storage for high byte of address during addressing modes
   Common::Byte hi = 0;
+  // Storage for low byte of address during addressing modes
   Common::Byte lo = 0;
+  // Storage for operand during instruction execution
+  Common::Byte operand = 0;
 };
 
 constexpr bool State::has(Flag f) const noexcept
