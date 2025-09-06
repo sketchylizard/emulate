@@ -18,15 +18,59 @@ struct AddressMode
   // Define some microcode functions for addressing modes
 
   // Makes a request to read the low byte of an address from the PC and increments the PC.
-  static MicrocodeResponse requestOperandLow(State& cpu, Common::BusResponse response);
+  static MicrocodeResponse requestAddress8(State& cpu, Common::BusResponse response);
 
-  // Stores the incoming low byte into the operand and makes a request to read
-  // the high byte from the PC, and increments the PC.
-  static MicrocodeResponse requestOperandHigh(State& cpu, Common::BusResponse response);
+  // Makes requests to read a full 16-bit address (low byte first, then high byte) from the PC,
+  // incrementing the PC after each read. Requires 2 cycles.
+  // After this function completes, cpu.lo will contain the low byte of the address, and
+  // the next bus response will contain the high byte of the address.
+  static MicrocodeResponse requestAddress16(State& state, BusResponse response);
 
-  // Stores the incoming hi byte into the operand and makes a request to read
-  // from the effective address.
-  static MicrocodeResponse requestEffectiveAddress(State& cpu, Common::BusResponse response);
+  // Makes a request to read the value at the effective address stored in cpu.lo and cpu.hi.
+  static MicrocodeResponse requestOperand(State& state, BusResponse response);
+
+  // Makes a request to read the value at the effective address stored in cpu.lo and cpu.hi,
+  // but ignores the data returned from the previous read.
+  static MicrocodeResponse requestOperandIgnoreData(State& state, BusResponse response);
+
+protected:
+  template<Common::Byte State::* reg>
+  static MicrocodeResponse preIndex(State& cpu, Common::BusResponse response)
+  // Stores the incoming hi byte into the operand and adjusts the low byte by the given index register.
+  // If there is overflow, it sets up the next action to fix the page boundary crossing. Either way,
+  // it will make a request to read from the effective address (it just might be the wrong one).
+  {
+    // The incoming response data is the high byte of the address
+    cpu.hi = response.data;
+
+    auto temp = static_cast<uint16_t>(cpu.lo);
+
+    temp += (cpu.*reg);
+    cpu.lo = static_cast<Common::Byte>(temp & 0xFF);
+
+    // This is the address that will be requested this cycle. If we overflowed (HiByte(temp) != 0),
+    // it will be wrong wrong and we'll schedule an extra step to request the right one.
+    auto effectiveAddr = Common::MakeAddress(cpu.lo, cpu.hi);
+
+    // Check for page boundary crossing
+    if ((temp & 0xff00) != 0)
+    {
+      // We've already calculated the incorrect address so we can go ahead and fix up the hi byte
+      // for the next read.
+      ++cpu.hi;
+
+      // Read wrong address first
+      return {BusRequest::Read(effectiveAddr), &fixupPageCrossing};
+    }
+
+    // Read correct address
+    return {BusRequest::Read(effectiveAddr)};
+  }
+
+private:
+  // Called as the second step of requestAddress16 to fetch the high byte after the low byte has been fetched.
+  static MicrocodeResponse requestAddressHigh(State& state, BusResponse response);
+  static MicrocodeResponse fixupPageCrossing(State& state, BusResponse response);
 };
 
 struct Implied : AddressMode
@@ -52,7 +96,7 @@ struct Immediate : AddressMode
   static constexpr auto type = AddressMode::Type::Immediate;
 
   static constexpr const Microcode ops[] = {
-      &requestOperandLow,
+      &requestAddress8,
   };
 };
 
@@ -96,65 +140,41 @@ struct ZeroPage : AddressMode
   // clang-format on
 
   static constexpr const Microcode ops[] = {
-      &requestOperandLow, &requestAddress,
+      &requestAddress8, &requestAddress,
       // requestAddressAfterIndexing is added conditionally if reg != nullptr
   };
 };
 
-template<Common::Byte State::* reg = nullptr>
-struct Absolute
+struct Absolute : AddressMode
 {
-  // clang-format off
-  static constexpr auto type =
-       reg == nullptr   ? State::AddressModeType::Absolute :
-      (reg == &State::x ? State::AddressModeType::AbsoluteX :
-                          State::AddressModeType::AbsoluteY);
+  static constexpr auto type = State::AddressModeType::Absolute;
   // clang-format on
 
-  static MicrocodeResponse requestAddress(State& cpu, Common::BusResponse response)
-  // Stores the incoming hi byte into the operand and adjusts the low byte by the given index register.
-  // If there is overflow, it sets up the next action to fix the page boundary crossing. Either way,
-  // it will make a request to read from the effective address (it just might be the wrong one).
-  {
-    // The incoming response data is the high byte of the address
-    cpu.hi = response.data;
+  static constexpr const Microcode ops[] = {
+      &AddressMode::requestAddress16,  // 2 cycles to fetch 16-bit address
+      &AddressMode::requestOperand,  // Read from effective address
+  };
+};
 
-    auto temp = static_cast<uint16_t>(cpu.lo);
-
-    if constexpr (reg != nullptr)
-    {
-      temp += (cpu.*reg);
-      cpu.lo = static_cast<Common::Byte>(temp & 0xFF);
-    }
-
-    // This is the address that will be requested this cycle. If we overflowed (HiByte(temp) != 0),
-    // it's wrong and we'll schedule an extra step to request the right one.
-    auto effectiveAddr = Common::MakeAddress(cpu.lo, cpu.hi);
-
-    // Check for page boundary crossing
-    if ((temp & 0xff00) != 0)
-    {
-      // Page crossing - need extra cycle
-      auto fixupCycle = [](State& cpu1, Common::BusResponse /*response*/) -> MicrocodeResponse
-      {
-        // We already have the correct effectiveAddr from requestEffectiveAddressIndexed
-        return {BusRequest::Read(Common::MakeAddress(cpu1.lo, cpu1.hi)), nullptr};
-      };
-
-      ++cpu.hi;
-
-      // Read wrong address first
-      return {BusRequest::Read(effectiveAddr), fixupCycle};
-    }
-
-    // Read correct address
-    return {BusRequest::Read(effectiveAddr)};
-  }
+struct AbsoluteX : AddressMode
+{
+  static constexpr auto type = State::AddressModeType::AbsoluteX;
 
   static constexpr const Microcode ops[] = {
-      &AddressMode::requestOperandLow,
-      &AddressMode::requestOperandHigh,
-      &requestAddress,
+      &AddressMode::requestAddress16,  // 2 cycles to fetch 16-bit address
+      &AddressMode::preIndex<&State::x>,
+      &AddressMode::requestOperandIgnoreData,  // Read from effective address
+  };
+};
+
+struct AbsoluteY : AddressMode
+{
+  static constexpr auto type = State::AddressModeType::AbsoluteY;
+
+  static constexpr const Microcode ops[] = {
+      &AddressMode::requestAddress16,  // 2 cycles to fetch 16-bit address
+      &AddressMode::preIndex<&State::y>,
+      &AddressMode::requestOperandIgnoreData,  // Read from effective address
   };
 };
 
@@ -163,8 +183,7 @@ struct AbsoluteJmp
   static constexpr auto type = State::AddressModeType::Absolute;
 
   static constexpr const Microcode ops[] = {
-      &AddressMode::requestOperandLow,
-      &AddressMode::requestOperandHigh,
+      &AddressMode::requestAddress16,  // 2 cycles to fetch 16-bit address
   };
 };
 
@@ -173,9 +192,75 @@ struct AbsoluteIndirectJmp
   static constexpr auto type = State::AddressModeType::Indirect;
 
   static constexpr const Microcode ops[] = {
-      &AddressMode::requestOperandLow,
-      &AddressMode::requestOperandHigh,
+      &AddressMode::requestAddress16,  // 2 cycles to fetch 16-bit address
   };
 };
+
+template<Common::Byte State::* reg = nullptr>
+struct Indirect : AddressMode
+{
+  // clang-format off
+  static constexpr auto type =
+       reg == &State::x ? State::AddressModeType::IndirectZpX :
+      (reg == &State::y ? State::AddressModeType::IndirectZpY :
+                          State::AddressModeType::Indirect);
+  // clang-format on
+
+  static MicrocodeResponse requestAddress(State& cpu, Common::BusResponse response)
+  {
+    // The incoming response data is the low byte of a zero page address
+    cpu.lo = response.data;
+
+    // Indirect zp,X adds X to the low byte, wrapping around within the zero page, before reading
+    // the byte at the given address.
+    if constexpr (reg == &State::x)
+    {
+      // Add X to the low byte, wrapping around within the zero page
+      cpu.lo = static_cast<Common::Byte>((cpu.lo + cpu.x) & 0xFF);
+    }
+
+    // This is the address that will be requested this cycle.
+    auto effectiveAddr = Common::MakeAddress(cpu.lo, 0x00);
+
+    return {BusRequest::Read(effectiveAddr)};
+  }
+
+  static MicrocodeResponse requestAddress1(State& cpu, Common::BusResponse response)
+  {
+    // The incoming response data is the low byte of a zero page address
+    cpu.lo = response.data;
+
+    // Indirect zp,Y adds Y to the low byte, possibly crossing
+    if constexpr (reg == &State::y)
+    {
+      // Add Y to the low byte, wrapping around within the zero page
+      cpu.lo = static_cast<Common::Byte>((cpu.lo + cpu.y) & 0xFF);
+    }
+
+    // Fetch the high byte of the effective address from the next zero page location
+    ++cpu.lo;  // Wraps around within zero page automatically
+    return {BusRequest::Read(Common::MakeAddress(cpu.lo, 0x00))};
+  }
+  static constexpr const Microcode ops[] = {
+      &AddressMode::requestAddress16,  // 2 cycles to fetch 16-bit address
+      &requestAddress,
+  };
+};
+
+#if 0
+
+struct Immediate : AddressMode
+
+{
+
+  Microcode ops[] = {fetchAddress8};
+};
+
+struct Absolute : AddressMode
+
+{
+
+  Microcode ops[] = {fetchAddress16};
+#endif
 
 }  // namespace cpu6502

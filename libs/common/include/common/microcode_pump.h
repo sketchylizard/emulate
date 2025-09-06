@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <tuple>
 
 // MicrocodePump - executes microcode operations in sequence, fetching opcodes as needed.
 // The CpuDefinition template parameter must define the following types and static methods:

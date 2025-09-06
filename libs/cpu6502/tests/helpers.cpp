@@ -65,6 +65,11 @@ bool execute(State& state, std::span<const Microcode> microcode, std::span<const
 
     stateResponse = codeToExecute(state, {cycle.input});
 
+    if (!stateResponse.request)
+    {
+      UNSCOPED_INFO("Microcode did not produce a bus request at cycle " << cycleCount);
+      return false;
+    }
     // Compare with expected result
     if (stateResponse.request != cycle.expected)
     {

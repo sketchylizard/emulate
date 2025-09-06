@@ -795,9 +795,9 @@ static constexpr auto c_instructions = []()
   add<Immediate>(0x69, "ADC", {adc}, table);
   add<ZeroPage<>>(0x65, "ADC", {adc}, table);
   add<ZeroPage<&State::x>>(0x75, "ADC", {adc}, table);
-  add<Absolute<>>(0x6D, "ADC", {adc}, table);
-  add<Absolute<&State::x>>(0x7D, "ADC", {adc}, table);
-  add<Absolute<&State::y>>(0x79, "ADC", {adc}, table);
+  add<Absolute>(0x6D, "ADC", {adc}, table);
+  add<AbsoluteX>(0x7D, "ADC", {adc}, table);
+  add<AbsoluteY>(0x79, "ADC", {adc}, table);
   // add<IndirectZpX>(0x61, "ADC", {adc}, table);
   // add<IndirectZpY>(0x71, "ADC", {adc}, table);
 
@@ -805,9 +805,9 @@ static constexpr auto c_instructions = []()
   add<Immediate>(0xA9, "LDA", {load<&State::a>}, table);
   add<ZeroPage<>>(0xA5, "LDA", {load<&State::a>}, table);
   add<ZeroPage<&State::x>>(0xB5, "LDA", {load<&State::a>}, table);
-  add<Absolute<>>(0xAD, "LDA", {load<&State::a>}, table);
-  add<Absolute<&State::x>>(0xBD, "LDA", {load<&State::a>}, table);
-  add<Absolute<&State::y>>(0xB9, "LDA", {load<&State::a>}, table);
+  add<Absolute>(0xAD, "LDA", {load<&State::a>}, table);
+  add<AbsoluteX>(0xBD, "LDA", {load<&State::a>}, table);
+  add<AbsoluteY>(0xB9, "LDA", {load<&State::a>}, table);
   // add<IndirectX>(0xA1, "LDA", {load<&State::a>}, table);
   // add<IndirectY>(0xB1, "LDA", {load<&State::a>}, table);
 
@@ -815,15 +815,15 @@ static constexpr auto c_instructions = []()
   add<Immediate>(0xA2, "LDX", {load<&State::x>}, table);
   add<ZeroPage<>>(0xA6, "LDX", {load<&State::x>}, table);
   add<ZeroPage<&State::y>>(0xB6, "LDX", {load<&State::x>}, table);
-  add<Absolute<>>(0xAE, "LDX", {load<&State::x>}, table);
-  add<Absolute<&State::y>>(0xBE, "LDX", {load<&State::x>}, table);
+  add<Absolute>(0xAE, "LDX", {load<&State::x>}, table);
+  add<AbsoluteY>(0xBE, "LDX", {load<&State::x>}, table);
 
   // LDY instructions
   add<Immediate>(0xA0, "LDY", {load<&State::y>}, table);
   add<ZeroPage<>>(0xA4, "LDY", {load<&State::y>}, table);
   add<ZeroPage<&State::x>>(0xB4, "LDY", {load<&State::y>}, table);
-  add<Absolute<>>(0xAC, "LDY", {load<&State::y>}, table);
-  add<Absolute<&State::x>>(0xBC, "LDY", {load<&State::y>}, table);
+  add<Absolute>(0xAC, "LDY", {load<&State::y>}, table);
+  add<AbsoluteX>(0xBC, "LDY", {load<&State::y>}, table);
 
   // Flag operations
   add<Implied>(0x18, "CLC", {flagOp<Flag::Carry, false>}, table);
@@ -837,35 +837,35 @@ static constexpr auto c_instructions = []()
   // STA variations
   add<ZeroPage<>>(0x85, "STA", {store<&State::a>}, table);
   add<ZeroPage<&State::x>>(0x95, "STA", {store<&State::a>}, table);
-  add<Absolute<>>(0x8D, "STA", {store<&State::a>}, table);
-  add<Absolute<&State::x>>(0x9D, "STA", {store<&State::a>}, table);
-  add<Absolute<&State::y>>(0x99, "STA", {store<&State::a>}, table);
+  add<Absolute>(0x8D, "STA", {store<&State::a>}, table);
+  add<AbsoluteX>(0x9D, "STA", {store<&State::a>}, table);
+  add<AbsoluteY>(0x99, "STA", {store<&State::a>}, table);
   // add<IndirectZpX>(0x81, "STA", {store<&State::a>}, table);
   // add<IndirectZpY>(0x91, "STA", {store<&State::a>}, table);
 
   // STX variations
   add<ZeroPage<>>(0x86, "STX", {store<&State::x>}, table);
   add<ZeroPage<&State::y>>(0x96, "STX", {store<&State::x>}, table);
-  add<Absolute<>>(0x8E, "STX", {store<&State::x>}, table);
+  add<Absolute>(0x8E, "STX", {store<&State::x>}, table);
   // STX has no absolute indexed modes
 
   // STY variations
   add<ZeroPage<>>(0x84, "STY", {store<&State::y>}, table);
   add<ZeroPage<&State::x>>(0x94, "STY", {store<&State::y>}, table);
-  add<Absolute<>>(0x8C, "STY", {store<&State::y>}, table);
+  add<Absolute>(0x8C, "STY", {store<&State::y>}, table);
   // STY has no absolute indexed modes
   // STY has no indirect modes
 
   // ORA variations
   // add<IndirectZpX>(0x01, "ORA", {ora}, table);
   add<ZeroPage<>>(0x05, "ORA", {ora}, table);
-  add<Absolute<>>(0x0D, "ORA", {ora}, table);
+  add<Absolute>(0x0D, "ORA", {ora}, table);
   // add<IndirectZpY>(0x11, "ORA", {ora}, table);
   add<ZeroPage<&State::x>>(0x15, "ORA", {ora}, table);
-  add<Absolute<&State::y>>(0x19, "ORA", {ora}, table);
-  add<Absolute<&State::x>>(0x1D, "ORA", {ora}, table);
+  add<AbsoluteY>(0x19, "ORA", {ora}, table);
+  add<AbsoluteX>(0x1D, "ORA", {ora}, table);
 
-  // JMP Absolute<> and JMP Indirect
+  // JMP Absolute and JMP Indirect
   add<AbsoluteJmp>(0x4C, "JMP", {jmpAbsolute}, table);
   add<AbsoluteIndirectJmp>(0x6C, "JMP", {jmpIndirect}, table);
 
@@ -889,21 +889,21 @@ static constexpr auto c_instructions = []()
   add<Immediate>(0xC9, "CMP", {compare<&State::a>}, table);
   add<ZeroPage<>>(0xC5, "CMP", {compare<&State::a>}, table);
   add<ZeroPage<&State::x>>(0xD5, "CMP", {compare<&State::a>}, table);
-  add<Absolute<>>(0xCD, "CMP", {compare<&State::a>}, table);
-  add<Absolute<&State::x>>(0xDD, "CMP", {compare<&State::a>}, table);
-  add<Absolute<&State::y>>(0xD9, "CMP", {compare<&State::a>}, table);
+  add<Absolute>(0xCD, "CMP", {compare<&State::a>}, table);
+  add<AbsoluteX>(0xDD, "CMP", {compare<&State::a>}, table);
+  add<AbsoluteY>(0xD9, "CMP", {compare<&State::a>}, table);
   // add<IndirectZpX>(0xC1, "CMP", {compare<&State::a>}, table);
   // add<IndirectZpY>(0xD1, "CMP", {compare<&State::a>}, table);
 
   // CPX — Compare X Register
   add<Immediate>(0xE0, "CPX", {compare<&State::x>}, table);
   add<ZeroPage<>>(0xE4, "CPX", {compare<&State::x>}, table);
-  add<Absolute<>>(0xEC, "CPX", {compare<&State::x>}, table);
+  add<Absolute>(0xEC, "CPX", {compare<&State::x>}, table);
 
   // CPY — Compare Y Register
   add<Immediate>(0xC0, "CPY", {compare<&State::y>}, table);
   add<ZeroPage<>>(0xC4, "CPY", {compare<&State::y>}, table);
-  add<Absolute<>>(0xCC, "CPY", {compare<&State::y>}, table);
+  add<Absolute>(0xCC, "CPY", {compare<&State::y>}, table);
 
   add<Implied>(0x98, "TYA", {transfer<&State::y, &State::a>}, table);
   add<Implied>(0xA8, "TAY", {transfer<&State::a, &State::y>}, table);
@@ -915,9 +915,9 @@ static constexpr auto c_instructions = []()
   add<Immediate>(0x49, "EOR", {eor}, table);
   add<ZeroPage<>>(0x45, "EOR", {eor}, table);
   add<ZeroPage<&State::x>>(0x55, "EOR", {eor}, table);
-  add<Absolute<>>(0x4D, "EOR", {eor}, table);
-  add<Absolute<&State::x>>(0x5D, "EOR", {eor}, table);
-  add<Absolute<&State::y>>(0x59, "EOR", {eor}, table);
+  add<Absolute>(0x4D, "EOR", {eor}, table);
+  add<AbsoluteX>(0x5D, "EOR", {eor}, table);
+  add<AbsoluteY>(0x59, "EOR", {eor}, table);
   // add<IndirectZpX>(0x41, "EOR", {eor}, table);
   // add<IndirectZpY>(0x51, "EOR", {eor}, table);
 
@@ -927,16 +927,16 @@ static constexpr auto c_instructions = []()
       .add<Implied, PushOp<&State::a, false>>(0x48, "PHA")
       .add<Implied, PullOp<&State::p, true, false>>(0x28, "PLP")
       .add<Implied, PushOp<&State::p, true>>(0x08, "PHP")
-      .add<Absolute<>, jsr>(0x20, "JSR")  // Note: JSR uses absolute addressing for the target
+      .add<Absolute, jsr>(0x20, "JSR")  // Note: JSR uses absolute addressing for the target
       .add<Implied, rts>(0x60, "RTS")
       .add<ZeroPage<>, IncrementMemory>(0xE6, "INC")  // INC $nn
       .add<ZeroPage<&State::x>, IncrementMemory>(0xF6, "INC")  // INC $nn,X
-      .add<Absolute<>, IncrementMemory>(0xEE, "INC")  // INC $nnnn
-      .add<Absolute<&State::x>, IncrementMemory>(0xFE, "INC")  // INC $nnnn,X
+      .add<Absolute, IncrementMemory>(0xEE, "INC")  // INC $nnnn
+      .add<AbsoluteX, IncrementMemory>(0xFE, "INC")  // INC $nnnn,X
       .add<ZeroPage<>, DecrementMemory>(0xC6, "DEC")  // DEC $nn
       .add<ZeroPage<&State::x>, DecrementMemory>(0xD6, "DEC")  // DEC $nn,X
-      .add<Absolute<>, DecrementMemory>(0xCE, "DEC")  // DEC $nnnn
-      .add<Absolute<&State::x>, DecrementMemory>(0xDE, "DEC")  // DEC $nnnn,X
+      .add<Absolute, DecrementMemory>(0xCE, "DEC")  // DEC $nnnn
+      .add<AbsoluteX, DecrementMemory>(0xDE, "DEC")  // DEC $nnnn,X
       // Accumulator mode (2 cycles):
       .add<Implied, ShiftLeftAccumulator>(0x0A, "ASL")
       .add<Implied, ShiftRightAccumulator>(0x4A, "LSR")
@@ -945,20 +945,20 @@ static constexpr auto c_instructions = []()
       // Memory modes (5-7 cycles):
       .add<ZeroPage<>, ShiftLeft>(0x06, "ASL")  // ASL $nn
       .add<ZeroPage<&State::x>, ShiftLeft>(0x16, "ASL")  // ASL $nn,X
-      .add<Absolute<>, ShiftLeft>(0x0E, "ASL")  // ASL $nnnn
-      .add<Absolute<&State::x>, ShiftLeft>(0x1E, "ASL")  // ASL $nnnn,X
+      .add<Absolute, ShiftLeft>(0x0E, "ASL")  // ASL $nnnn
+      .add<AbsoluteX, ShiftLeft>(0x1E, "ASL")  // ASL $nnnn,X
       .add<ZeroPage<>, ShiftRight>(0x46, "LSR")  // LSR $nn
       .add<ZeroPage<&State::x>, ShiftRight>(0x56, "LSR")  // LSR $nn,X
-      .add<Absolute<>, ShiftRight>(0x4E, "LSR")  // LSR $nnnn
-      .add<Absolute<&State::x>, ShiftRight>(0x5E, "LSR")  // LSR $nnnn,X
+      .add<Absolute, ShiftRight>(0x4E, "LSR")  // LSR $nnnn
+      .add<AbsoluteX, ShiftRight>(0x5E, "LSR")  // LSR $nnnn,X
       .add<ZeroPage<>, RotateLeft>(0x26, "ROL")  // ROL $nn
       .add<ZeroPage<&State::x>, RotateLeft>(0x36, "ROL")  // ROL $nn,X
-      .add<Absolute<>, RotateLeft>(0x2E, "ROL")  // ROL $nnnn
-      .add<Absolute<&State::x>, RotateLeft>(0x3E, "ROL")  // ROL $nnnn,X
+      .add<Absolute, RotateLeft>(0x2E, "ROL")  // ROL $nnnn
+      .add<AbsoluteX, RotateLeft>(0x3E, "ROL")  // ROL $nnnn,X
       .add<ZeroPage<>, RotateRight>(0x66, "ROR")  // ROR $nn
       .add<ZeroPage<&State::x>, RotateRight>(0x76, "ROR")  // ROR $nn,X
-      .add<Absolute<>, RotateRight>(0x6E, "ROR")  // ROR $nnnn
-      .add<Absolute<&State::x>, RotateRight>(0x7E, "ROR")  // ROR $nnnn,X
+      .add<Absolute, RotateRight>(0x6E, "ROR")  // ROR $nnnn
+      .add<AbsoluteX, RotateRight>(0x7E, "ROR")  // ROR $nnnn,X
       ;
 
   // Add more instructions as needed

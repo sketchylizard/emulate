@@ -8,7 +8,6 @@
 #include "common/address_string_maker.h"
 #include "cpu6502/address_mode.h"
 #include "cpu6502/state.h"
-#include "helpers.h"
 
 using namespace Common;
 using namespace cpu6502;
@@ -19,37 +18,47 @@ static bool operator==(const State& lhs, const State& rhs) noexcept
          lhs.hi == rhs.hi && lhs.lo == rhs.lo;
 }
 
-TEST_CASE("requestOperandLow", "[addressing]")
+TEST_CASE("requestAddress8", "[addressing]")
 {
   State cpu{.pc = 0x8001_addr, .hi = 0xFF, .lo = 0xEE};  // Set hi/lo to ensure they are changed
 
-  auto request = AddressMode::requestOperandLow(cpu, BusResponse{});
+  auto request = AddressMode::requestAddress8(cpu, BusResponse{});
   CHECK(request.request == BusRequest::Read(0x8001_addr));
 
   // Only the PC should be incremented
   CHECK((cpu == State{.pc = 0x8002_addr}));
 }
 
-TEST_CASE("requestOperandHigh", "[addressing]")
+TEST_CASE("requestAddress16", "[addressing]")
 {
   State cpu{.pc = 0x8002_addr};
 
-  auto request = AddressMode::requestOperandHigh(cpu, BusResponse{0x34});
-  CHECK(request.request == BusRequest::Read(0x8002_addr));
+  // Request 16-bit address should read 2 bytes, low byte first, then high byte
+
+  auto [request, next] = AddressMode::requestAddress16(cpu, BusResponse{0x12});
+  CHECK(request == BusRequest::Read(0x8002_addr));
+
+  auto [request2, next2] = next(cpu, BusResponse{0x34});
+  CHECK(request2 == BusRequest::Read(0x8003_addr));
+  CHECK(next2 == nullptr);
 
   // Only the PC, and the lo byte should be set
-  CHECK((cpu == State{.pc = 0x8003_addr, .lo = 0x34}));
+  CHECK((cpu == State{.pc = 0x8004_addr, .lo = 0x34}));
 }
 
 TEST_CASE("requestAddress", "[addressing]")
 {
   State cpu{.pc = 0x8003_addr, .lo = 0x34};
 
-  auto request = Absolute<>::requestAddress(cpu, BusResponse{0x12});
-  CHECK(request.request == BusRequest::Read(0x1234_addr));
+  auto [request, next] = Absolute::ops[0](cpu, BusResponse{0x99});  // random
+  CHECK(request == BusRequest::Read(0x8003_addr));
+  CHECK(next != nullptr);
+  auto [request2, next2] = next(cpu, BusResponse{0x34});
+  CHECK(request2 == BusRequest::Read(0x8004_addr));
+  CHECK(next2 == nullptr);
 
   // Only the PC, the lo byte, and the hi byte should be set
-  CHECK((cpu == State{.pc = 0x8003_addr, .hi = 0x12, .lo = 0x34}));
+  CHECK((cpu == State{.pc = 0x8005_addr, .lo = 0x34}));
 }
 
 // Helper to select register for template test case
@@ -60,54 +69,114 @@ struct RegType
 using XReg = RegType<0>;
 using YReg = RegType<1>;
 
-
-TEMPLATE_TEST_CASE("Absolute::requestAddress", "[addressing]", XReg, YReg)
+bool executeAddress(State& cpu, std::span<const Microcode> codeToExecute, std::span<const Cycle> cycles)
 {
-  constexpr auto reg = std::is_same_v<TestType, XReg> ? &State::x : &State::y;
+  auto cycleCount = 0;
+  MicrocodeResponse response{};
+
+  for (const auto& cycle : cycles)
+  {
+    ++cycleCount;
+    do
+    {
+      // Execute the next microcode step
+      if (response.injection == nullptr)
+      {
+        // Start of a new instruction or no next step; fetch the next microcode operation
+        if (codeToExecute.empty())
+        {
+          UNSCOPED_INFO("No more microcode to execute at cycle " << cycleCount);
+          return false;
+        }
+        response = codeToExecute.front()(cpu, BusResponse{cycle.input});
+        codeToExecute = codeToExecute.subspan(1);
+      }
+      else
+      {
+        response = response.injection(cpu, BusResponse{cycle.input});
+      }
+    } while (!response.request);
+
+    // Compare with expected result
+    if (response.request != cycle.expected)
+    {
+      UNSCOPED_INFO(
+          "Cycle " << cycleCount << ": Expected "
+                   << std::format("{{address: {:04x}, data: {}, control: {}}}",
+                          static_cast<uint16_t>(cycle.expected.address), std::format("{:#04x}", cycle.expected.data),
+                          std::format("{:#04x}", static_cast<uint8_t>(cycle.expected.control)))
+                   << " but got "
+                   << std::format("{{address: {:04x}, data: {}, control: {}}}",
+                          static_cast<uint16_t>(response.request.address), std::format("{:#04x}", response.request.data),
+                          std::format("{:#04x}", static_cast<uint8_t>(response.request.control))));
+      return false;
+    }
+  }
+  return true;
+}
+
+TEMPLATE_TEST_CASE("AbsoluteIndex", "[addressing]", AbsoluteX, AbsoluteY)
+{
+  constexpr auto reg = std::is_same_v<TestType, AbsoluteX> ? &State::x : &State::y;
+
+  State cpu{.pc = 0x1000_addr};
 
   SECTION("Basic offset - no page crossing")
   {
-    State cpu{.pc = 0x8003_addr, .lo = 0x34};
     (cpu.*reg) = 0x01;
 
-    auto request = Absolute<reg>::requestAddress(cpu, BusResponse{0x12});
-    CHECK(request.request == BusRequest::Read(0x1235_addr));
+    Cycle cycles[] = {
+        // Step 0: Read low byte of address
+        {0x00, BusRequest::Read(0x1000_addr)},
+        // Step 1: Read high byte of address
+        {0x34, BusRequest::Read(0x1001_addr)},
+        // Step 2: Add index register to low byte and read from effective address
+        {0x12, BusRequest::Read(0x1235_addr)},
+    };
 
-    State expected{.pc = 0x8003_addr, .hi = 0x12, .lo = 0x35};
+    executeAddress(cpu, TestType::ops, cycles);
+
+    State expected{.pc = 0x1002_addr, .hi = 0x12, .lo = 0x35};
     (expected.*reg) = 0x01;
     CHECK((cpu == expected));
   }
 
   SECTION("Page boundary crossing - forward overflow")
   {
-    State cpu{.pc = 0x8003_addr, .lo = 0x80};
     (cpu.*reg) = 0xFF;
 
-    auto request = Absolute<reg>::requestAddress(cpu, BusResponse{0x12});
+    Cycle cycles[] = {
+        // Step 0: Read low byte of address
+        {0x00, BusRequest::Read(0x1000_addr)},
+        // Step 1: Read high byte of address
+        {0x80, BusRequest::Read(0x1001_addr)},
+        // Step 2: Add index register to low byte and read from effective address (wrong address first)
+        {0x12, BusRequest::Read(0x127F_addr)},
+        // Step 3: Read from correct effective address after page boundary fix
+        {0x99, BusRequest::Read(0x137F_addr)},
+    };
+    executeAddress(cpu, TestType::ops, cycles);
 
-    // Should read from wrong address first (0x127F instead of 0x137F)
-    CHECK(request.request == BusRequest::Read(0x127F_addr));
-    CHECK(request.injection != nullptr);  // Page boundary fix scheduled
-
-    // Hi byte should be corrected for next cycle, lo byte updated
-    CHECK(cpu.hi == 0x13);  // Corrected from 0x12 to 0x13
-    CHECK(cpu.lo == 0x7F);  // 0x80 + 0xFF = 0x17F, low byte = 0x7F
-
-    // Test the lambda that fixes page boundary
-    auto nextRequest = request.injection(cpu, BusResponse{0x00});  // Dummy response
-    CHECK(nextRequest.request == BusRequest::Read(0x137F_addr));  // Correct address
+    State expected{.pc = 0x1002_addr, .hi = 0x13, .lo = 0x7F};
+    (expected.*reg) = 0xFF;
+    CHECK((cpu == expected));
   }
 
   SECTION("Page boundary crossing - maximum offset")
   {
-    State cpu{.pc = 0x8003_addr, .lo = 0xFF};
     (cpu.*reg) = 0xFF;
 
-    auto request = Absolute<reg>::requestAddress(cpu, BusResponse{0x12});
-
-    // Should read from wrong address first (0x12FE instead of 0x13FE)
-    CHECK(request.request == BusRequest::Read(0x12FE_addr));
-    CHECK(request.injection != nullptr);  // Page boundary fix scheduled
+    Cycle cycles[] = {
+        // Step 0: Read low byte of address
+        {0x99, BusRequest::Read(0x1000_addr)},
+        // Step 1: Read high byte of address
+        {0xFF, BusRequest::Read(0x1001_addr)},
+        // Step 2: Add index register to low byte and read from effective address (wrong address first)
+        {0x12, BusRequest::Read(0x12FE_addr)},
+        // Step 3: Read from correct effective address after page boundary fix
+        {0x99, BusRequest::Read(0x13FE_addr)},
+    };
+    executeAddress(cpu, TestType::ops, cycles);
 
     // Hi byte corrected, lo byte wrapped
     CHECK(cpu.hi == 0x13);  // Corrected from 0x12 to 0x13
@@ -116,14 +185,18 @@ TEMPLATE_TEST_CASE("Absolute::requestAddress", "[addressing]", XReg, YReg)
 
   SECTION("No page boundary crossing - near boundary")
   {
-    State cpu{.pc = 0x8003_addr, .lo = 0x80};
     (cpu.*reg) = 0x7F;
 
-    auto request = Absolute<reg>::requestAddress(cpu, BusResponse{0x12});
+    Cycle cycles[] = {
+        // Step 0: Read low byte of address
+        {0x99, BusRequest::Read(0x1000_addr)},
+        // Step 1: Read high byte of address
+        {0x80, BusRequest::Read(0x1001_addr)},
+        // Step 2: Add index register to low byte and read from effective address
+        {0x12, BusRequest::Read(0x12FF_addr)},
+    };
 
-    // Should read correct address immediately (no overflow)
-    CHECK(request.request == BusRequest::Read(0x12FF_addr));
-    CHECK(request.injection == nullptr);
+    executeAddress(cpu, TestType::ops, cycles);
 
     // No correction needed
     CHECK(cpu.hi == 0x12);  // Unchanged
@@ -131,9 +204,9 @@ TEMPLATE_TEST_CASE("Absolute::requestAddress", "[addressing]", XReg, YReg)
   }
 }
 
-TEMPLATE_TEST_CASE("absolute-indexed", "[addressing]", XReg, YReg)
+TEMPLATE_TEST_CASE("absolute-indexed", "[addressing]", AbsoluteX, AbsoluteY)
 {
-  constexpr auto reg = std::is_same_v<TestType, XReg> ? &State::x : &State::y;
+  constexpr auto reg = std::is_same_v<TestType, AbsoluteX> ? &State::x : &State::y;
 
   SECTION("Basic offset - no page crossing")
   {
@@ -148,7 +221,7 @@ TEMPLATE_TEST_CASE("absolute-indexed", "[addressing]", XReg, YReg)
         // Step 2: Add index register to low byte and read from effective address
         {0x12, BusRequest::Read(0x1235_addr)},
     };
-    CHECK(execute(cpu, Absolute<reg>::ops, cycles));
+    CHECK(executeAddress(cpu, TestType::ops, cycles));
   }
 
   SECTION("Page boundary crossing - forward overflow")
@@ -166,7 +239,7 @@ TEMPLATE_TEST_CASE("absolute-indexed", "[addressing]", XReg, YReg)
         // Step 3: Read from correct effective address after page boundary fix
         {0x99, BusRequest::Read(0x137F_addr)},
     };
-    CHECK(execute(cpu, Absolute<reg>::ops, cycles));
+    CHECK(executeAddress(cpu, TestType::ops, cycles));
   }
 
   SECTION("Page boundary crossing - maximum offset")
@@ -184,7 +257,7 @@ TEMPLATE_TEST_CASE("absolute-indexed", "[addressing]", XReg, YReg)
         // Step 3: Read from correct effective address after page boundary fix
         {0x99, BusRequest::Read(0x137F_addr)},
     };
-    CHECK(execute(cpu, Absolute<reg>::ops, cycles));
+    CHECK(executeAddress(cpu, TestType::ops, cycles));
   }
 
   SECTION("No page boundary crossing - near boundary")
@@ -200,13 +273,13 @@ TEMPLATE_TEST_CASE("absolute-indexed", "[addressing]", XReg, YReg)
         // Step 2: Add index register to low byte and read from effective address
         {0x12, BusRequest::Read(0x12FF_addr)},
     };
-    CHECK(execute(cpu, Absolute<reg>::ops, cycles));
+    CHECK(executeAddress(cpu, TestType::ops, cycles));
   }
 }
 
 TEST_CASE("requestZeroPageAddress", "[addressing]")
 {
-  State cpu{.hi = 0x00};  // Hi byte should already be 0 from requestOperandLow
+  State cpu{.hi = 0x00};  // Hi byte should already be 0 from requestAddress8
   auto request = ZeroPage<>::requestAddress(cpu, BusResponse{0x42});
   CHECK(request.request == BusRequest::Read(0x0042_addr));  // Zero page address formed from response
 
@@ -293,15 +366,15 @@ TEST_CASE("Zero page addressing mode complete sequence", "[addressing]")
     State cpu{.pc = 0x8001_addr};
 
     Cycle cycles[] = {
-        {0x00, Common::BusRequest::Read(0x8001_addr)},  // requestOperandLow: dummy input, request operand, set hi=0
+        {0x00, Common::BusRequest::Read(0x8001_addr)},  // requestAddress8: dummy input, request operand, set hi=0
         {0x42, Common::BusRequest::Read(0x0042_addr)},  // requestZeroPageAddress: receive ZP addr (0x42), request
                                                         // from $0042
     };
 
-    CHECK(execute(cpu, ZeroPage<>::ops, cycles));
+    CHECK(executeAddress(cpu, ZeroPage<>::ops, cycles));
 
     // Verify final state after addressing mode complete
-    CHECK(cpu.pc == 0x8002_addr);  // PC incremented by requestOperandLow
+    CHECK(cpu.pc == 0x8002_addr);  // PC incremented by requestAddress8
     CHECK(cpu.hi == 0x00);  // High byte set to 0 for zero page
     CHECK(cpu.lo == 0x42);  // Low byte contains zero page address
   }
@@ -315,7 +388,7 @@ TEST_CASE("Zero page addressing mode complete sequence", "[addressing]")
         {0x00, Common::BusRequest::Read(0x0000_addr)},  // Request from address $00
     };
 
-    CHECK(execute(cpu, ZeroPage<>::ops, cycles));
+    CHECK(executeAddress(cpu, ZeroPage<>::ops, cycles));
 
     CHECK(cpu.pc == 0x9001_addr);
     CHECK(cpu.hi == 0x00);
@@ -331,7 +404,7 @@ TEST_CASE("Zero page addressing mode complete sequence", "[addressing]")
         {0xFF, Common::BusRequest::Read(0x00FF_addr)},  // Request from address $FF
     };
 
-    CHECK(execute(cpu, ZeroPage<>::ops, cycles));
+    CHECK(executeAddress(cpu, ZeroPage<>::ops, cycles));
 
     CHECK(cpu.pc == 0xA001_addr);
     CHECK(cpu.hi == 0x00);
@@ -348,7 +421,7 @@ TEST_CASE("Zero page addressing mode complete sequence", "[addressing]")
         {0x10, Common::BusRequest::Read(0x0010_addr)},
     };
 
-    CHECK(execute(cpu, ZeroPage<>::ops, cycles1));
+    CHECK(executeAddress(cpu, ZeroPage<>::ops, cycles1));
     CHECK(cpu.pc == 0x8001_addr);
     CHECK(cpu.lo == 0x10);
 
@@ -358,7 +431,7 @@ TEST_CASE("Zero page addressing mode complete sequence", "[addressing]")
         {0x20, Common::BusRequest::Read(0x0020_addr)},
     };
 
-    CHECK(execute(cpu, ZeroPage<>::ops, cycles2));
+    CHECK(executeAddress(cpu, ZeroPage<>::ops, cycles2));
     CHECK(cpu.pc == 0x8002_addr);
     CHECK(cpu.lo == 0x20);
   }
@@ -374,13 +447,13 @@ TEMPLATE_TEST_CASE("Zero page indexed addressing mode complete sequence", "[addr
     (cpu.*reg) = 0x05;
 
     Cycle cycles[] = {
-        {0x00, Common::BusRequest::Read(0x8001_addr)},  // requestOperandLow: request operand, set hi=0
+        {0x00, Common::BusRequest::Read(0x8001_addr)},  // requestAddress8: request operand, set hi=0
         {0x40, Common::BusRequest::Read(0x0040_addr)},  // requestAddress: receive 0x40, request from $40
         {0x40, Common::BusRequest::Read(0x0045_addr)},  // requestAddressAfterIndexing: receive 0x40, add reg (0x05),
                                                         // request from $45
     };
 
-    CHECK(execute(cpu, ZeroPage<reg>::ops, cycles));
+    CHECK(executeAddress(cpu, ZeroPage<reg>::ops, cycles));
 
     State expected{.pc = 0x8002_addr, .hi = 0x00, .lo = 0x45};
     (expected.*reg) = 0x05;
@@ -398,7 +471,7 @@ TEMPLATE_TEST_CASE("Zero page indexed addressing mode complete sequence", "[addr
         {0x99, Common::BusRequest::Read(0x0008_addr)},  // 0xF8 + 0x10 = 0x108, wraps to 0x08
     };
 
-    CHECK(execute(cpu, ZeroPage<reg>::ops, cycles));
+    CHECK(executeAddress(cpu, ZeroPage<reg>::ops, cycles));
 
     State expected{.pc = 0x8002_addr, .hi = 0x00, .lo = 0x08};
     (expected.*reg) = 0x10;
@@ -416,7 +489,7 @@ TEMPLATE_TEST_CASE("Zero page indexed addressing mode complete sequence", "[addr
         {0xBB, Common::BusRequest::Read(0x00FE_addr)},  // 0xFF + 0xFF = 0x1FE, wraps to 0xFE
     };
 
-    CHECK(execute(cpu, ZeroPage<reg>::ops, cycles));
+    CHECK(executeAddress(cpu, ZeroPage<reg>::ops, cycles));
 
     State expected{.pc = 0x8002_addr, .hi = 0x00, .lo = 0xFE};
     (expected.*reg) = 0xFF;
@@ -434,7 +507,7 @@ TEMPLATE_TEST_CASE("Zero page indexed addressing mode complete sequence", "[addr
         {0x33, Common::BusRequest::Read(0x0042_addr)},  // Reads from address after adding index (no change)
     };
 
-    CHECK(execute(cpu, ZeroPage<reg>::ops, cycles));
+    CHECK(executeAddress(cpu, ZeroPage<reg>::ops, cycles));
 
     State expected{.pc = 0x8002_addr, .hi = 0x00, .lo = 0x42};
     (expected.*reg) = 0x00;
@@ -452,7 +525,7 @@ TEMPLATE_TEST_CASE("Zero page indexed addressing mode complete sequence", "[addr
         {0x11, Common::BusRequest::Read(0x0000_addr)},  // 0xFF + 0x01 = 0x100, wraps to 0x00
     };
 
-    CHECK(execute(cpu, ZeroPage<reg>::ops, cycles));
+    CHECK(executeAddress(cpu, ZeroPage<reg>::ops, cycles));
 
     State expected{.pc = 0x8002_addr, .hi = 0x00, .lo = 0x00};
     (expected.*reg) = 0x01;
@@ -471,7 +544,7 @@ TEMPLATE_TEST_CASE("Zero page indexed addressing mode complete sequence", "[addr
         {0xFF, Common::BusRequest::Read(0x0012_addr)},  // 0x10 + 0x02 = 0x12
     };
 
-    CHECK(execute(cpu, ZeroPage<reg>::ops, cycles1));
+    CHECK(executeAddress(cpu, ZeroPage<reg>::ops, cycles1));
     CHECK(cpu.pc == 0x8001_addr);
     CHECK(cpu.lo == 0x12);
 
@@ -482,7 +555,7 @@ TEMPLATE_TEST_CASE("Zero page indexed addressing mode complete sequence", "[addr
         {0xEF, Common::BusRequest::Read(0x0022_addr)},  // 0x20 + 0x02 = 0x22
     };
 
-    CHECK(execute(cpu, ZeroPage<reg>::ops, cycles2));
+    CHECK(executeAddress(cpu, ZeroPage<reg>::ops, cycles2));
 
     State expected{.pc = 0x8002_addr, .hi = 0x00, .lo = 0x22};
     (expected.*reg) = 0x02;
@@ -497,10 +570,10 @@ TEST_CASE("Immediate addressing mode complete sequence", "[addressing]")
     State cpu{.pc = 0x8001_addr};
 
     Cycle cycles[] = {
-        {0x42, Common::BusRequest::Read(0x8001_addr)},  // requestOperandLow: receive immediate value (0x42)
+        {0x42, Common::BusRequest::Read(0x8001_addr)},  // requestAddress8: receive immediate value (0x42)
     };
 
-    CHECK(execute(cpu, Immediate::ops, cycles));
+    CHECK(executeAddress(cpu, Immediate::ops, cycles));
 
     // Verify final state
     CHECK(cpu.pc == 0x8002_addr);  // PC incremented
@@ -515,7 +588,7 @@ TEST_CASE("Immediate addressing mode complete sequence", "[addressing]")
         {0xFF, Common::BusRequest::Read(0x9000_addr)},  // Maximum 8-bit value
     };
 
-    CHECK(execute(cpu, Immediate::ops, cycles));
+    CHECK(executeAddress(cpu, Immediate::ops, cycles));
   }
 
   SECTION("Immediate mode with zero")
@@ -526,6 +599,6 @@ TEST_CASE("Immediate addressing mode complete sequence", "[addressing]")
         {0x00, Common::BusRequest::Read(0xA000_addr)},  // Zero immediate value
     };
 
-    CHECK(execute(cpu, Immediate::ops, cycles));
+    CHECK(executeAddress(cpu, Immediate::ops, cycles));
   }
 }
