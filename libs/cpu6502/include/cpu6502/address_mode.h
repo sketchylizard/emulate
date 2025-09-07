@@ -94,6 +94,8 @@ protected:
     return {BusRequest::Read(effectiveAddr)};
   }
 
+  static MicrocodeResponse requestIndirectHigh(State& state, BusResponse response);
+
 private:
   // Called as the second step of requestAddress16 to fetch the high byte after the low byte has been fetched.
   static MicrocodeResponse requestAddressHigh(State& state, BusResponse response);
@@ -203,14 +205,12 @@ struct AbsoluteIndirectJmp : AddressMode
 
 struct IndirectZeroPageX : AddressMode
 {
-  static MicrocodeResponse requestIndirectLow(State& state, BusResponse response);
-  static MicrocodeResponse requestIndirectHigh(State& state, BusResponse response);
+  static MicrocodeResponse requestIndirect16(State& state, BusResponse response);
 
   static constexpr const Microcode ops[] = {
       &AddressMode::requestAddress8,  // Fetch base address $nn
       &AddressMode::addZeroPageIndex<&State::x>,  // Add X → pointer address
-      &IndirectZeroPageX::requestIndirectLow,  // Read low byte from pointer
-      &IndirectZeroPageX::requestIndirectHigh,  // Read high byte from pointer+1
+      &IndirectZeroPageX::requestIndirect16,  // 2 cycles to fetch 16-bit address from pointer
       &AddressMode::requestOperand<&State::hi>,  // Store high byte and read from effective address
   };
   static constexpr DisassemblyFormat format{"($", ",X)", 1};  // e.g. "($44,X)"
@@ -218,12 +218,11 @@ struct IndirectZeroPageX : AddressMode
 
 struct IndirectZeroPageY : AddressMode
 {
-  static MicrocodeResponse requestIndirectLow(State& state, BusResponse response);
+  static MicrocodeResponse requestIndirect16(State& state, BusResponse response);
 
   static constexpr const Microcode ops[] = {
       &AddressMode::requestAddress8,  // Fetch base address $nn
-      &IndirectZeroPageY::requestIndirectLow,  // Read low byte from pointer
-      &IndirectZeroPageX::requestIndirectHigh,  // Read high byte from pointer+1
+      &IndirectZeroPageY::requestIndirect16,  // Read low byte from pointer
       &AddressMode::addIndex16<&State::y>,  // Add Y → pointer address
   };
   static constexpr DisassemblyFormat format{"($", ",)Y", 1};  // e.g. "($44),Y"

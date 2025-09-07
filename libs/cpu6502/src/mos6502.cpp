@@ -697,7 +697,7 @@ namespace
 using InstructionTable = std::array<Instruction, 256>;
 
 template<typename Mode>
-constexpr void add(Common::Byte opcode, const char* mnemonic, std::initializer_list<const Microcode> operations,
+constexpr void add(Common::Byte opcode, std::string_view mnemonic, std::initializer_list<const Microcode> operations,
     InstructionTable& table)
 {
   // Get the addressing mode microcode based on template parameter
@@ -711,7 +711,10 @@ constexpr void add(Common::Byte opcode, const char* mnemonic, std::initializer_l
 
   Instruction& instr = table[opcode];
   instr.opcode = opcode;
-  instr.mnemonic = mnemonic;
+  for (size_t i = 0; i != std::size(instr.mnemonic); ++i)
+  {
+    instr.mnemonic[i] = (i < mnemonic.size()) ? mnemonic[i] : 0;
+  }
   instr.format = Mode::format;
 
   // Copy addressing microcode first
@@ -739,7 +742,7 @@ struct Builder
   InstructionTable& table;
 
   template<typename Mode, typename Cmd>
-  constexpr Builder& add(Common::Byte opcode, const char* mnemonic)
+  constexpr Builder& add(Common::Byte opcode, std::string_view mnemonic)
   {
     // Get the addressing mode microcode based on template parameter
     std::span<const Microcode> addressingOps = Mode::ops;
@@ -753,7 +756,10 @@ struct Builder
 
     Instruction& instr = table[opcode];
     instr.opcode = opcode;
-    instr.mnemonic = mnemonic;
+    for (size_t i = 0; i != std::size(instr.mnemonic); ++i)
+    {
+      instr.mnemonic[i] = (i < mnemonic.size()) ? mnemonic[i] : 0;
+    }
     instr.format = Mode::format;
 
     // Copy addressing microcode first

@@ -29,9 +29,8 @@ struct Instruction
   static constexpr size_t c_maxOperations = 7;
 
   Common::Byte opcode = 0;
-  Common::Byte length = 1;  // total length in bytes (opcode + operands)
+  char mnemonic[4] = "???";
   DisassemblyFormat format;
-  const char* mnemonic = "???";
   Microcode ops[c_maxOperations] = {};  // sequence of microcode functions to execute
 };
 

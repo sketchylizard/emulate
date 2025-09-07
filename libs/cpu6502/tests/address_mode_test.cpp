@@ -623,10 +623,10 @@ TEST_CASE("IndirectZeroPageX addressing mode", "[addressing]")
   CHECK(request.request == BusRequest::Read(0x0042_addr));
 
   // Lo byte should be set from response data
-  request = IndirectZeroPageX::ops[3](cpu, BusResponse{0x20});  // low byte of effective address
+  request = request.injection(cpu, BusResponse{0x20});  // low byte of effective address
   CHECK(request.request == BusRequest::Read(0x0043_addr));  // read high byte from next address
 
-  request = IndirectZeroPageX::ops[4](cpu, BusResponse{0x80});  // high byte of effective address
+  request = IndirectZeroPageX::ops[3](cpu, BusResponse{0x80});  // high byte of effective address
   CHECK(request.request == BusRequest::Read(0x8020_addr));  // read operand
 }
 
@@ -643,11 +643,11 @@ TEST_CASE("IndirectZeroPageY addressing mode", "[addressing]")
   CHECK(request.request == BusRequest::Read(0x0040_addr));
 
   // Lo byte should be set from response data
-  request = IndirectZeroPageY::ops[2](cpu, BusResponse{0x20});  // low byte of effective address
+  request = request.injection(cpu, BusResponse{0x20});  // low byte of effective address
   // Next read is for the high byte of the pointer (from next zero page address)
   CHECK(request.request == BusRequest::Read(0x0041_addr));
 
-  request = IndirectZeroPageY::ops[3](cpu, BusResponse{0x80});  // high byte of effective address
+  request = IndirectZeroPageY::ops[2](cpu, BusResponse{0x80});  // high byte of effective address
   // Final read is from the effective address + Y (0x8020 + 0x02 = 0x8022)
   CHECK(request.request == BusRequest::Read(0x8022_addr));  // read operand
 }
