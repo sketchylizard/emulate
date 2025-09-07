@@ -798,8 +798,8 @@ static constexpr auto c_instructions = []()
   add<Absolute>(0x6D, "ADC", {adc}, table);
   add<AbsoluteX>(0x7D, "ADC", {adc}, table);
   add<AbsoluteY>(0x79, "ADC", {adc}, table);
-  // add<IndirectZpX>(0x61, "ADC", {adc}, table);
-  // add<IndirectZpY>(0x71, "ADC", {adc}, table);
+  add<IndirectZeroPageX>(0x61, "ADC", {adc}, table);
+  add<IndirectZeroPageY>(0x71, "ADC", {adc}, table);
 
   // LDA instructions
   add<Immediate>(0xA9, "LDA", {load<&State::a>}, table);
@@ -808,8 +808,8 @@ static constexpr auto c_instructions = []()
   add<Absolute>(0xAD, "LDA", {load<&State::a>}, table);
   add<AbsoluteX>(0xBD, "LDA", {load<&State::a>}, table);
   add<AbsoluteY>(0xB9, "LDA", {load<&State::a>}, table);
-  // add<IndirectX>(0xA1, "LDA", {load<&State::a>}, table);
-  // add<IndirectY>(0xB1, "LDA", {load<&State::a>}, table);
+  add<IndirectZeroPageX>(0xA1, "LDA", {load<&State::a>}, table);
+  add<IndirectZeroPageY>(0xB1, "LDA", {load<&State::a>}, table);
 
   // LDX instructions
   add<Immediate>(0xA2, "LDX", {load<&State::x>}, table);
@@ -840,8 +840,8 @@ static constexpr auto c_instructions = []()
   add<Absolute>(0x8D, "STA", {store<&State::a>}, table);
   add<AbsoluteX>(0x9D, "STA", {store<&State::a>}, table);
   add<AbsoluteY>(0x99, "STA", {store<&State::a>}, table);
-  // add<IndirectZpX>(0x81, "STA", {store<&State::a>}, table);
-  // add<IndirectZpY>(0x91, "STA", {store<&State::a>}, table);
+  add<IndirectZeroPageX>(0x81, "STA", {store<&State::a>}, table);
+  add<IndirectZeroPageY>(0x91, "STA", {store<&State::a>}, table);
 
   // STX variations
   add<ZeroPage>(0x86, "STX", {store<&State::x>}, table);
@@ -857,10 +857,10 @@ static constexpr auto c_instructions = []()
   // STY has no indirect modes
 
   // ORA variations
-  // add<IndirectZpX>(0x01, "ORA", {ora}, table);
+  add<IndirectZeroPageX>(0x01, "ORA", {ora}, table);
   add<ZeroPage>(0x05, "ORA", {ora}, table);
   add<Absolute>(0x0D, "ORA", {ora}, table);
-  // add<IndirectZpY>(0x11, "ORA", {ora}, table);
+  add<IndirectZeroPageY>(0x11, "ORA", {ora}, table);
   add<ZeroPageX>(0x15, "ORA", {ora}, table);
   add<AbsoluteY>(0x19, "ORA", {ora}, table);
   add<AbsoluteX>(0x1D, "ORA", {ora}, table);
@@ -892,8 +892,8 @@ static constexpr auto c_instructions = []()
   add<Absolute>(0xCD, "CMP", {compare<&State::a>}, table);
   add<AbsoluteX>(0xDD, "CMP", {compare<&State::a>}, table);
   add<AbsoluteY>(0xD9, "CMP", {compare<&State::a>}, table);
-  // add<IndirectZpX>(0xC1, "CMP", {compare<&State::a>}, table);
-  // add<IndirectZpY>(0xD1, "CMP", {compare<&State::a>}, table);
+  add<IndirectZeroPageX>(0xC1, "CMP", {compare<&State::a>}, table);
+  add<IndirectZeroPageY>(0xD1, "CMP", {compare<&State::a>}, table);
 
   // CPX — Compare X Register
   add<Immediate>(0xE0, "CPX", {compare<&State::x>}, table);
@@ -918,8 +918,8 @@ static constexpr auto c_instructions = []()
   add<Absolute>(0x4D, "EOR", {eor}, table);
   add<AbsoluteX>(0x5D, "EOR", {eor}, table);
   add<AbsoluteY>(0x59, "EOR", {eor}, table);
-  // add<IndirectZpX>(0x41, "EOR", {eor}, table);
-  // add<IndirectZpY>(0x51, "EOR", {eor}, table);
+  add<IndirectZeroPageX>(0x41, "EOR", {eor}, table);
+  add<IndirectZeroPageY>(0x51, "EOR", {eor}, table);
 
   Builder builder{table};
   builder  //
