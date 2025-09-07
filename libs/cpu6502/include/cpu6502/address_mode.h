@@ -15,9 +15,6 @@ struct AddressMode
 {
   using Type = State::AddressModeType;
 
-  struct FixupPageCrossing;
-  struct WrapZeroPage;
-
   // Define some microcode functions for addressing modes
 
   // Makes a request to read the low byte of an address from the PC and increments the PC.
@@ -44,56 +41,55 @@ struct AddressMode
   }
 
 protected:
-  template<Common::Byte State::* reg, typename PageCrossingPolicy>
-  static MicrocodeResponse preIndex(State& cpu, Common::BusResponse response)
+  template<Common::Byte State::* reg>
+  static MicrocodeResponse addZeroPageIndex(State& cpu, Common::BusResponse response)
+  // Stores the incoming low byte/only byte of a zero page address adjusts the low byte by the given
+  // index register. Overflow is ignored for zero page indexing, it just wraps around onto the zero
+  // page. However, because the 6502 could not add the index in one cycle, it will do one read from
+  // the unmodified zero page address, then a second read from the indexed address. This function
+  // makes the first read request.
+  {
+    // The incoming data is the low byte (only byte) of a zero page address.
+    cpu.lo = response.data;
+    // For zero page addressing modes, the hi byte is always 0
+    cpu.hi = 0;
+
+    // Zero page indexing reads from the address before indexing
+    auto effectiveAddr = Common::MakeAddress(cpu.lo, cpu.hi);
+
+    // Wrap around within zero page
+    cpu.lo += (cpu.*reg);
+
+    return {BusRequest::Read(effectiveAddr)};
+  }
+
+  template<Common::Byte State::* reg>
+  static MicrocodeResponse addIndex16(State& cpu, Common::BusResponse response)
   // Stores the incoming hi byte into the operand and adjusts the low byte by the given index register.
   // If there is overflow, it sets up the next action to fix the page boundary crossing. Either way,
   // it will make a request to read from the effective address (it just might be the wrong one).
   {
-    bool carry = false;
-    Common::Address effectiveAddr{0};
+    // The incoming data is the high byte of a 16-bit address.
+    cpu.hi = response.data;
 
-    if constexpr (std::is_same_v<PageCrossingPolicy, WrapZeroPage>)
+    auto temp = static_cast<uint16_t>(cpu.lo);
+    temp += (cpu.*reg);
+    cpu.lo = static_cast<Common::Byte>(temp & 0xFF);
+    bool carry = (temp & 0xFF00) != 0;
+
+    // This is the address that will be requested this cycle. If we overflowed (HiByte(temp) != 0),
+    // it will be wrong and we'll schedule an extra step to request the right one.
+    auto effectiveAddr = Common::MakeAddress(cpu.lo, cpu.hi);
+
+    // Check for page boundary crossing
+    if (carry)
     {
-      // The incoming data is the low byte (only byte) of a zero page address.
-      cpu.lo = response.data;
-      // For zero page addressing modes, the hi byte is always 0
-      cpu.hi = 0;
+      // We've already calculated the incorrect address so we can go ahead and fix up the hi byte
+      // for the next read.
+      ++cpu.hi;
 
-      // Zero page indexing reads from the address before indexing
-      effectiveAddr = Common::MakeAddress(cpu.lo, cpu.hi);
-
-      // Wrap around within zero page
-      cpu.lo += (cpu.*reg);
-    }
-    else
-    {
-      // The incoming data is the high byte of a 16-bit address.
-      cpu.hi = response.data;
-
-      auto temp = static_cast<uint16_t>(cpu.lo);
-      temp += (cpu.*reg);
-      cpu.lo = static_cast<Common::Byte>(temp & 0xFF);
-      carry = (temp & 0xFF00) != 0;
-
-      // This is the address that will be requested this cycle. If we overflowed (HiByte(temp) != 0),
-      // it will be wrong and we'll schedule an extra step to request the right one.
-      effectiveAddr = Common::MakeAddress(cpu.lo, cpu.hi);
-    }
-    assert(effectiveAddr != Common::Address{0});
-
-    if constexpr (std::is_same_v<PageCrossingPolicy, FixupPageCrossing>)
-    {
-      // Check for page boundary crossing
-      if (carry)
-      {
-        // We've already calculated the incorrect address so we can go ahead and fix up the hi byte
-        // for the next read.
-        ++cpu.hi;
-
-        // Read wrong address first
-        return {BusRequest::Read(effectiveAddr), &fixupPageCrossing};
-      }
+      // Read wrong address first
+      return {BusRequest::Read(effectiveAddr), &fixupPageCrossing};
     }
 
     // Read correct address
@@ -149,7 +145,7 @@ struct ZeroPageX : AddressMode
 
   static constexpr const Microcode ops[] = {
       &AddressMode::requestAddress8,  // 1 cycles to fetch 8-bit address
-      &AddressMode::preIndex<&State::x, WrapZeroPage>,
+      &AddressMode::addZeroPageIndex<&State::x>,
       &AddressMode::requestOperand<&State::operand>,  // Read from effective address
   };
 };
@@ -160,7 +156,7 @@ struct ZeroPageY : AddressMode
 
   static constexpr const Microcode ops[] = {
       &AddressMode::requestAddress8,  // 1 cycles to fetch 8-bit address
-      &AddressMode::preIndex<&State::y, WrapZeroPage>,
+      &AddressMode::addZeroPageIndex<&State::y>,
       &AddressMode::requestOperand<&State::operand>,  // Read from effective address
   };
 };
@@ -181,7 +177,7 @@ struct AbsoluteX : AddressMode
 
   static constexpr const Microcode ops[] = {
       &AddressMode::requestAddress16,  // 2 cycles to fetch 16-bit address
-      &AddressMode::preIndex<&State::x, FixupPageCrossing>,
+      &AddressMode::addIndex16<&State::x>,
       &AddressMode::requestOperand<&State::operand>,  // Read from effective address
   };
 };
@@ -192,7 +188,7 @@ struct AbsoluteY : AddressMode
 
   static constexpr const Microcode ops[] = {
       &AddressMode::requestAddress16,  // 2 cycles to fetch 16-bit address
-      &AddressMode::preIndex<&State::y, FixupPageCrossing>,
+      &AddressMode::addIndex16<&State::y>,
       &AddressMode::requestOperand<&State::operand>,  // Read from effective address
   };
 };
@@ -215,54 +211,31 @@ struct AbsoluteIndirectJmp
   };
 };
 
-template<Common::Byte State::* reg = nullptr>
-struct Indirect : AddressMode
+struct IndirectZeroPageX : AddressMode
 {
-  // clang-format off
-  static constexpr auto type =
-       reg == &State::x ? State::AddressModeType::IndirectZpX :
-      (reg == &State::y ? State::AddressModeType::IndirectZpY :
-                          State::AddressModeType::Indirect);
-  // clang-format on
+  static MicrocodeResponse requestIndirectLow(State& state, BusResponse response);
+  static MicrocodeResponse requestIndirectHigh(State& state, BusResponse response);
 
-  static MicrocodeResponse requestAddress(State& cpu, Common::BusResponse response)
-  {
-    // The incoming response data is the low byte of a zero page address
-    cpu.lo = response.data;
-
-    // Indirect zp,X adds X to the low byte, wrapping around within the zero page, before reading
-    // the byte at the given address.
-    if constexpr (reg == &State::x)
-    {
-      // Add X to the low byte, wrapping around within the zero page
-      cpu.lo = static_cast<Common::Byte>((cpu.lo + cpu.x) & 0xFF);
-    }
-
-    // This is the address that will be requested this cycle.
-    auto effectiveAddr = Common::MakeAddress(cpu.lo, 0x00);
-
-    return {BusRequest::Read(effectiveAddr)};
-  }
-
-  static MicrocodeResponse requestAddress1(State& cpu, Common::BusResponse response)
-  {
-    // The incoming response data is the low byte of a zero page address
-    cpu.lo = response.data;
-
-    // Indirect zp,Y adds Y to the low byte, possibly crossing
-    if constexpr (reg == &State::y)
-    {
-      // Add Y to the low byte, wrapping around within the zero page
-      cpu.lo = static_cast<Common::Byte>((cpu.lo + cpu.y) & 0xFF);
-    }
-
-    // Fetch the high byte of the effective address from the next zero page location
-    ++cpu.lo;  // Wraps around within zero page automatically
-    return {BusRequest::Read(Common::MakeAddress(cpu.lo, 0x00))};
-  }
+  static constexpr auto type = State::AddressModeType::IndirectZpX;
   static constexpr const Microcode ops[] = {
-      &AddressMode::requestAddress16,  // 2 cycles to fetch 16-bit address
-      &requestAddress,
+      &AddressMode::requestAddress8,  // Fetch base address $nn
+      &AddressMode::addZeroPageIndex<&State::x>,  // Add X → pointer address
+      &IndirectZeroPageX::requestIndirectLow,  // Read low byte from pointer
+      &IndirectZeroPageX::requestIndirectHigh,  // Read high byte from pointer+1
+      &AddressMode::requestOperand<&State::hi>,  // Store high byte and read from effective address
+  };
+};
+
+struct IndirectZeroPageY : AddressMode
+{
+  static MicrocodeResponse requestIndirectLow(State& state, BusResponse response);
+
+  static constexpr auto type = State::AddressModeType::IndirectZpX;
+  static constexpr const Microcode ops[] = {
+      &AddressMode::requestAddress8,  // Fetch base address $nn
+      &IndirectZeroPageY::requestIndirectLow,  // Read low byte from pointer
+      &IndirectZeroPageX::requestIndirectHigh,  // Read high byte from pointer+1
+      &AddressMode::addIndex16<&State::y>,  // Add Y → pointer address
   };
 };
 

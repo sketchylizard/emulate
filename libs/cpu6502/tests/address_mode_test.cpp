@@ -604,3 +604,50 @@ TEST_CASE("Immediate addressing mode complete sequence", "[addressing]")
     CHECK(executeAddress(cpu, Immediate::ops, cycles));
   }
 }
+
+TEST_CASE("IndirectZeroPageX addressing mode", "[addressing]")
+{
+  State cpu{.pc = 0x1000_addr, .x = 0x02};
+
+  auto request = IndirectZeroPageX::ops[0](cpu, BusResponse{});
+  CHECK(request.request == BusRequest::Read(0x1000_addr));
+
+  // Read the zero page address (from the byte after the instruction)
+  request = IndirectZeroPageX::ops[1](cpu, BusResponse{0x40});
+
+  // First read is from the unmodified zero page address
+  CHECK(request.request == BusRequest::Read(0x0040_addr));
+
+  // Second read is from the zero page address + X (0x40 + 0x02 = 0x42)
+  request = IndirectZeroPageX::ops[2](cpu, BusResponse{0x99});  // random data
+  CHECK(request.request == BusRequest::Read(0x0042_addr));
+
+  // Lo byte should be set from response data
+  request = IndirectZeroPageX::ops[3](cpu, BusResponse{0x20});  // low byte of effective address
+  CHECK(request.request == BusRequest::Read(0x0043_addr));  // read high byte from next address
+
+  request = IndirectZeroPageX::ops[4](cpu, BusResponse{0x80});  // high byte of effective address
+  CHECK(request.request == BusRequest::Read(0x8020_addr));  // read operand
+}
+
+TEST_CASE("IndirectZeroPageY addressing mode", "[addressing]")
+{
+  State cpu{.pc = 0x1000_addr, .y = 0x02};
+
+  auto request = IndirectZeroPageY::ops[0](cpu, BusResponse{});
+  CHECK(request.request == BusRequest::Read(0x1000_addr));
+
+  // Read the zero page address (from the byte after the instruction)
+  request = IndirectZeroPageY::ops[1](cpu, BusResponse{0x40});
+  // Read the pointer's low byte from the zero page address
+  CHECK(request.request == BusRequest::Read(0x0040_addr));
+
+  // Lo byte should be set from response data
+  request = IndirectZeroPageY::ops[2](cpu, BusResponse{0x20});  // low byte of effective address
+  // Next read is for the high byte of the pointer (from next zero page address)
+  CHECK(request.request == BusRequest::Read(0x0041_addr));
+
+  request = IndirectZeroPageY::ops[3](cpu, BusResponse{0x80});  // high byte of effective address
+  // Final read is from the effective address + Y (0x8020 + 0x02 = 0x8022)
+  CHECK(request.request == BusRequest::Read(0x8022_addr));  // read operand
+}
