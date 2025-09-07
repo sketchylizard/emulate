@@ -712,6 +712,7 @@ constexpr void add(Common::Byte opcode, const char* mnemonic, std::initializer_l
   Instruction& instr = table[opcode];
   instr.opcode = opcode;
   instr.mnemonic = mnemonic;
+  instr.format = &Mode::format;
   instr.addressMode = Mode::type;
 
   // Copy addressing microcode first
@@ -754,6 +755,7 @@ struct Builder
     Instruction& instr = table[opcode];
     instr.opcode = opcode;
     instr.mnemonic = mnemonic;
+    instr.format = &Mode::format;
     instr.addressMode = Mode::type;
 
     // Copy addressing microcode first
@@ -979,7 +981,6 @@ std::pair<Microcode*, Microcode*> mos6502::decodeOpcode(uint8_t opcode) noexcept
 
 FixedFormatter& operator<<(FixedFormatter& formatter, std::pair<const State&, std::span<Common::Byte, 3>> stateAndBytes) noexcept
 {
-
   const auto& [state, bytes] = stateAndBytes;
   formatter << state.pc << " : ";
 
@@ -995,38 +996,39 @@ FixedFormatter& operator<<(FixedFormatter& formatter, std::pair<const State&, st
   (operandBytes > 0 ? (formatter << bytes[1]) : (formatter << "  ")) << ' ';
 
   // Mnemonic
-  formatter << instr.mnemonic << ' ';
+  formatter << "  " << instr.mnemonic << ' ';
 
   // Operand formatting based on addressing mode
   // The maximum length of the operand field is 7 characters (e.g. "$xxxx,X")
   // We will pad with spaces if the operand is shorter
-  switch (instr.addressMode)
-  {
-    case State::AddressModeType::Implied:
-    case State::AddressModeType::Accumulator:
-      // No operand
-      formatter << "       ";  // 7 spaces
-      break;
+  size_t currentLength = formatter.finalize().length();
 
-    case State::AddressModeType::Immediate: formatter << "#$" << bytes[1] << "   "; break;
-    case State::AddressModeType::ZeroPage: formatter << "$" << bytes[1] << "    "; break;
-    case State::AddressModeType::ZeroPageX: formatter << "$" << bytes[1] << ",X   "; break;
-    case State::AddressModeType::ZeroPageY: formatter << "$" << bytes[1] << ",Y   "; break;
-    case State::AddressModeType::Absolute: formatter << "$" << bytes[2] << bytes[1] << "  "; break;
-    case State::AddressModeType::AbsoluteX: formatter << "$" << bytes[2] << bytes[1] << ",X"; break;
-    case State::AddressModeType::AbsoluteY: formatter << "$" << bytes[2] << bytes[1] << ",X"; break;
-    case State::AddressModeType::Indirect: formatter << "($" << bytes[2] << bytes[1] << ")"; break;
-    case State::AddressModeType::IndirectZpX: formatter << "($" << bytes[1] << ",X)"; break;
-    case State::AddressModeType::IndirectZpY: formatter << "($" << bytes[1] << "),Y"; break;
-    case State::AddressModeType::Relative:
+  if (instr.addressMode != State::AddressModeType::Relative)
+  {
+    formatter << instr.format->prefix;
+    for (size_t i = 0; i != instr.format->numberOfOperands; ++i)
     {
-      // Calculate target address for branch
-      int32_t offset = static_cast<int8_t>(bytes[1]);
-      int32_t target = static_cast<int32_t>(state.pc) + 2 + offset;  // PC + instruction length + offset
-      formatter << "$" << Address{static_cast<uint16_t>(target)} << "  ";
-      break;
+      formatter << bytes[i + 1];
     }
+    formatter << instr.format->suffix;
   }
+  else
+  {
+    // Calculate target address for branch
+    int32_t offset = static_cast<int8_t>(bytes[1]);
+    int32_t target = static_cast<int32_t>(state.pc) + 2 + offset;  // PC + instruction length + offset
+    formatter << "$" << Address{static_cast<uint16_t>(target)} << "  ";
+  }
+
+  // Pad to 7 characters
+  size_t neededSpaces = formatter.finalize().length() - currentLength;
+
+  for (size_t i = 0; i < 7 - neededSpaces; ++i)
+  {
+    formatter << ' ';
+  }
+
+  formatter << "  ";
 
   // Add registers: A, X, Y, SP, P
   formatter << "  A:" << state.a;

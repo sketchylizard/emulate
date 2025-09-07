@@ -106,18 +106,21 @@ struct Implied : AddressMode
 {
   static constexpr auto type = AddressMode::Type::Implied;
   static constexpr std::span<const Microcode> ops = {};
+  static constexpr DisassemblyFormat format;
 };
 
 struct Accumulator : AddressMode
 {
   static constexpr auto type = AddressMode::Type::Accumulator;
   static constexpr std::span<const Microcode> ops = {};
+  static constexpr DisassemblyFormat format;
 };
 
 struct Relative : AddressMode
 {
   static constexpr auto type = AddressMode::Type::Relative;
   static constexpr std::span<const Microcode> ops = {};
+  static constexpr DisassemblyFormat format;
 };
 
 struct Immediate : AddressMode
@@ -127,6 +130,8 @@ struct Immediate : AddressMode
   static constexpr const Microcode ops[] = {
       &requestAddress8,
   };
+
+  static constexpr DisassemblyFormat format{"#$", "", 1 /* e.g. "#$44" */};
 };
 
 struct ZeroPage : AddressMode
@@ -137,6 +142,7 @@ struct ZeroPage : AddressMode
       &AddressMode::requestAddress8,  // 1 cycles to fetch 8-bit address
       &AddressMode::requestOperand<&State::lo>,  // Read from effective address
   };
+  static constexpr DisassemblyFormat format{"$", "", 1};  // e.g. "$44"
 };
 
 struct ZeroPageX : AddressMode
@@ -148,6 +154,7 @@ struct ZeroPageX : AddressMode
       &AddressMode::addZeroPageIndex<&State::x>,
       &AddressMode::requestOperand<&State::operand>,  // Read from effective address
   };
+  static constexpr DisassemblyFormat format{"$", ",X", 1};  // e.g. "$44,X"
 };
 
 struct ZeroPageY : AddressMode
@@ -159,6 +166,7 @@ struct ZeroPageY : AddressMode
       &AddressMode::addZeroPageIndex<&State::y>,
       &AddressMode::requestOperand<&State::operand>,  // Read from effective address
   };
+  static constexpr DisassemblyFormat format{"$", ",Y", 1};  // e.g. "$44,Y"
 };
 
 struct Absolute : AddressMode
@@ -169,6 +177,7 @@ struct Absolute : AddressMode
       &AddressMode::requestAddress16,  // 2 cycles to fetch 16-bit address
       &AddressMode::requestOperand<&State::hi>,  // Read from effective address
   };
+  static constexpr DisassemblyFormat format{"$", "", 2};  // e.g. "$4400"
 };
 
 struct AbsoluteX : AddressMode
@@ -180,6 +189,7 @@ struct AbsoluteX : AddressMode
       &AddressMode::addIndex16<&State::x>,
       &AddressMode::requestOperand<&State::operand>,  // Read from effective address
   };
+  static constexpr DisassemblyFormat format{"$", ",X", 2};  // e.g. "$4400,X"
 };
 
 struct AbsoluteY : AddressMode
@@ -191,24 +201,27 @@ struct AbsoluteY : AddressMode
       &AddressMode::addIndex16<&State::y>,
       &AddressMode::requestOperand<&State::operand>,  // Read from effective address
   };
+  static constexpr DisassemblyFormat format{"$", ",Y", 2};  // e.g. "$4400,Y"
 };
 
-struct AbsoluteJmp
+struct AbsoluteJmp : AddressMode
 {
   static constexpr auto type = State::AddressModeType::Absolute;
 
   static constexpr const Microcode ops[] = {
       &AddressMode::requestAddress16,  // 2 cycles to fetch 16-bit address
   };
+  static constexpr DisassemblyFormat format{"$", "", 2};  // e.g. "$4400"
 };
 
-struct AbsoluteIndirectJmp
+struct AbsoluteIndirectJmp : AddressMode
 {
   static constexpr auto type = State::AddressModeType::Indirect;
 
   static constexpr const Microcode ops[] = {
       &AddressMode::requestAddress16,  // 2 cycles to fetch 16-bit address
   };
+  static constexpr DisassemblyFormat format{"($", ")", 2};  // e.g. "($4400)"
 };
 
 struct IndirectZeroPageX : AddressMode
@@ -224,6 +237,7 @@ struct IndirectZeroPageX : AddressMode
       &IndirectZeroPageX::requestIndirectHigh,  // Read high byte from pointer+1
       &AddressMode::requestOperand<&State::hi>,  // Store high byte and read from effective address
   };
+  static constexpr DisassemblyFormat format{"($", ",X)", 1};  // e.g. "($44,X)"
 };
 
 struct IndirectZeroPageY : AddressMode
@@ -237,6 +251,7 @@ struct IndirectZeroPageY : AddressMode
       &IndirectZeroPageX::requestIndirectHigh,  // Read high byte from pointer+1
       &AddressMode::addIndex16<&State::y>,  // Add Y → pointer address
   };
+  static constexpr DisassemblyFormat format{"($", ",)Y", 1};  // e.g. "($44),Y"
 };
 
 }  // namespace cpu6502

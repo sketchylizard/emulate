@@ -16,6 +16,13 @@ using BusRequest = Common::BusRequest;
 using BusResponse = Common::BusResponse;
 using MicrocodeResponse = CpuDefinition::Response;
 
+struct DisassemblyFormat
+{
+  const char* prefix = "";  // e.g. "#$" or "($"
+  const char* suffix = "";  // e.g. ",X)" or ",Y"
+  Common::Byte numberOfOperands = 0;
+};
+
 struct Instruction
 {
   static constexpr size_t c_maxOperations = 7;
@@ -24,6 +31,7 @@ struct Instruction
   State::AddressModeType addressMode = State::AddressModeType::Implied;
   Common::Byte length = 1;  // total length in bytes (opcode + operands)
   const char* mnemonic = "???";
+  const DisassemblyFormat* format = nullptr;
   Microcode ops[c_maxOperations] = {};  // sequence of microcode functions to execute
 };
 
