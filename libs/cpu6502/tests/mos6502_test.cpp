@@ -4710,3 +4710,233 @@ TEST_CASE("AND Bit Patterns and Edge Cases", "[and][edge]")
     CHECK(cpu.has(State::Flag::Zero) == true);
   }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// BIT Instruction Tests
+////////////////////////////////////////////////////////////////////////////////
+
+TEST_CASE("BIT Zero Page", "[bit][zeropage]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("BIT with zero result - sets Z flag")
+  {
+    State cpu;
+    cpu.a = 0x0F;  // 00001111
+    memory_array[0x80] = 0xF0;  // 11110000
+
+    executeInstruction(pump, cpu, memory, {0x24, 0x80});  // BIT $80
+
+    CHECK(cpu.a == 0x0F);  // Accumulator unchanged!
+    CHECK(cpu.has(State::Flag::Zero) == true);  // (0x0F & 0xF0) == 0
+    CHECK(cpu.has(State::Flag::Negative) == true);  // Bit 7 of memory (0xF0) is 1
+    CHECK(cpu.has(State::Flag::Overflow) == true);  // Bit 6 of memory (0xF0) is 1
+  }
+
+  SECTION("BIT with non-zero result - clears Z flag")
+  {
+    State cpu;
+    cpu.a = 0x33;  // 00110011
+    memory_array[0x50] = 0x31;  // 00110001
+
+    executeInstruction(pump, cpu, memory, {0x24, 0x50});  // BIT $50
+
+    CHECK(cpu.a == 0x33);  // Accumulator unchanged!
+    CHECK(cpu.has(State::Flag::Zero) == false);  // (0x33 & 0x31) == 0x31 (non-zero)
+    CHECK(cpu.has(State::Flag::Negative) == false);  // Bit 7 of memory (0x31) is 0
+    CHECK(cpu.has(State::Flag::Overflow) == false);  // Bit 6 of memory (0x31) is 0
+  }
+
+  SECTION("BIT testing specific bit patterns")
+  {
+    State cpu;
+    cpu.a = 0x01;  // Test bit 0
+    memory_array[0x60] = 0xC1;  // 11000001 (bits 7,6,0 set)
+
+    executeInstruction(pump, cpu, memory, {0x24, 0x60});  // BIT $60
+
+    CHECK(cpu.a == 0x01);  // Accumulator unchanged
+    CHECK(cpu.has(State::Flag::Zero) == false);  // (0x01 & 0xC1) == 0x01 (non-zero)
+    CHECK(cpu.has(State::Flag::Negative) == true);  // Bit 7 of 0xC1 is 1
+    CHECK(cpu.has(State::Flag::Overflow) == true);  // Bit 6 of 0xC1 is 1
+  }
+
+  SECTION("BIT with memory having only bit 6 set")
+  {
+    State cpu;
+    cpu.a = 0xFF;  // All bits set in A
+    memory_array[0x70] = 0x40;  // 01000000 (only bit 6 set)
+
+    executeInstruction(pump, cpu, memory, {0x24, 0x70});  // BIT $70
+
+    CHECK(cpu.a == 0xFF);  // Accumulator unchanged
+    CHECK(cpu.has(State::Flag::Zero) == false);  // (0xFF & 0x40) == 0x40 (non-zero)
+    CHECK(cpu.has(State::Flag::Negative) == false);  // Bit 7 of 0x40 is 0
+    CHECK(cpu.has(State::Flag::Overflow) == true);  // Bit 6 of 0x40 is 1
+  }
+}
+
+TEST_CASE("BIT Absolute", "[bit][absolute]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("BIT absolute addressing")
+  {
+    State cpu;
+    cpu.a = 0x80;  // 10000000
+    memory_array[0x1234] = 0x3F;  // 00111111
+
+    executeInstruction(pump, cpu, memory, {0x2C, 0x34, 0x12});  // BIT $1234
+
+    CHECK(cpu.a == 0x80);  // Accumulator unchanged
+    CHECK(cpu.has(State::Flag::Zero) == true);  // (0x80 & 0x3F) == 0x00
+    CHECK(cpu.has(State::Flag::Negative) == false);  // Bit 7 of 0x3F is 0
+    CHECK(cpu.has(State::Flag::Overflow) == false);  // Bit 6 of 0x3F is 0
+  }
+}
+
+TEST_CASE("BIT Flag Preservation", "[bit][flags]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("BIT preserves C, I, D flags")
+  {
+    State cpu;
+    cpu.a = 0x42;
+    memory_array[0x80] = 0x81;
+
+    // Set C, I, D flags
+    cpu.set(State::Flag::Carry, true);
+    cpu.set(State::Flag::Interrupt, true);
+    cpu.set(State::Flag::Decimal, true);
+
+    executeInstruction(pump, cpu, memory, {0x24, 0x80});  // BIT $80
+
+    // These flags should be preserved
+    CHECK(cpu.has(State::Flag::Carry) == true);
+    CHECK(cpu.has(State::Flag::Interrupt) == true);
+    CHECK(cpu.has(State::Flag::Decimal) == true);
+
+    // These flags should be set by BIT
+    SECTION("BIT preserves C, I, D flags")
+    {
+      cpu.a = 0x42;
+      memory_array[0x80] = 0x81;
+
+      // Set C, I, D flags
+      cpu.set(State::Flag::Carry, true);
+      cpu.set(State::Flag::Interrupt, true);
+      cpu.set(State::Flag::Decimal, true);
+
+      executeInstruction(pump, cpu, memory, {0x24, 0x80});  // BIT $80
+
+      // These flags should be preserved
+      CHECK(cpu.has(State::Flag::Carry) == true);
+      CHECK(cpu.has(State::Flag::Interrupt) == true);
+      CHECK(cpu.has(State::Flag::Decimal) == true);
+
+      // These flags should be set by BIT
+      CHECK(cpu.has(State::Flag::Negative) == true);  // Bit 7 of 0x81
+      CHECK(cpu.has(State::Flag::Zero) == true);  // (0x42 & 0x81) == 0 (no bits in common)
+      CHECK(cpu.has(State::Flag::Overflow) == false);  // Bit 6 of 0x81 is 0
+    }
+  }
+
+  SECTION("All registers unchanged")
+  {
+    State cpu;
+    cpu.a = 0x55;
+    cpu.x = 0x11;
+    cpu.y = 0x22;
+    cpu.sp = 0xEE;
+    memory_array[0x90] = 0xAA;
+
+    executeInstruction(pump, cpu, memory, {0x24, 0x90});  // BIT $90
+
+    // ALL registers should be unchanged
+    CHECK(cpu.a == 0x55);
+    CHECK(cpu.x == 0x11);
+    CHECK(cpu.y == 0x22);
+    CHECK(cpu.sp == 0xEE);
+  }
+}
+
+TEST_CASE("BIT Common Use Cases", "[bit][practical]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Testing if A has any bits in common with memory")
+  {
+    State cpu;
+
+    // Test case 1: No bits in common
+    cpu.a = 0x0F;  // 00001111
+    memory_array[0x80] = 0xF0;  // 11110000
+    executeInstruction(pump, cpu, memory, {0x24, 0x80});  // BIT $80
+    CHECK(cpu.has(State::Flag::Zero) == true);  // No overlap
+
+    // Test case 2: Some bits in common
+    cpu.a = 0x33;  // 00110011
+    memory_array[0x81] = 0x13;  // 00010011
+    executeInstruction(pump, cpu, memory, {0x24, 0x81});  // BIT $81
+    CHECK(cpu.has(State::Flag::Zero) == false);  // Bits 1,0 overlap
+  }
+
+  SECTION("Checking status register bits")
+  {
+    State cpu;
+    cpu.a = 0xFF;  // Check all bits
+
+    // Simulate checking a status register with bits 7,6 as status flags
+    memory_array[0x80] = 0xC0;  // 11000000 - both status bits set
+    executeInstruction(pump, cpu, memory, {0x24, 0x80});  // BIT $80
+
+    CHECK(cpu.has(State::Flag::Negative) == true);  // Status bit 7 set
+    CHECK(cpu.has(State::Flag::Overflow) == true);  // Status bit 6 set
+    CHECK(cpu.has(State::Flag::Zero) == false);  // Some bits overlap
+
+    // Different status
+    memory_array[0x81] = 0x40;  // 01000000 - only bit 6 set
+    executeInstruction(pump, cpu, memory, {0x24, 0x81});  // BIT $81
+
+    CHECK(cpu.has(State::Flag::Negative) == false);  // Status bit 7 clear
+    CHECK(cpu.has(State::Flag::Overflow) == true);  // Status bit 6 set
+  }
+
+  SECTION("BIT vs AND comparison")
+  {
+    State cpu;
+    State cpu2 = cpu;  // Copy for comparison
+
+    cpu.a = cpu2.a = 0x55;
+    memory_array[0x80] = 0x33;
+
+    // BIT operation
+    executeInstruction(pump, cpu, memory, {0x24, 0x80});  // BIT $80
+
+    // AND operation for comparison
+    executeInstruction(pump, cpu2, memory, {0x25, 0x80});  // AND $80 (using zero page AND)
+
+    // BIT: Accumulator unchanged, flags set based on test
+    CHECK(cpu.a == 0x55);  // Accumulator unchanged
+    CHECK(cpu.has(State::Flag::Zero) == false);  // (0x55 & 0x33) != 0
+
+    // AND: Accumulator changed, flags set based on result
+    CHECK(cpu2.a == 0x11);  // Accumulator = 0x55 & 0x33 = 0x11
+    CHECK(cpu2.has(State::Flag::Zero) == false);  // Same Z flag result
+
+    // But N,V flags are different:
+    // BIT sets N,V from memory bits 7,6
+    // AND sets N,Z from result bits
+    CHECK(cpu.has(State::Flag::Negative) == false);  // Bit 7 of 0x33 is 0
+    CHECK(cpu2.has(State::Flag::Negative) == false);  // Bit 7 of 0x11 is 0 (same in this case)
+  }
+}

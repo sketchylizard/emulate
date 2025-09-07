@@ -169,13 +169,42 @@ struct And
   static constexpr Microcode ops[] = {&step0};
 };
 
+struct Bit
+{
+  static MicrocodeResponse step0(State& cpu, Common::BusResponse response)
+  {
+    // BIT instruction: Test bits in memory with accumulator
+    // - Z flag: Set if (A & M) == 0
+    // - N flag: Copy bit 7 of memory operand
+    // - V flag: Copy bit 6 of memory operand
+    // - Accumulator is NOT modified
+    // - C, I, D flags are not affected
+
+    Byte memory_value = response.data;
+    Byte test_result = cpu.a & memory_value;
+
+    // Set Zero flag based on AND result
+    cpu.set(State::Flag::Zero, test_result == 0);
+
+    // Copy bit 7 of memory to Negative flag
+    cpu.set(State::Flag::Negative, (memory_value & 0x80) != 0);
+
+    // Copy bit 6 of memory to Overflow flag
+    cpu.set(State::Flag::Overflow, (memory_value & 0x40) != 0);
+
+    // Note: Accumulator is unchanged!
+    return MicrocodeResponse{};
+  }
+
+  static constexpr Microcode ops[] = {&step0};
+};
+
 template<State::Flag Flag, bool Set>
 static MicrocodeResponse flagOp(State& cpu, Common::BusResponse /*response*/)
 {
   cpu.set(Flag, Set);
   return {BusRequest::Read(cpu.pc)};  // Dummy read to consume cycle
 }
-
 
 static MicrocodeResponse ora(State& cpu, Common::BusResponse response)
 {
@@ -1031,6 +1060,9 @@ static constexpr auto c_instructions = []()
       .add<AbsoluteY, Eor>(0x59, "EOR")
       .add<IndirectZeroPageX, Eor>(0x41, "EOR")
       .add<IndirectZeroPageY, Eor>(0x51, "EOR")
+      // BIT only supports 2 addressing modes
+      .add<ZeroPage, Bit>(0x24, "BIT")
+      .add<Absolute, Bit>(0x2C, "BIT")
       // Add more instructions as needed
       ;
 
