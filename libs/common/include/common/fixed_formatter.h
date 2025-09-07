@@ -26,7 +26,7 @@ public:
   FixedFormatter& operator<<(char c) noexcept;
 
   // Write a string literal
-  FixedFormatter& operator<<(const char* str) noexcept;
+  FixedFormatter& operator<<(std::string_view str) noexcept;
 
   // Write a byte as 2 hex digits
   FixedFormatter& operator<<(Common::Byte value) noexcept;

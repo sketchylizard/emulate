@@ -13,8 +13,6 @@ namespace cpu6502
 
 struct AddressMode
 {
-  using Type = State::AddressModeType;
-
   // Define some microcode functions for addressing modes
 
   // Makes a request to read the low byte of an address from the PC and increments the PC.
@@ -104,29 +102,24 @@ private:
 
 struct Implied : AddressMode
 {
-  static constexpr auto type = AddressMode::Type::Implied;
   static constexpr std::span<const Microcode> ops = {};
   static constexpr DisassemblyFormat format;
 };
 
 struct Accumulator : AddressMode
 {
-  static constexpr auto type = AddressMode::Type::Accumulator;
   static constexpr std::span<const Microcode> ops = {};
   static constexpr DisassemblyFormat format;
 };
 
 struct Relative : AddressMode
 {
-  static constexpr auto type = AddressMode::Type::Relative;
   static constexpr std::span<const Microcode> ops = {};
-  static constexpr DisassemblyFormat format;
+  static constexpr DisassemblyFormat format{"$", "", 1 /* e.g. "$44" */};
 };
 
 struct Immediate : AddressMode
 {
-  static constexpr auto type = AddressMode::Type::Immediate;
-
   static constexpr const Microcode ops[] = {
       &requestAddress8,
   };
@@ -136,8 +129,6 @@ struct Immediate : AddressMode
 
 struct ZeroPage : AddressMode
 {
-  static constexpr auto type = State::AddressModeType::ZeroPage;
-
   static constexpr const Microcode ops[] = {
       &AddressMode::requestAddress8,  // 1 cycles to fetch 8-bit address
       &AddressMode::requestOperand<&State::lo>,  // Read from effective address
@@ -147,8 +138,6 @@ struct ZeroPage : AddressMode
 
 struct ZeroPageX : AddressMode
 {
-  static constexpr auto type = State::AddressModeType::ZeroPageX;
-
   static constexpr const Microcode ops[] = {
       &AddressMode::requestAddress8,  // 1 cycles to fetch 8-bit address
       &AddressMode::addZeroPageIndex<&State::x>,
@@ -159,8 +148,6 @@ struct ZeroPageX : AddressMode
 
 struct ZeroPageY : AddressMode
 {
-  static constexpr auto type = State::AddressModeType::ZeroPageY;
-
   static constexpr const Microcode ops[] = {
       &AddressMode::requestAddress8,  // 1 cycles to fetch 8-bit address
       &AddressMode::addZeroPageIndex<&State::y>,
@@ -171,8 +158,6 @@ struct ZeroPageY : AddressMode
 
 struct Absolute : AddressMode
 {
-  static constexpr auto type = State::AddressModeType::Absolute;
-
   static constexpr const Microcode ops[] = {
       &AddressMode::requestAddress16,  // 2 cycles to fetch 16-bit address
       &AddressMode::requestOperand<&State::hi>,  // Read from effective address
@@ -182,8 +167,6 @@ struct Absolute : AddressMode
 
 struct AbsoluteX : AddressMode
 {
-  static constexpr auto type = State::AddressModeType::AbsoluteX;
-
   static constexpr const Microcode ops[] = {
       &AddressMode::requestAddress16,  // 2 cycles to fetch 16-bit address
       &AddressMode::addIndex16<&State::x>,
@@ -194,8 +177,6 @@ struct AbsoluteX : AddressMode
 
 struct AbsoluteY : AddressMode
 {
-  static constexpr auto type = State::AddressModeType::AbsoluteY;
-
   static constexpr const Microcode ops[] = {
       &AddressMode::requestAddress16,  // 2 cycles to fetch 16-bit address
       &AddressMode::addIndex16<&State::y>,
@@ -206,8 +187,6 @@ struct AbsoluteY : AddressMode
 
 struct AbsoluteJmp : AddressMode
 {
-  static constexpr auto type = State::AddressModeType::Absolute;
-
   static constexpr const Microcode ops[] = {
       &AddressMode::requestAddress16,  // 2 cycles to fetch 16-bit address
   };
@@ -216,8 +195,6 @@ struct AbsoluteJmp : AddressMode
 
 struct AbsoluteIndirectJmp : AddressMode
 {
-  static constexpr auto type = State::AddressModeType::Indirect;
-
   static constexpr const Microcode ops[] = {
       &AddressMode::requestAddress16,  // 2 cycles to fetch 16-bit address
   };
@@ -229,7 +206,6 @@ struct IndirectZeroPageX : AddressMode
   static MicrocodeResponse requestIndirectLow(State& state, BusResponse response);
   static MicrocodeResponse requestIndirectHigh(State& state, BusResponse response);
 
-  static constexpr auto type = State::AddressModeType::IndirectZpX;
   static constexpr const Microcode ops[] = {
       &AddressMode::requestAddress8,  // Fetch base address $nn
       &AddressMode::addZeroPageIndex<&State::x>,  // Add X → pointer address
@@ -244,7 +220,6 @@ struct IndirectZeroPageY : AddressMode
 {
   static MicrocodeResponse requestIndirectLow(State& state, BusResponse response);
 
-  static constexpr auto type = State::AddressModeType::IndirectZpX;
   static constexpr const Microcode ops[] = {
       &AddressMode::requestAddress8,  // Fetch base address $nn
       &IndirectZeroPageY::requestIndirectLow,  // Read low byte from pointer

@@ -40,7 +40,6 @@ struct Instruction
 {
   Common::Byte opcode = 0;
   const char* mnemonic = "???";
-  AddressModeType addressMode = AddressModeType::Implied;
   Microcode ops[7] = {};  // sequence of microcode functions to execute
 };
 ```

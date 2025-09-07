@@ -713,7 +713,6 @@ constexpr void add(Common::Byte opcode, const char* mnemonic, std::initializer_l
   instr.opcode = opcode;
   instr.mnemonic = mnemonic;
   instr.format = &Mode::format;
-  instr.addressMode = Mode::type;
 
   // Copy addressing microcode first
   size_t index = 0;
@@ -756,7 +755,6 @@ struct Builder
     instr.opcode = opcode;
     instr.mnemonic = mnemonic;
     instr.format = &Mode::format;
-    instr.addressMode = Mode::type;
 
     // Copy addressing microcode first
     size_t index = 0;
@@ -987,13 +985,12 @@ FixedFormatter& operator<<(FixedFormatter& formatter, std::pair<const State&, st
   const Byte opcode = bytes[0];
   const Instruction& instr = c_instructions[opcode];
 
-  // Determine how many operand bytes this instruction uses
-  size_t operandBytes = static_cast<size_t>(instr.addressMode) / 10;
-  assert(operandBytes < std::size(bytes));
+  assert(instr.format->numberOfOperands < std::size(bytes));
 
   // Add operand bytes
   formatter << opcode << ' ';
-  (operandBytes > 0 ? (formatter << bytes[1]) : (formatter << "  ")) << ' ';
+  (instr.format->numberOfOperands > 0 ? (formatter << bytes[1]) : (formatter << "  ")) << ' ';
+  (instr.format->numberOfOperands > 1 ? (formatter << bytes[2]) : (formatter << "  ")) << ' ';
 
   // Mnemonic
   formatter << "  " << instr.mnemonic << ' ';
@@ -1003,35 +1000,38 @@ FixedFormatter& operator<<(FixedFormatter& formatter, std::pair<const State&, st
   // We will pad with spaces if the operand is shorter
   size_t currentLength = formatter.finalize().length();
 
-  if (instr.addressMode != State::AddressModeType::Relative)
+  formatter << instr.format->prefix;
+
+  // Special case for branch instructions to show target address
+  // Branch instructions have opcodes 0x10, 0x30, 0x50, 0x70, 0x90, 0xB0, 0xD0, 0xF0
+
+  if (instr.format->numberOfOperands == 2)
   {
-    formatter << instr.format->prefix;
-    for (size_t i = 0; i != instr.format->numberOfOperands; ++i)
-    {
-      formatter << bytes[i + 1];
-    }
-    formatter << instr.format->suffix;
+    // Need to output an address
+    formatter << bytes[2] << bytes[1];
   }
-  else
+  else if ((opcode & 0x1F) == 0x10)
   {
     // Calculate target address for branch
     int32_t offset = static_cast<int8_t>(bytes[1]);
     int32_t target = static_cast<int32_t>(state.pc) + 2 + offset;  // PC + instruction length + offset
-    formatter << "$" << Address{static_cast<uint16_t>(target)} << "  ";
+    formatter << Address{static_cast<uint16_t>(target)};
   }
-
-  // Pad to 7 characters
-  size_t neededSpaces = formatter.finalize().length() - currentLength;
-
-  for (size_t i = 0; i < 7 - neededSpaces; ++i)
+  else if (instr.format->numberOfOperands <= 1)
   {
-    formatter << ' ';
+    formatter << bytes[1];
   }
 
-  formatter << "  ";
+  formatter << instr.format->suffix;
+
+  // Pad to 9 characters
+  size_t neededSpaces = formatter.finalize().length() - currentLength;
+  static constexpr std::string_view padding = "         ";  // 9 spaces
+
+  formatter << padding.substr(0, 9 - neededSpaces);
 
   // Add registers: A, X, Y, SP, P
-  formatter << "  A:" << state.a;
+  formatter << " A:" << state.a;
   formatter << " X:" << state.x;
   formatter << " Y:" << state.y;
   formatter << " SP:" << state.sp;

@@ -19,11 +19,14 @@ FixedFormatter& FixedFormatter::operator<<(char c) noexcept
   return *this;
 }
 
-FixedFormatter& FixedFormatter::operator<<(const char* str) noexcept
+FixedFormatter& FixedFormatter::operator<<(std::string_view str) noexcept
 {
-  while (*str && m_current < m_end - 1)
+  for (auto ch : str)
   {
-    *m_current++ = *str++;
+    if (m_current < m_end - 1)
+    {  // Leave room for null terminator
+      *m_current++ = ch;
+    }
   }
   return *this;
 }

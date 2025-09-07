@@ -20,31 +20,6 @@ struct State
     Negative = 0x80,
   };
 
-  enum class AddressModeType : uint8_t
-  {
-    // The address mode value is designed so that the number of operand bytes can be determined by
-    // simple ranges. Dividing the ordinal number by 10 gives the number of operand bytes.
-
-    // The following modes don't read any extra bytes:
-    Implied = 0,
-    Accumulator,
-
-    // The following modes read one extra byte:
-    Immediate = 1 * 10,
-    ZeroPage,
-    ZeroPageX,
-    ZeroPageY,
-    Relative,
-    IndirectZpX,
-    IndirectZpY,
-
-    // The following modes read two extra bytes:
-    Absolute = 2 * 10,
-    AbsoluteX,
-    AbsoluteY,
-    Indirect,
-  };
-
   // Flag helpers
   [[nodiscard]] constexpr bool has(Flag f) const noexcept;
   constexpr void set(Flag f, bool v) noexcept;

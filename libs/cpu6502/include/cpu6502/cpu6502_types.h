@@ -28,7 +28,6 @@ struct Instruction
   static constexpr size_t c_maxOperations = 7;
 
   Common::Byte opcode = 0;
-  State::AddressModeType addressMode = State::AddressModeType::Implied;
   Common::Byte length = 1;  // total length in bytes (opcode + operands)
   const char* mnemonic = "???";
   const DisassemblyFormat* format = nullptr;
