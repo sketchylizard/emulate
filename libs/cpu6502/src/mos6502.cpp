@@ -157,6 +157,18 @@ struct Subtract
   static constexpr Microcode ops[] = {&step0};
 };
 
+struct And
+{
+  static MicrocodeResponse step0(State& cpu, Common::BusResponse response)
+  {
+    cpu.a &= response.data;  // A ← A ∧ M
+    cpu.setZN(cpu.a);  // Set N and Z flags based on result
+    return MicrocodeResponse{};
+  }
+
+  static constexpr Microcode ops[] = {&step0};
+};
+
 template<State::Flag Flag, bool Set>
 static MicrocodeResponse flagOp(State& cpu, Common::BusResponse /*response*/)
 {
@@ -289,12 +301,16 @@ static MicrocodeResponse transfer(State& cpu, Common::BusResponse /*response*/)
   return {BusRequest::Read(cpu.pc)};  // Dummy read to consume cycle
 }
 
-static MicrocodeResponse eor(State& cpu, Common::BusResponse response)
+struct Eor
 {
-  cpu.a ^= response.data;  // A ← A ⊕ M
-  cpu.setZN(cpu.a);
-  return {BusRequest::Read(cpu.pc)};  // Dummy read to consume cycle
-}
+  static MicrocodeResponse step0(State& cpu, Common::BusResponse response)
+  {
+    cpu.a ^= response.data;  // A ← A ⊕ M
+    cpu.setZN(cpu.a);
+    return {BusRequest::Read(cpu.pc)};  // Dummy read to consume cycle
+  }
+  static constexpr Microcode ops[] = {&step0};
+};
 
 // Templated push operation following your struct pattern
 template<Common::Byte State::* SourceReg, bool SetBreakFlag = false>
@@ -941,15 +957,6 @@ static constexpr auto c_instructions = []()
   add<Implied>(0x9A, "TXS", {transfer<&State::x, &State::sp>}, table);
   add<Implied>(0xBA, "TSX", {transfer<&State::sp, &State::x>}, table);
 
-  add<Immediate>(0x49, "EOR", {eor}, table);
-  add<ZeroPage>(0x45, "EOR", {eor}, table);
-  add<ZeroPageX>(0x55, "EOR", {eor}, table);
-  add<Absolute>(0x4D, "EOR", {eor}, table);
-  add<AbsoluteX>(0x5D, "EOR", {eor}, table);
-  add<AbsoluteY>(0x59, "EOR", {eor}, table);
-  add<IndirectZeroPageX>(0x41, "EOR", {eor}, table);
-  add<IndirectZeroPageY>(0x51, "EOR", {eor}, table);
-
   Builder builder{table};
   builder  //
       .add<Implied, PullOp<&State::a, false, true>>(0x68, "PLA")
@@ -1005,9 +1012,27 @@ static constexpr auto c_instructions = []()
       .add<AbsoluteX, Subtract>(0xFD, "SBC")
       .add<AbsoluteY, Subtract>(0xF9, "SBC")
       .add<IndirectZeroPageX, Subtract>(0xE1, "SBC")
-      .add<IndirectZeroPageY, Subtract>(0xF1, "SBC");
-
-  // Add more instructions as needed
+      .add<IndirectZeroPageY, Subtract>(0xF1, "SBC")
+      // AND instructions - all addressing modes
+      .add<Immediate, And>(0x29, "AND")  // AND #$nn
+      .add<ZeroPage, And>(0x25, "AND")  // AND $nn
+      .add<ZeroPageX, And>(0x35, "AND")  // AND $nn,X
+      .add<Absolute, And>(0x2D, "AND")  // AND $nnnn
+      .add<AbsoluteX, And>(0x3D, "AND")  // AND $nnnn,X
+      .add<AbsoluteY, And>(0x39, "AND")  // AND $nnnn,Y
+      .add<IndirectZeroPageX, And>(0x21, "AND")  // AND ($nn,X)
+      .add<IndirectZeroPageY, And>(0x31, "AND")  // AND ($nn),Y
+      // EOR instructions - all addressing modes (exclusive OR)
+      .add<Immediate, Eor>(0x49, "EOR")
+      .add<ZeroPage, Eor>(0x45, "EOR")
+      .add<ZeroPageX, Eor>(0x55, "EOR")
+      .add<Absolute, Eor>(0x4D, "EOR")
+      .add<AbsoluteX, Eor>(0x5D, "EOR")
+      .add<AbsoluteY, Eor>(0x59, "EOR")
+      .add<IndirectZeroPageX, Eor>(0x41, "EOR")
+      .add<IndirectZeroPageY, Eor>(0x51, "EOR")
+      // Add more instructions as needed
+      ;
 
   return table;
 }(/* immediate execution */);

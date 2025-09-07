@@ -4273,3 +4273,440 @@ TEST_CASE("SBC - Sequential Operations", "[mos6502][sbc]")
     CHECK(cpu.has(State::Flag::Carry) == true);
   }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// AND Instruction Tests
+////////////////////////////////////////////////////////////////////////////////
+
+TEST_CASE("AND Immediate Mode", "[and][immediate]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Basic AND operation")
+  {
+    State cpu;
+    cpu.a = 0xF0;  // 11110000
+
+    executeInstruction(pump, cpu, memory, {0x29, 0x0F});  // AND #$0F (00001111)
+
+    CHECK(cpu.a == 0x00);  // 11110000 & 00001111 = 00000000
+    CHECK(cpu.has(State::Flag::Zero) == true);
+    CHECK(cpu.has(State::Flag::Negative) == false);
+  }
+
+  SECTION("AND with result having bit 7 set")
+  {
+    State cpu;
+    cpu.a = 0xFF;  // 11111111
+
+    executeInstruction(pump, cpu, memory, {0x29, 0x80});  // AND #$80 (10000000)
+
+    CHECK(cpu.a == 0x80);  // 11111111 & 10000000 = 10000000
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == true);
+  }
+
+  SECTION("AND with non-zero positive result")
+  {
+    State cpu;
+    cpu.a = 0x55;  // 01010101
+
+    executeInstruction(pump, cpu, memory, {0x29, 0x33});  // AND #$33 (00110011)
+
+    CHECK(cpu.a == 0x11);  // 01010101 & 00110011 = 00010001
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == false);
+  }
+
+  SECTION("AND with 0x00 - always zero")
+  {
+    State cpu;
+    cpu.a = 0xFF;
+
+    executeInstruction(pump, cpu, memory, {0x29, 0x00});  // AND #$00
+
+    CHECK(cpu.a == 0x00);
+    CHECK(cpu.has(State::Flag::Zero) == true);
+    CHECK(cpu.has(State::Flag::Negative) == false);
+  }
+
+  SECTION("AND with 0xFF - no change")
+  {
+    State cpu;
+    cpu.a = 0x42;
+
+    executeInstruction(pump, cpu, memory, {0x29, 0xFF});  // AND #$FF
+
+    CHECK(cpu.a == 0x42);  // No change
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == false);
+  }
+
+  SECTION("Bit masking pattern")
+  {
+    State cpu;
+    cpu.a = 0xAB;  // 10101011
+
+    executeInstruction(pump, cpu, memory, {0x29, 0x0F});  // AND #$0F (mask lower nibble)
+
+    CHECK(cpu.a == 0x0B);  // Lower nibble: 1011
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == false);
+  }
+}
+
+TEST_CASE("AND Zero Page Mode", "[and][zeropage]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Normal zero page AND")
+  {
+    State cpu;
+    cpu.a = 0xC3;  // 11000011
+    memory_array[0x80] = 0x3C;  // 00111100
+
+    executeInstruction(pump, cpu, memory, {0x25, 0x80});  // AND $80
+
+    CHECK(cpu.a == 0x00);  // 11000011 & 00111100 = 00000000
+    CHECK(cpu.has(State::Flag::Zero) == true);
+  }
+
+  SECTION("Zero page AND with negative result")
+  {
+    State cpu;
+    cpu.a = 0xFF;
+    memory_array[0x50] = 0x81;  // 10000001
+
+    executeInstruction(pump, cpu, memory, {0x25, 0x50});  // AND $50
+
+    CHECK(cpu.a == 0x81);
+    CHECK(cpu.has(State::Flag::Negative) == true);
+    CHECK(cpu.has(State::Flag::Zero) == false);
+  }
+}
+
+TEST_CASE("AND Zero Page,X Mode", "[and][zeropage][indexed]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Normal indexed AND")
+  {
+    State cpu;
+    cpu.a = 0x77;  // 01110111
+    cpu.x = 0x05;
+    memory_array[0x85] = 0x22;  // 00100010
+
+    executeInstruction(pump, cpu, memory, {0x35, 0x80});  // AND $80,X
+
+    CHECK(cpu.a == 0x22);  // 01110111 & 00100010 = 00100010
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == false);
+  }
+
+  SECTION("Zero page wraparound")
+  {
+    State cpu;
+    cpu.a = 0x44;
+    cpu.x = 0x90;
+    memory_array[0x10] = 0x04;  // $80 + $90 = $110 -> $10
+
+    executeInstruction(pump, cpu, memory, {0x35, 0x80});  // AND $80,X
+
+    CHECK(cpu.a == 0x04);  // 01000100 & 00000100 = 00000100
+  }
+}
+
+TEST_CASE("AND Absolute Mode", "[and][absolute]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Normal absolute AND")
+  {
+    State cpu;
+    cpu.a = 0x96;  // 10010110
+    memory_array[0x1234] = 0x69;  // 01101001
+
+    executeInstruction(pump, cpu, memory, {0x2D, 0x34, 0x12});  // AND $1234
+
+    CHECK(cpu.a == 0x00);  // 10010110 & 01101001 = 00000000
+    CHECK(cpu.has(State::Flag::Zero) == true);
+  }
+
+  SECTION("High memory address")
+  {
+    State cpu;
+    cpu.a = 0xF8;
+    memory_array[0xFFFF] = 0x87;
+
+    executeInstruction(pump, cpu, memory, {0x2D, 0xFF, 0xFF});  // AND $FFFF
+
+    CHECK(cpu.a == 0x80);  // 11111000 & 10000111 = 10000000
+    CHECK(cpu.has(State::Flag::Negative) == true);
+  }
+}
+
+TEST_CASE("AND Absolute,X Mode", "[and][absolute][indexed]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("No page crossing")
+  {
+    State cpu;
+    cpu.a = 0x5A;  // 01011010
+    cpu.x = 0x05;
+    memory_array[0x3025] = 0xA5;  // 10100101
+
+    executeInstruction(pump, cpu, memory, {0x3D, 0x20, 0x30});  // AND $3020,X
+
+    CHECK(cpu.a == 0x00);  // 01011010 & 10100101 = 00000000
+    CHECK(cpu.has(State::Flag::Zero) == true);
+  }
+
+  SECTION("Page crossing")
+  {
+    State cpu;
+    cpu.a = 0xC7;  // 11000111
+    cpu.x = 0x20;
+    memory_array[0x2110] = 0x38;  // 00111000
+
+    executeInstruction(pump, cpu, memory, {0x3D, 0xF0, 0x20});  // AND $20F0,X
+
+    CHECK(cpu.a == 0x00);  // 11000111 & 00111000 = 00000000
+    CHECK(cpu.has(State::Flag::Zero) == true);
+  }
+}
+
+TEST_CASE("AND Absolute,Y Mode", "[and][absolute][indexed]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Normal Y-indexed AND")
+  {
+    State cpu;
+    cpu.a = 0x3C;  // 00111100
+    cpu.y = 0x10;
+    memory_array[0x4010] = 0xF0;  // 11110000
+
+    executeInstruction(pump, cpu, memory, {0x39, 0x00, 0x40});  // AND $4000,Y
+
+    CHECK(cpu.a == 0x30);  // 00111100 & 11110000 = 00110000
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == false);
+  }
+}
+
+TEST_CASE("AND Indirect,X Mode", "[and][indirect][indexed]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Normal indirect,X AND")
+  {
+    State cpu;
+    cpu.a = 0x7E;  // 01111110
+    cpu.x = 0x02;
+
+    // Pointer at $42-$43 points to $3000
+    memory_array[0x42] = 0x00;  // Low byte
+    memory_array[0x43] = 0x30;  // High byte
+    memory_array[0x3000] = 0x81;  // 10000001
+
+    executeInstruction(pump, cpu, memory, {0x21, 0x40});  // AND ($40,X)
+
+    CHECK(cpu.a == 0x00);  // 01111110 & 10000001 = 00000000
+    CHECK(cpu.has(State::Flag::Zero) == true);
+  }
+}
+
+TEST_CASE("AND Indirect,Y Mode", "[and][indirect][indexed]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Normal indirect,Y AND")
+  {
+    State cpu;
+    cpu.a = 0xE7;  // 11100111
+    cpu.y = 0x03;
+
+    // Pointer at $40-$41 points to base $3000, add Y = $3003
+    memory_array[0x40] = 0x00;  // Low byte
+    memory_array[0x41] = 0x30;  // High byte
+    memory_array[0x3003] = 0x18;  // 00011000
+
+    executeInstruction(pump, cpu, memory, {0x31, 0x40});  // AND ($40),Y
+
+    CHECK(cpu.a == 0x00);  // 11100111 & 00011000 = 00000000
+    CHECK(cpu.has(State::Flag::Zero) == true);
+  }
+
+  SECTION("Indirect,Y with page crossing")
+  {
+    State cpu;
+    cpu.a = 0xFF;
+    cpu.y = 0x20;
+
+    memory_array[0x50] = 0xF0;  // Low byte
+    memory_array[0x51] = 0x20;  // High byte -> $20F0 + $20 = $2110
+    memory_array[0x2110] = 0x0F;
+
+    executeInstruction(pump, cpu, memory, {0x31, 0x50});  // AND ($50),Y
+
+    CHECK(cpu.a == 0x0F);  // 11111111 & 00001111 = 00001111
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == false);
+  }
+}
+
+TEST_CASE("AND Flag Preservation", "[and][flags]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Non-NZ Flags Preserved")
+  {
+    State cpu;
+    cpu.a = 0x42;
+
+    // Set all non-NZ flags
+    cpu.p = static_cast<Byte>(State::Flag::Carry) | static_cast<Byte>(State::Flag::Interrupt) |
+            static_cast<Byte>(State::Flag::Decimal) | static_cast<Byte>(State::Flag::Overflow) |
+            static_cast<Byte>(State::Flag::Unused);
+
+    auto original_flags = cpu.p;
+
+    executeInstruction(pump, cpu, memory, {0x29, 0xFF});  // AND #$FF
+
+    // Only N and Z should potentially change
+    Byte flag_mask = static_cast<Byte>(State::Flag::Negative) | static_cast<Byte>(State::Flag::Zero);
+    CHECK((cpu.p & ~flag_mask) == (original_flags & ~flag_mask));
+
+    // Check specific flags preserved
+    CHECK(cpu.has(State::Flag::Carry) == true);
+    CHECK(cpu.has(State::Flag::Interrupt) == true);
+    CHECK(cpu.has(State::Flag::Decimal) == true);
+    CHECK(cpu.has(State::Flag::Overflow) == true);
+  }
+
+  SECTION("Registers Unchanged")
+  {
+    State cpu;
+    cpu.a = 0x55;
+    cpu.x = 0x11;
+    cpu.y = 0x22;
+    cpu.sp = 0xEE;
+
+    executeInstruction(pump, cpu, memory, {0x29, 0x33});  // AND #$33
+
+    CHECK(cpu.x == 0x11);  // Other registers unchanged
+    CHECK(cpu.y == 0x22);
+    CHECK(cpu.sp == 0xEE);
+    CHECK(cpu.a == 0x11);  // Accumulator should change: 0x55 & 0x33 = 0x11
+  }
+}
+
+TEST_CASE("AND Bit Patterns and Edge Cases", "[and][edge]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("All bits set AND all bits set")
+  {
+    State cpu;
+    cpu.a = 0xFF;
+
+    executeInstruction(pump, cpu, memory, {0x29, 0xFF});  // AND #$FF
+
+    CHECK(cpu.a == 0xFF);  // No change
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == true);
+  }
+
+  SECTION("Alternating bit patterns")
+  {
+    State cpu;
+    cpu.a = 0xAA;  // 10101010
+
+    executeInstruction(pump, cpu, memory, {0x29, 0x55});  // AND #$55 (01010101)
+
+    CHECK(cpu.a == 0x00);  // No bits overlap
+    CHECK(cpu.has(State::Flag::Zero) == true);
+    CHECK(cpu.has(State::Flag::Negative) == false);
+  }
+
+  SECTION("Single bit isolation")
+  {
+    State cpu;
+    cpu.a = 0x47;  // 01000111
+
+    executeInstruction(pump, cpu, memory, {0x29, 0x40});  // AND #$40 (01000000)
+
+    CHECK(cpu.a == 0x40);  // Isolate bit 6
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == false);
+  }
+
+  SECTION("Multiple AND operations")
+  {
+    State cpu;
+    cpu.a = 0xFF;  // Start with all bits
+
+    // Progressive masking
+    executeInstruction(pump, cpu, memory, {0x29, 0xF0});  // AND #$F0 -> 0xF0
+    CHECK(cpu.a == 0xF0);
+
+    executeInstruction(pump, cpu, memory, {0x29, 0xC0});  // AND #$C0 -> 0xC0
+    CHECK(cpu.a == 0xC0);
+
+    executeInstruction(pump, cpu, memory, {0x29, 0x80});  // AND #$80 -> 0x80
+    CHECK(cpu.a == 0x80);
+    CHECK(cpu.has(State::Flag::Negative) == true);
+
+    executeInstruction(pump, cpu, memory, {0x29, 0x7F});  // AND #$7F -> 0x00
+    CHECK(cpu.a == 0x00);
+    CHECK(cpu.has(State::Flag::Zero) == true);
+    CHECK(cpu.has(State::Flag::Negative) == false);
+  }
+
+  SECTION("Common bit manipulation patterns")
+  {
+    State cpu;
+
+    // Test clearing specific bits (common use case)
+    cpu.a = 0xFF;
+    executeInstruction(pump, cpu, memory, {0x29, 0xFE});  // Clear bit 0: AND #$FE
+    CHECK(cpu.a == 0xFE);
+
+    cpu.a = 0xFF;
+    executeInstruction(pump, cpu, memory, {0x29, 0x7F});  // Clear bit 7: AND #$7F
+    CHECK(cpu.a == 0x7F);
+    CHECK(cpu.has(State::Flag::Negative) == false);
+
+    // Test bit testing (check if bit is set)
+    cpu.a = 0x08;  // Only bit 3 set
+    executeInstruction(pump, cpu, memory, {0x29, 0x08});  // Test bit 3: AND #$08
+    CHECK(cpu.a == 0x08);  // Bit was set
+    CHECK(cpu.has(State::Flag::Zero) == false);
+
+    cpu.a = 0x08;  // Only bit 3 set
+    executeInstruction(pump, cpu, memory, {0x29, 0x04});  // Test bit 2: AND #$04
+    CHECK(cpu.a == 0x00);  // Bit was not set
+    CHECK(cpu.has(State::Flag::Zero) == true);
+  }
+}
