@@ -105,24 +105,57 @@ static MicrocodeResponse store(State& cpu, Common::BusResponse /*response*/)
   return {BusRequest::Write(Common::MakeAddress(cpu.lo, cpu.hi), (cpu.*reg))};
 }
 
-static MicrocodeResponse adc(State& cpu, Common::BusResponse response)
+struct Add
 {
-  assert(cpu.has(State::Flag::Decimal) == false);  // BCD mode not supported
+  static MicrocodeResponse step0(State& cpu, Common::BusResponse response)
+  {
+    assert(cpu.has(State::Flag::Decimal) == false);  // BCD mode not supported
 
-  const Byte a = cpu.a;
-  const Byte m = response.data;
-  const Byte c = cpu.has(State::Flag::Carry) ? 1 : 0;
+    const Byte a = cpu.a;
+    const Byte m = response.data;
+    const Byte c = cpu.has(State::Flag::Carry) ? 1 : 0;
 
-  const uint16_t sum = uint16_t(a) + uint16_t(m) + uint16_t(c);
-  const Byte result = Byte(sum & 0xFF);
+    const uint16_t sum = uint16_t(a) + uint16_t(m) + uint16_t(c);
+    const Byte result = Byte(sum & 0xFF);
 
-  cpu.set(State::Flag::Carry, (sum & 0x100) != 0);
-  cpu.set(State::Flag::Overflow, ((~(a ^ m) & (a ^ result)) & 0x80) != 0);
-  cpu.setZN(result);
+    cpu.set(State::Flag::Carry, (sum & 0x100) != 0);
+    cpu.set(State::Flag::Overflow, ((~(a ^ m) & (a ^ result)) & 0x80) != 0);
+    cpu.setZN(result);
 
-  cpu.a = result;
-  return MicrocodeResponse{};
-}
+    cpu.a = result;
+    return MicrocodeResponse{};
+  }
+  static constexpr Microcode ops[] = {&step0};
+};
+
+struct Subtract
+{
+
+  static MicrocodeResponse step0(State& cpu, Common::BusResponse response)
+  {
+    // SBC: A = A - M - (1 - C) = A + (~M) + C
+    Common::Byte operand = ~response.data;  // Invert the operand for two's complement
+    Common::Byte carry = cpu.has(State::Flag::Carry) ? 1 : 0;
+
+    uint16_t temp = static_cast<uint16_t>(cpu.a) + operand + carry;
+
+    // Set carry flag (no borrow occurred if bit 8 is set)
+    cpu.set(State::Flag::Carry, (temp & 0x100) != 0);
+
+    // Check for signed overflow
+    auto result = static_cast<Common::Byte>(temp & 0xFF);
+    bool overflow = ((cpu.a ^ result) & (operand ^ result) & 0x80) != 0;
+    cpu.set(State::Flag::Overflow, overflow);
+
+    // Store result and set N,Z flags
+    cpu.a = result;
+    cpu.setZN(cpu.a);
+
+    return MicrocodeResponse{};
+  }
+
+  static constexpr Microcode ops[] = {&step0};
+};
 
 template<State::Flag Flag, bool Set>
 static MicrocodeResponse flagOp(State& cpu, Common::BusResponse /*response*/)
@@ -797,16 +830,6 @@ static constexpr auto c_instructions = []()
 
   add<Implied>(0xEA, "NOP", {nop}, table);
 
-  // ADC instructions
-  add<Immediate>(0x69, "ADC", {adc}, table);
-  add<ZeroPage>(0x65, "ADC", {adc}, table);
-  add<ZeroPageX>(0x75, "ADC", {adc}, table);
-  add<Absolute>(0x6D, "ADC", {adc}, table);
-  add<AbsoluteX>(0x7D, "ADC", {adc}, table);
-  add<AbsoluteY>(0x79, "ADC", {adc}, table);
-  add<IndirectZeroPageX>(0x61, "ADC", {adc}, table);
-  add<IndirectZeroPageY>(0x71, "ADC", {adc}, table);
-
   // LDA instructions
   add<Immediate>(0xA9, "LDA", {load<&State::a>}, table);
   add<ZeroPage>(0xA5, "LDA", {load<&State::a>}, table);
@@ -965,7 +988,24 @@ static constexpr auto c_instructions = []()
       .add<ZeroPageX, RotateRight>(0x76, "ROR")  // ROR $nn,X
       .add<Absolute, RotateRight>(0x6E, "ROR")  // ROR $nnnn
       .add<AbsoluteX, RotateRight>(0x7E, "ROR")  // ROR $nnnn,X
-      ;
+      // ADC instructions
+      .add<Immediate, Add>(0x69, "ADC")
+      .add<ZeroPage, Add>(0x65, "ADC")
+      .add<ZeroPageX, Add>(0x75, "ADC")
+      .add<Absolute, Add>(0x6D, "ADC")
+      .add<AbsoluteX, Add>(0x7D, "ADC")
+      .add<AbsoluteY, Add>(0x79, "ADC")
+      .add<IndirectZeroPageX, Add>(0x61, "ADC")
+      .add<IndirectZeroPageY, Add>(0x71, "ADC")
+      // SBC instructions - all addressing modes
+      .add<Immediate, Subtract>(0xE9, "SBC")
+      .add<ZeroPage, Subtract>(0xE5, "SBC")
+      .add<ZeroPageX, Subtract>(0xF5, "SBC")
+      .add<Absolute, Subtract>(0xED, "SBC")
+      .add<AbsoluteX, Subtract>(0xFD, "SBC")
+      .add<AbsoluteY, Subtract>(0xF9, "SBC")
+      .add<IndirectZeroPageX, Subtract>(0xE1, "SBC")
+      .add<IndirectZeroPageY, Subtract>(0xF1, "SBC");
 
   // Add more instructions as needed
 

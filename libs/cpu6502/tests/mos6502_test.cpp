@@ -3936,3 +3936,340 @@ TEST_CASE("Shift/Rotate Memory - Edge Cases", "[shift][rotate][memory][edge]")
     CHECK(memory_array[0xB0] == 0x3B);  // Only memory changed (0x77 >> 1 = 0x3B)
   }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// Subtraction Instruction Tests
+////////////////////////////////////////////////////////////////////////////////
+
+TEST_CASE("SBC - Subtract with Carry", "[mos6502][sbc]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+  State cpu;
+
+  SECTION("Basic subtraction - no borrow")
+  {
+    // SBC #$20: A = $50 - $20 = $30, C should be set (no borrow)
+    cpu.a = 0x50;
+    cpu.set(State::Flag::Carry, true);  // No borrow
+
+    [[maybe_unused]] auto result = executeInstruction(pump, cpu, memory, {0xE9, 0x20});  // SBC #$20
+
+    CHECK(cpu.a == 0x30);
+    CHECK(cpu.has(State::Flag::Carry) == true);  // No borrow occurred
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == false);
+    CHECK(cpu.has(State::Flag::Overflow) == false);
+  }
+
+  SECTION("Basic subtraction - with borrow")
+  {
+    // SBC #$20: A = $50 - $20 - 1 = $2F, C should be set (no borrow)
+    cpu.a = 0x50;
+    cpu.set(State::Flag::Carry, false);  // Previous borrow
+
+    [[maybe_unused]] auto result = executeInstruction(pump, cpu, memory, {0xE9, 0x20});  // SBC #$20
+
+    CHECK(cpu.a == 0x2F);
+    CHECK(cpu.has(State::Flag::Carry) == true);  // No borrow occurred
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == false);
+    CHECK(cpu.has(State::Flag::Overflow) == false);
+  }
+
+  SECTION("Subtraction causing underflow")
+  {
+    // SBC #$30: A = $20 - $30 = $F0, C should be clear (borrow occurred)
+    cpu.a = 0x20;
+    cpu.set(State::Flag::Carry, true);  // No initial borrow
+
+    [[maybe_unused]] auto result = executeInstruction(pump, cpu, memory, {0xE9, 0x30});  // SBC #$30
+
+    CHECK(cpu.a == 0xF0);
+    CHECK(cpu.has(State::Flag::Carry) == false);  // Borrow occurred
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == true);  // Result is negative
+    CHECK(cpu.has(State::Flag::Overflow) == false);
+  }
+
+  SECTION("Subtraction with underflow and initial borrow")
+  {
+    // SBC #$30: A = $20 - $30 - 1 = $EF, C should be clear (borrow occurred)
+    cpu.a = 0x20;
+    cpu.set(State::Flag::Carry, false);  // Initial borrow
+
+    [[maybe_unused]] auto result = executeInstruction(pump, cpu, memory, {0xE9, 0x30});  // SBC #$30
+
+    CHECK(cpu.a == 0xEF);
+    CHECK(cpu.has(State::Flag::Carry) == false);  // Borrow occurred
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == true);  // Result is negative
+    CHECK(cpu.has(State::Flag::Overflow) == false);
+  }
+
+  SECTION("Zero result")
+  {
+    // SBC #$50: A = $50 - $50 = $00, should set Z flag
+    cpu.a = 0x50;
+    cpu.set(State::Flag::Carry, true);  // No initial borrow
+
+    [[maybe_unused]] auto result = executeInstruction(pump, cpu, memory, {0xE9, 0x50});  // SBC #$50
+
+    CHECK(cpu.a == 0x00);
+    CHECK(cpu.has(State::Flag::Carry) == true);  // No borrow
+    CHECK(cpu.has(State::Flag::Zero) == true);  // Result is zero
+    CHECK(cpu.has(State::Flag::Negative) == false);
+    CHECK(cpu.has(State::Flag::Overflow) == false);
+  }
+
+  SECTION("Zero result with initial borrow")
+  {
+    // SBC #$4F: A = $50 - $4F - 1 = $00, should set Z flag
+    cpu.a = 0x50;
+    cpu.set(State::Flag::Carry, false);  // Initial borrow
+
+    [[maybe_unused]] auto result = executeInstruction(pump, cpu, memory, {0xE9, 0x4F});  // SBC #$4F
+
+    CHECK(cpu.a == 0x00);
+    CHECK(cpu.has(State::Flag::Carry) == true);  // No borrow
+    CHECK(cpu.has(State::Flag::Zero) == true);  // Result is zero
+    CHECK(cpu.has(State::Flag::Negative) == false);
+    CHECK(cpu.has(State::Flag::Overflow) == false);
+  }
+
+  SECTION("Signed overflow - positive to negative")
+  {
+    // SBC #$01: A = $80 - $01 = $7F (positive result from negative operand)
+    cpu.a = 0x80;  // -128 in signed
+    cpu.set(State::Flag::Carry, true);  // No initial borrow
+
+    [[maybe_unused]] auto result = executeInstruction(pump, cpu, memory, {0xE9, 0x01});  // SBC #$01
+
+    CHECK(cpu.a == 0x7F);
+    CHECK(cpu.has(State::Flag::Carry) == true);  // No borrow
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == false);
+    CHECK(cpu.has(State::Flag::Overflow) == true);  // Signed overflow
+  }
+
+  SECTION("Signed overflow - negative to positive")
+  {
+    // SBC #$80: A = $7F - $80 = $FF (negative result from positive operand)
+    cpu.a = 0x7F;  // +127 in signed
+    cpu.set(State::Flag::Carry, true);  // No initial borrow
+
+    [[maybe_unused]] auto result = executeInstruction(pump, cpu, memory, {0xE9, 0x80});  // SBC #$80
+
+    CHECK(cpu.a == 0xFF);
+    CHECK(cpu.has(State::Flag::Carry) == false);  // Borrow occurred
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == true);
+    CHECK(cpu.has(State::Flag::Overflow) == true);  // Signed overflow
+  }
+
+  SECTION("Edge case - subtract zero")
+  {
+    // SBC #$00: A = $42 - $00 = $42 (no change except possible borrow)
+    cpu.a = 0x42;
+    cpu.set(State::Flag::Carry, true);  // No initial borrow
+
+    [[maybe_unused]] auto result = executeInstruction(pump, cpu, memory, {0xE9, 0x00});  // SBC #$00
+
+    CHECK(cpu.a == 0x42);
+    CHECK(cpu.has(State::Flag::Carry) == true);  // No borrow
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == false);
+    CHECK(cpu.has(State::Flag::Overflow) == false);
+  }
+
+  SECTION("Edge case - subtract zero with initial borrow")
+  {
+    // SBC #$00: A = $42 - $00 - 1 = $41
+    cpu.a = 0x42;
+    cpu.set(State::Flag::Carry, false);  // Initial borrow
+
+    [[maybe_unused]] auto result = executeInstruction(pump, cpu, memory, {0xE9, 0x00});  // SBC #$00
+
+    CHECK(cpu.a == 0x41);
+    CHECK(cpu.has(State::Flag::Carry) == true);  // No borrow
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == false);
+    CHECK(cpu.has(State::Flag::Overflow) == false);
+  }
+
+  SECTION("Edge case - subtract from zero")
+  {
+    // SBC #$01: A = $00 - $01 = $FF (maximum underflow)
+    cpu.a = 0x00;
+    cpu.set(State::Flag::Carry, true);  // No initial borrow
+
+    [[maybe_unused]] auto result = executeInstruction(pump, cpu, memory, {0xE9, 0x01});  // SBC #$01
+
+    CHECK(cpu.a == 0xFF);
+    CHECK(cpu.has(State::Flag::Carry) == false);  // Borrow occurred
+    CHECK(cpu.has(State::Flag::Zero) == false);
+    CHECK(cpu.has(State::Flag::Negative) == true);
+    CHECK(cpu.has(State::Flag::Overflow) == false);
+  }
+
+  SECTION("Maximum values")
+  {
+    // SBC #$FF: A = $FF - $FF = $00
+    cpu.a = 0xFF;
+    cpu.set(State::Flag::Carry, true);  // No initial borrow
+
+    [[maybe_unused]] auto result = executeInstruction(pump, cpu, memory, {0xE9, 0xFF});  // SBC #$FF
+
+    CHECK(cpu.a == 0x00);
+    CHECK(cpu.has(State::Flag::Carry) == true);  // No borrow
+    CHECK(cpu.has(State::Flag::Zero) == true);
+    CHECK(cpu.has(State::Flag::Negative) == false);
+    CHECK(cpu.has(State::Flag::Overflow) == false);
+  }
+}
+
+TEST_CASE("SBC - Different Addressing Modes", "[mos6502][sbc]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  State cpu;
+
+  SECTION("Zero Page addressing")
+  {
+    // Set up memory: SBC $80
+    memory_array[0x80] = 0x30;
+
+    cpu.a = 0x50;
+    cpu.set(State::Flag::Carry, true);  // No initial borrow
+
+    [[maybe_unused]] auto result = executeInstruction(pump, cpu, memory, {0xE5, 0x80});  // SBC $80
+
+    CHECK(cpu.a == 0x20);  // $50 - $30 = $20
+    CHECK(cpu.has(State::Flag::Carry) == true);
+  }
+
+  SECTION("Zero Page,X addressing")
+  {
+    // Set up memory: SBC $80,X where X = $05
+    memory_array[0x85] = 0x15;
+    cpu.a = 0x40;
+    cpu.x = 0x05;
+    cpu.set(State::Flag::Carry, true);  // No initial borrow
+
+    [[maybe_unused]] auto result = executeInstruction(pump, cpu, memory, {0xF5, 0x80});  // SBC $80,X
+
+    CHECK(cpu.a == 0x2B);  // $40 - $15 = $2B
+    CHECK(cpu.has(State::Flag::Carry) == true);
+  }
+
+  SECTION("Absolute addressing")
+  {
+    // Set up memory: SBC $2000
+    memory_array[0x2000] = 0x25;
+    cpu.a = 0x60;
+    cpu.set(State::Flag::Carry, true);  // No initial borrow
+
+    [[maybe_unused]] auto result = executeInstruction(pump, cpu, memory, {0xED, 0x00, 0x20});  // SBC $2000
+
+    CHECK(cpu.a == 0x3B);  // $60 - $25 = $3B
+    CHECK(cpu.has(State::Flag::Carry) == true);
+  }
+
+  SECTION("Absolute,X addressing")
+  {
+    // Set up memory: SBC $2000,X where X = $10
+    memory_array[0x2010] = 0x12;
+    cpu.a = 0x50;
+    cpu.x = 0x10;
+    cpu.set(State::Flag::Carry, true);  // No initial borrow
+
+    [[maybe_unused]] auto result = executeInstruction(pump, cpu, memory, {0xFD, 0x00, 0x20});  // SBC $2000,X
+
+    CHECK(cpu.a == 0x3E);  // $50 - $12 = $3E
+    CHECK(cpu.has(State::Flag::Carry) == true);
+  }
+
+  SECTION("Absolute,Y addressing")
+  {
+    // Set up memory: SBC $2000,Y where Y = $08
+    memory_array[0x2008] = 0x33;
+    cpu.a = 0x70;
+    cpu.y = 0x08;
+    cpu.set(State::Flag::Carry, true);  // No initial borrow
+
+    [[maybe_unused]] auto result = executeInstruction(pump, cpu, memory, {0xF9, 0x00, 0x20});  // SBC $2000,Y
+
+    CHECK(cpu.a == 0x3D);  // $70 - $33 = $3D
+    CHECK(cpu.has(State::Flag::Carry) == true);
+  }
+
+  SECTION("Indirect,X addressing")
+  {
+    // Set up memory: SBC ($40,X) where X = $02
+    // Pointer at $42-$43 points to $3000
+    memory_array[0x42] = 0x00;  // Low byte of target address
+    memory_array[0x43] = 0x30;  // High byte of target address
+    memory_array[0x3000] = 0x28;  // Value to subtract
+
+    cpu.a = 0x60;
+    cpu.x = 0x02;
+    cpu.set(State::Flag::Carry, true);  // No initial borrow
+
+    [[maybe_unused]] auto result = executeInstruction(pump, cpu, memory, {0xE1, 0x40});  // SBC ($40,X)
+
+    CHECK(cpu.a == 0x38);  // $60 - $28 = $38
+    CHECK(cpu.has(State::Flag::Carry) == true);
+  }
+
+  SECTION("Indirect,Y addressing")
+  {
+    // Set up memory: SBC ($40),Y where Y = $03
+    // Pointer at $40-$41 points to $3000, then add Y = $3003
+    memory_array[0x40] = 0x00;  // Low byte of base address
+    memory_array[0x41] = 0x30;  // High byte of base address
+    memory_array[0x3003] = 0x1A;  // Value to subtract
+
+    cpu.a = 0x45;
+    cpu.y = 0x03;
+    cpu.set(State::Flag::Carry, true);  // No initial borrow
+
+    [[maybe_unused]] auto result = executeInstruction(pump, cpu, memory, {0xF1, 0x40});  // SBC ($40),Y
+
+    CHECK(cpu.a == 0x2B);  // $45 - $1A = $2B
+    CHECK(cpu.has(State::Flag::Carry) == true);
+  }
+}
+
+TEST_CASE("SBC - Sequential Operations", "[mos6502][sbc]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  State cpu;
+
+  SECTION("Multiple SBC operations maintaining carry chain")
+  {
+    // Test that carry flag properly chains between operations
+    cpu.a = 0x80;
+    cpu.set(State::Flag::Carry, true);  // Start with no borrow
+
+    // First subtraction: $80 - $20 = $60, C=1
+    executeInstruction(pump, cpu, memory, {0xE9, 0x20});  // SBC #$20
+    CHECK(cpu.a == 0x60);
+    CHECK(cpu.has(State::Flag::Carry) == true);
+
+    // Second subtraction: $60 - $70 = $F0, C=0 (borrow)
+    executeInstruction(pump, cpu, memory, {0xE9, 0x70});  // SBC #$70
+    CHECK(cpu.a == 0xF0);
+    CHECK(cpu.has(State::Flag::Carry) == false);
+
+    // Third subtraction with borrow: $F0 - $10 - 1 = $DF, C=1
+    executeInstruction(pump, cpu, memory, {0xE9, 0x10});  // SBC #$10
+    CHECK(cpu.a == 0xDF);
+    CHECK(cpu.has(State::Flag::Carry) == true);
+  }
+}
