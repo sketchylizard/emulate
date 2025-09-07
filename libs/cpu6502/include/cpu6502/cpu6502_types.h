@@ -18,10 +18,11 @@ using MicrocodeResponse = CpuDefinition::Response;
 
 struct DisassemblyFormat
 {
-  const char* prefix = "";  // e.g. "#$" or "($"
-  const char* suffix = "";  // e.g. ",X)" or ",Y"
+  char prefix[3] = "";  // e.g. "#$" or "($" -- 2 characters + null terminator
+  char suffix[4] = "";  // e.g. ",X)" or ",Y" -- 3 characters + null terminator
   Common::Byte numberOfOperands = 0;
 };
+static_assert(sizeof(DisassemblyFormat) == 8);
 
 struct Instruction
 {
@@ -29,8 +30,8 @@ struct Instruction
 
   Common::Byte opcode = 0;
   Common::Byte length = 1;  // total length in bytes (opcode + operands)
+  DisassemblyFormat format;
   const char* mnemonic = "???";
-  const DisassemblyFormat* format = nullptr;
   Microcode ops[c_maxOperations] = {};  // sequence of microcode functions to execute
 };
 

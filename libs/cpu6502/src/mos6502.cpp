@@ -712,7 +712,7 @@ constexpr void add(Common::Byte opcode, const char* mnemonic, std::initializer_l
   Instruction& instr = table[opcode];
   instr.opcode = opcode;
   instr.mnemonic = mnemonic;
-  instr.format = &Mode::format;
+  instr.format = Mode::format;
 
   // Copy addressing microcode first
   size_t index = 0;
@@ -754,7 +754,7 @@ struct Builder
     Instruction& instr = table[opcode];
     instr.opcode = opcode;
     instr.mnemonic = mnemonic;
-    instr.format = &Mode::format;
+    instr.format = Mode::format;
 
     // Copy addressing microcode first
     size_t index = 0;
@@ -985,12 +985,12 @@ FixedFormatter& operator<<(FixedFormatter& formatter, std::pair<const State&, st
   const Byte opcode = bytes[0];
   const Instruction& instr = c_instructions[opcode];
 
-  assert(instr.format->numberOfOperands < std::size(bytes));
+  assert(instr.format.numberOfOperands < std::size(bytes));
 
   // Add operand bytes
   formatter << opcode << ' ';
-  (instr.format->numberOfOperands > 0 ? (formatter << bytes[1]) : (formatter << "  ")) << ' ';
-  (instr.format->numberOfOperands > 1 ? (formatter << bytes[2]) : (formatter << "  ")) << ' ';
+  (instr.format.numberOfOperands > 0 ? (formatter << bytes[1]) : (formatter << "  ")) << ' ';
+  (instr.format.numberOfOperands > 1 ? (formatter << bytes[2]) : (formatter << "  ")) << ' ';
 
   // Mnemonic
   formatter << "  " << instr.mnemonic << ' ';
@@ -1000,12 +1000,12 @@ FixedFormatter& operator<<(FixedFormatter& formatter, std::pair<const State&, st
   // We will pad with spaces if the operand is shorter
   size_t currentLength = formatter.finalize().length();
 
-  formatter << instr.format->prefix;
+  formatter << instr.format.prefix;
 
   // Special case for branch instructions to show target address
   // Branch instructions have opcodes 0x10, 0x30, 0x50, 0x70, 0x90, 0xB0, 0xD0, 0xF0
 
-  if (instr.format->numberOfOperands == 2)
+  if (instr.format.numberOfOperands == 2)
   {
     // Need to output an address
     formatter << bytes[2] << bytes[1];
@@ -1017,12 +1017,12 @@ FixedFormatter& operator<<(FixedFormatter& formatter, std::pair<const State&, st
     int32_t target = static_cast<int32_t>(state.pc) + 2 + offset;  // PC + instruction length + offset
     formatter << Address{static_cast<uint16_t>(target)};
   }
-  else if (instr.format->numberOfOperands <= 1)
+  else if (instr.format.numberOfOperands <= 1)
   {
     formatter << bytes[1];
   }
 
-  formatter << instr.format->suffix;
+  formatter << instr.format.suffix;
 
   // Pad to 9 characters
   size_t neededSpaces = formatter.finalize().length() - currentLength;
