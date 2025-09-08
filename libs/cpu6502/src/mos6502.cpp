@@ -765,6 +765,125 @@ struct RotateRight
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+// BRK - Software Interrupt (7 cycles)
+////////////////////////////////////////////////////////////////////////////////
+
+struct Brk
+{
+  // Step 1: Dummy read next instruction byte (like JSR)
+  static MicrocodeResponse step1(State& cpu, Common::BusResponse /*response*/)
+  {
+    return {BusRequest::Read(cpu.pc++)};  // Read and discard next byte
+  }
+
+  // Step 2: Push return address high byte (PC)
+  static MicrocodeResponse step2(State& cpu, Common::BusResponse /*response*/)
+  {
+    // BRK pushes PC (current instruction + 2), unlike JSR which pushes PC-1
+    Byte return_addr_high = Common::HiByte(static_cast<uint16_t>(cpu.pc));
+    return {BusRequest::Write(Common::MakeAddress(cpu.sp--, 0x01), return_addr_high)};
+  }
+
+  // Step 3: Push return address low byte
+  static MicrocodeResponse step3(State& cpu, Common::BusResponse /*response*/)
+  {
+    Byte return_addr_low = Common::LoByte(static_cast<uint16_t>(cpu.pc));
+    return {BusRequest::Write(Common::MakeAddress(cpu.sp--, 0x01), return_addr_low)};
+  }
+
+  // Step 4: Push processor status with Break flag set
+  static MicrocodeResponse step4(State& cpu, Common::BusResponse /*response*/)
+  {
+    // Push P with Break flag set (like PHP)
+    Byte status = cpu.p | static_cast<Byte>(State::Flag::Break);
+    return {BusRequest::Write(Common::MakeAddress(cpu.sp--, 0x01), status)};
+  }
+
+  // Step 5: Read IRQ vector low byte, set Interrupt flag
+  static MicrocodeResponse step5(State& cpu, Common::BusResponse /*response*/)
+  {
+    // Set Interrupt flag to disable further interrupts
+    cpu.set(State::Flag::Interrupt, true);
+
+    // Read IRQ vector low byte from $FFFE
+    return {BusRequest::Read(0xFFFE_addr)};
+  }
+
+  // Step 6: Read IRQ vector high byte and jump
+  static MicrocodeResponse step6(State& cpu, Common::BusResponse response)
+  {
+    // Store low byte from previous read
+    cpu.lo = response.data;
+
+    // Read IRQ vector high byte from $FFFF
+    return {BusRequest::Read(0xFFFF_addr)};
+  }
+
+  // Step 7: Set PC to interrupt vector
+  static MicrocodeResponse step7(State& cpu, Common::BusResponse response)
+  {
+    // Store high byte and set PC to interrupt vector
+    cpu.hi = response.data;
+    cpu.pc = Common::MakeAddress(cpu.lo, cpu.hi);
+
+    // Final dummy read
+    return {BusRequest::Read(cpu.pc)};
+  }
+
+  static constexpr Microcode ops[] = {step1, step2, step3, step4, step5, step6, step7};
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// RTI - Return from Interrupt (6 cycles)
+////////////////////////////////////////////////////////////////////////////////
+
+struct Rti
+{
+  // Step 1: Dummy read from current PC
+  static MicrocodeResponse step1(State& cpu, Common::BusResponse /*response*/)
+  {
+    // Increment SP in preparation for first pull
+    ++cpu.sp;
+    return {BusRequest::Read(cpu.pc)};
+  }
+
+  // Step 2: Pull processor status from stack
+  static MicrocodeResponse step2(State& cpu, Common::BusResponse /*response*/)
+  {
+    return {BusRequest::Read(Common::MakeAddress(cpu.sp++, 0x01))};
+  }
+
+  // Step 3: Store processor status, pull return address low byte
+  static MicrocodeResponse step3(State& cpu, Common::BusResponse response)
+  {
+    // Restore processor status (clear Break flag like PLP)
+    Byte status = response.data & ~static_cast<Byte>(State::Flag::Break);
+    cpu.assignP(status);  // Use assignP to preserve Unused flag
+
+    return {BusRequest::Read(Common::MakeAddress(cpu.sp++, 0x01))};
+  }
+
+  // Step 4: Store low byte, pull return address high byte
+  static MicrocodeResponse step4(State& cpu, Common::BusResponse response)
+  {
+    cpu.lo = response.data;
+    return {BusRequest::Read(Common::MakeAddress(cpu.sp, 0x01))};
+  }
+
+  // Step 5: Restore PC and continue
+  static MicrocodeResponse step5(State& cpu, Common::BusResponse response)
+  {
+    cpu.hi = response.data;
+    cpu.pc = Common::MakeAddress(cpu.lo, cpu.hi);
+
+    // Note: Unlike RTS, RTI does NOT increment PC
+    return {BusRequest::Read(cpu.pc)};
+  }
+
+  static constexpr Microcode ops[] = {step1, step2, step3, step4, step5};
+};
+
+////////////////////////////////////////////////////////////////////////////////
 // CPU implementation
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -870,7 +989,6 @@ static constexpr auto c_instructions = []()
   using Flag = State::Flag;
 
   // Insert actual instructions by opcode
-  // add(0x00, "BRK", table, {brk<false>});
 
   add<Implied>(0xEA, "NOP", {nop}, table);
 
@@ -1059,9 +1177,13 @@ static constexpr auto c_instructions = []()
       .add<AbsoluteY, Eor>(0x59, "EOR")
       .add<IndirectZeroPageX, Eor>(0x41, "EOR")
       .add<IndirectZeroPageY, Eor>(0x51, "EOR")
-      // BIT only supports 2 addressing modes
+
       .add<ZeroPage, Bit>(0x24, "BIT")
       .add<Absolute, Bit>(0x2C, "BIT")
+
+      .add<Implied, Brk>(0x00, "BRK")
+      .add<Implied, Rti>(0x40, "RTI")
+
       // Add more instructions as needed
       ;
 

@@ -80,6 +80,9 @@ Address executeInstruction(MicrocodePump<mos6502>& pump, State& cpu, MemoryDevic
   std::size_t cycle_count = 0;
   const std::size_t c_maxCycles = 20;  // Safety limit to prevent infinite loops
 
+  // Reset pump to avoid state carryover
+  pump = MicrocodePump<mos6502>();
+
   do
   {
     request = pump.tick(cpu, response);
@@ -2498,9 +2501,13 @@ TEST_CASE("Store Edge Cases", "[store][edge]")
     cpu.y = 0x33;
 
     // Store A, then X, then Y to consecutive locations
-    executeInstruction(pump, cpu, memory, {0x85, 0x10});  // STA $10
-    executeInstruction(pump, cpu, memory, {0x86, 0x11});  // STX $11
-    executeInstruction(pump, cpu, memory, {0x84, 0x12});  // STY $12
+    executeInstruction(pump, cpu, memory,
+        {
+            0x85, 0x10,  // STA $10
+            0x86, 0x11,  // STX $11
+            0x84, 0x12  // STY $12
+        },
+        3);
 
     CHECK(memory_array[0x10] == 0x11);  // A
     CHECK(memory_array[0x11] == 0x22);  // X
@@ -2717,8 +2724,12 @@ TEST_CASE("PHP/PLP - Push/Pull Processor Status", "[stack][php][plp]")
     cpu.y = 0x33;
     cpu.sp = 0xFF;
 
-    executeInstruction(pump, cpu, memory, {0x08});  // PHP
-    executeInstruction(pump, cpu, memory, {0x28});  // PLP
+    executeInstruction(pump, cpu, memory,
+        {
+            0x08,  // PHP
+            0x28  // PLP
+        },
+        2);
 
     CHECK(cpu.a == 0x11);
     CHECK(cpu.x == 0x22);
@@ -4938,5 +4949,153 @@ TEST_CASE("BIT Common Use Cases", "[bit][practical]")
     // AND sets N,Z from result bits
     CHECK(cpu.has(State::Flag::Negative) == false);  // Bit 7 of 0x33 is 0
     CHECK(cpu2.has(State::Flag::Negative) == false);  // Bit 7 of 0x11 is 0 (same in this case)
+  }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// BRK/RTI Tests
+////////////////////////////////////////////////////////////////////////////////
+
+TEST_CASE("BRK - Software Interrupt", "[brk][interrupt]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Basic BRK operation")
+  {
+    State cpu;
+    cpu.pc = 0x1000_addr;
+    cpu.sp = 0xFF;
+    cpu.p = static_cast<Byte>(State::Flag::Carry) | static_cast<Byte>(State::Flag::Unused);
+
+    // Set up IRQ vector
+    memory_array[0xFFFE] = 0x00;  // IRQ vector low byte
+    memory_array[0xFFFF] = 0xE0;  // IRQ vector high byte -> $E000
+
+    auto nextAddr = executeInstruction(pump, cpu, memory, {0x00, 0x12});  // BRK
+
+    // Check PC jumped to interrupt vector
+    CHECK(nextAddr == 0xE000_addr);
+
+    // Check stack contains return address (PC+2 = $1002)
+    CHECK(cpu.sp == 0xFC);  // Stack pointer moved down 3
+    CHECK(memory_array[0x01FF] == 0x10);  // Return address high
+    CHECK(memory_array[0x01FE] == 0x02);  // Return address low (PC + 2)
+
+    // Check processor status pushed with Break flag
+    Byte expected_status = static_cast<Byte>(State::Flag::Carry) | static_cast<Byte>(State::Flag::Unused) |
+                           static_cast<Byte>(State::Flag::Break);
+    CHECK(memory_array[0x01FD] == expected_status);
+
+    // Check Interrupt flag is now set
+    CHECK(cpu.has(State::Flag::Interrupt) == true);
+    CHECK(cpu.has(State::Flag::Carry) == true);  // Other flags preserved
+  }
+
+  SECTION("BRK with all flags set")
+  {
+    State cpu;
+    cpu.pc = 0x2000_addr;
+    cpu.sp = 0xFF;
+    cpu.p = 0xFF;  // All flags set initially
+
+    memory_array[0xFFFE] = 0x34;
+    memory_array[0xFFFF] = 0x12;  // IRQ vector -> $1234
+
+    executeInstruction(pump, cpu, memory, {0x00});  // BRK
+
+    // All flags should be preserved in pushed status (including Break)
+    CHECK(memory_array[0x01FD] == 0xFF);  // All flags including Break
+    CHECK(cpu.has(State::Flag::Interrupt) == true);  // I flag set by BRK
+  }
+}
+
+TEST_CASE("RTI - Return from Interrupt", "[rti][interrupt]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("Basic RTI operation")
+  {
+    State cpu;
+    cpu.pc = 0xE000_addr;  // In interrupt handler
+    cpu.sp = 0xFC;  // Stack as left by BRK
+
+    // Set up stack as BRK would have left it
+    memory_array[0x01FF] = 0x10;  // Return address high
+    memory_array[0x01FE] = 0x02;  // Return address low -> $1002
+    memory_array[0x01FD] = static_cast<Byte>(State::Flag::Carry) | static_cast<Byte>(State::Flag::Break) |
+                           static_cast<Byte>(State::Flag::Unused);  // Saved status
+
+    auto nextAddr = executeInstruction(pump, cpu, memory, {0x40});  // RTI
+
+    // Check PC restored to return address
+    CHECK(nextAddr == 0x1002_addr);
+
+    // Check stack pointer restored
+    CHECK(cpu.sp == 0xFF);
+
+    // Check flags restored (Break flag should be cleared)
+    CHECK(cpu.has(State::Flag::Carry) == true);  // Restored
+    CHECK(cpu.has(State::Flag::Break) == false);  // Cleared by RTI
+    CHECK(cpu.has(State::Flag::Unused) == true);  // Always set
+  }
+
+  SECTION("RTI clears Interrupt flag")
+  {
+    State cpu;
+    cpu.pc = 0xE000_addr;
+    cpu.sp = 0xFC;
+    cpu.set(State::Flag::Interrupt, true);  // Set by BRK
+
+    // Stack setup - status without Interrupt flag
+    memory_array[0x01FF] = 0x20;  // Return high
+    memory_array[0x01FE] = 0x00;  // Return low
+    memory_array[0x01FD] = static_cast<Byte>(State::Flag::Unused);  // Status without I flag
+
+    executeInstruction(pump, cpu, memory, {0x40});  // RTI
+
+    // Interrupt flag should be cleared by restored status
+    CHECK(cpu.has(State::Flag::Interrupt) == false);
+  }
+}
+
+TEST_CASE("BRK/RTI Integration", "[brk][rti][integration]")
+{
+  std::array<Byte, 65536> memory_array{};
+  MicrocodePump<mos6502> pump;
+  MemoryDevice memory(memory_array);
+
+  SECTION("BRK followed by RTI")
+  {
+    State cpu;
+    cpu.pc = 0x1000_addr;
+    cpu.sp = 0xFF;
+    cpu.p = static_cast<Byte>(State::Flag::Zero) | static_cast<Byte>(State::Flag::Unused);
+
+    // Set up IRQ vector to point to RTI instruction
+    memory_array[0xFFFE] = 0x00;
+    memory_array[0xFFFF] = 0x20;  // -> $2000
+    memory_array[0x2000] = 0x40;  // RTI instruction
+
+    // Execute BRK
+    executeInstruction(pump, cpu, memory, {0x00});  // BRK
+
+    // Should be at interrupt handler
+    CHECK(cpu.pc == 0x2001_addr);  // After RTI instruction
+    CHECK(cpu.has(State::Flag::Interrupt) == true);
+
+    // Execute RTI
+    cpu.pc = 0x2000_addr;  // Reset PC to RTI
+    executeInstruction(pump, cpu, memory, {0x40});  // RTI
+
+    // Should be back to original location + 2
+    CHECK(cpu.pc == 0x1003_addr);  // BRK is 2 bytes, so PC+2 from original
+    CHECK(cpu.has(State::Flag::Zero) == true);  // Original flags restored
+    CHECK(cpu.has(State::Flag::Interrupt) == false);  // I flag cleared by RTI
+    CHECK(cpu.has(State::Flag::Break) == false);  // B flag cleared by RTI
+    CHECK(cpu.sp == 0xFF);  // Stack restored
   }
 }
