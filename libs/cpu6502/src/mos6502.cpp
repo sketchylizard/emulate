@@ -206,14 +206,18 @@ static MicrocodeResponse flagOp(State& cpu, Common::BusResponse /*response*/)
   return {BusRequest::Read(cpu.pc)};  // Dummy read to consume cycle
 }
 
-static MicrocodeResponse ora(State& cpu, Common::BusResponse response)
+struct Ora
 {
-  // Perform OR with accumulator
-  cpu.a |= response.data;
-  cpu.set(State::Flag::Zero, cpu.a == 0);  // Set zero flag
-  cpu.set(State::Flag::Negative, cpu.a & 0x80);  // Set negative flag
-  return MicrocodeResponse{};
-}
+  static MicrocodeResponse step0(State& cpu, Common::BusResponse response)
+  {
+    // Perform OR with accumulator
+    cpu.a |= response.data;
+    cpu.set(State::Flag::Zero, cpu.a == 0);  // Set zero flag
+    cpu.set(State::Flag::Negative, cpu.a & 0x80);  // Set negative flag
+    return MicrocodeResponse{};
+  }
+  static constexpr Microcode ops[] = {&step0};
+};
 
 static MicrocodeResponse jmpAbsolute(State& cpu, Common::BusResponse response)
 {
@@ -1047,15 +1051,6 @@ static constexpr auto c_instructions = []()
   // STY has no absolute indexed modes
   // STY has no indirect modes
 
-  // ORA variations
-  add<IndirectZeroPageX>(0x01, "ORA", {ora}, table);
-  add<ZeroPage>(0x05, "ORA", {ora}, table);
-  add<Absolute>(0x0D, "ORA", {ora}, table);
-  add<IndirectZeroPageY>(0x11, "ORA", {ora}, table);
-  add<ZeroPageX>(0x15, "ORA", {ora}, table);
-  add<AbsoluteY>(0x19, "ORA", {ora}, table);
-  add<AbsoluteX>(0x1D, "ORA", {ora}, table);
-
   // JMP Absolute and JMP Indirect
   add<AbsoluteJmp>(0x4C, "JMP", {jmpAbsolute}, table);
   add<AbsoluteIndirectJmp>(0x6C, "JMP", {jmpIndirect}, table);
@@ -1184,6 +1179,16 @@ static constexpr auto c_instructions = []()
       .add<Implied, Brk>(0x00, "BRK")
       .add<Implied, Rti>(0x40, "RTI")
 
+      // ORA variations
+      .add<IndirectZeroPageX, Ora>(0x01, "ORA")
+      .add<ZeroPage, Ora>(0x05, "ORA")
+      .add<Immediate, Ora>(0x09, "ORA")
+      .add<Absolute, Ora>(0x0D, "ORA")
+      .add<IndirectZeroPageY, Ora>(0x11, "ORA")
+      .add<ZeroPageX, Ora>(0x15, "ORA")
+      .add<AbsoluteY, Ora>(0x19, "ORA")
+      .add<AbsoluteX, Ora>(0x1D, "ORA")
+
       // Add more instructions as needed
       ;
 
@@ -1238,7 +1243,7 @@ FixedFormatter& operator<<(FixedFormatter& formatter, std::pair<const State&, st
   {
     // Calculate target address for branch
     int32_t offset = static_cast<int8_t>(bytes[1]);
-    int32_t target = static_cast<int32_t>(state.pc) + 2 + offset;  // PC + instruction length + offset
+    int32_t target = static_cast<int32_t>(state.pc) + 1 + offset;  // PC + instruction length + offset
     formatter << Address{static_cast<uint16_t>(target)};
   }
   else if (instr.format.numberOfOperands == 1)
