@@ -48,7 +48,7 @@ TEST_CASE("MicrocodePump: Functional_tests", "[.]")
     BusResponse response;
 
     std::bitset<0x10000> breakpoints;
-    breakpoints.set(static_cast<size_t>(0x040b));
+    breakpoints.set(static_cast<size_t>(0x04e6));
     breakpoints.set(static_cast<size_t>(0x056b));
 
     char buffer[80];
@@ -77,6 +77,10 @@ TEST_CASE("MicrocodePump: Functional_tests", "[.]")
       {
         executeOneInstruction();
 
+        if (!cpu.has(cpu6502::State::Flag::Unused))
+        {
+          std::cout << "Break flag not set, stopping execution\n";
+        }
         // We are at an instruction boundary. This is a good place to check for breakpoints.
         if (breakpoints.test(static_cast<size_t>(request.address)))
         {

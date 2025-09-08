@@ -369,7 +369,7 @@ struct PushOp
 };
 
 // Similar pattern for pull operations
-template<Common::Byte State::* TargetReg, bool ClearBreakFlag = false, bool SetNZFlags = false>
+template<Common::Byte State::* TargetReg>
 struct PullOp
 {
   // Step 1: Dummy read, increment SP
@@ -391,17 +391,16 @@ struct PullOp
     Byte data = response.data;
 
     // Apply Break flag clearing for PLP
-    if constexpr (ClearBreakFlag)
+    if constexpr (TargetReg == &State::p)
     {
       data &= ~static_cast<Byte>(State::Flag::Break);
+      cpu.assignP(data);  // Use assignP to ensure U flag is set
     }
-
-    // Store in target register
-    (cpu.*TargetReg) = data;
-
-    // Update N/Z flags for PLA
-    if constexpr (SetNZFlags)
+    else
     {
+      // Update N/Z flags for PLA
+      // Store in target register
+      (cpu.*TargetReg) = data;
       cpu.setZN(data);
     }
 
@@ -988,9 +987,9 @@ static constexpr auto c_instructions = []()
 
   Builder builder{table};
   builder  //
-      .add<Implied, PullOp<&State::a, false, true>>(0x68, "PLA")
+      .add<Implied, PullOp<&State::a>>(0x68, "PLA")
       .add<Implied, PushOp<&State::a, false>>(0x48, "PHA")
-      .add<Implied, PullOp<&State::p, true, false>>(0x28, "PLP")
+      .add<Implied, PullOp<&State::p>>(0x28, "PLP")
       .add<Implied, PushOp<&State::p, true>>(0x08, "PHP")
       .add<Absolute, jsr>(0x20, "JSR")  // Note: JSR uses absolute addressing for the target
       .add<Implied, rts>(0x60, "RTS")
@@ -1083,7 +1082,7 @@ std::pair<Microcode*, Microcode*> mos6502::decodeOpcode(uint8_t opcode) noexcept
 FixedFormatter& operator<<(FixedFormatter& formatter, std::pair<const State&, std::span<Common::Byte, 3>> stateAndBytes) noexcept
 {
   const auto& [state, bytes] = stateAndBytes;
-  formatter << state.pc << " : ";
+  formatter << (state.pc - 1) << " : ";
 
   const Byte opcode = bytes[0];
   const Instruction& instr = c_instructions[opcode];
@@ -1120,7 +1119,7 @@ FixedFormatter& operator<<(FixedFormatter& formatter, std::pair<const State&, st
     int32_t target = static_cast<int32_t>(state.pc) + 2 + offset;  // PC + instruction length + offset
     formatter << Address{static_cast<uint16_t>(target)};
   }
-  else if (instr.format.numberOfOperands <= 1)
+  else if (instr.format.numberOfOperands == 1)
   {
     formatter << bytes[1];
   }
@@ -1142,8 +1141,7 @@ FixedFormatter& operator<<(FixedFormatter& formatter, std::pair<const State&, st
   formatter << ' ';
   formatter << (state.has(State::Flag::Negative) ? 'N' : '-');
   formatter << (state.has(State::Flag::Overflow) ? 'O' : '-');
-  formatter << '-';
-  formatter << '-';
+  formatter << (state.has(State::Flag::Unused) ? 'U' : '-');
   formatter << (state.has(State::Flag::Break) ? 'B' : '-');
   formatter << (state.has(State::Flag::Decimal) ? 'D' : '-');
   formatter << (state.has(State::Flag::Interrupt) ? 'I' : '-');
