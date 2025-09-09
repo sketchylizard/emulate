@@ -1,6 +1,7 @@
 [requires]
 catch2/3.5.4
 incbin/cci.20211107
+nlohmann_json/3.11.3
 
 [generators]
 CMakeDeps
