@@ -44,7 +44,7 @@ I realize that there are multiple Apple II emulators available, that run on seve
 EmuLate aims for accuracy through comprehensive testing:
 
 - Klaus Dormann's 6502 Test Suite
-- Tom Harte's ProcessorTests
+- [Tom Harte's ProcessorTests](https://github.com/SingleStepTests/65x02)
 - Custom validation against known-good behavior
 
 ## 🤝 Contributing
