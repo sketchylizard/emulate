@@ -20,18 +20,22 @@ static bool operator==(const State& lhs, const State& rhs) noexcept
 
 TEST_CASE("requestAddress8", "[addressing]")
 {
-  State cpu{.pc = 0x8001_addr, .lo = 0xEE, .hi = 0xFF};  // Set hi/lo to ensure they are changed
+  State cpu;
+  cpu.pc = 0x8001_addr;
+  cpu.lo = 0xEE;
+  cpu.hi = 0xFF;  // Set hi/lo to ensure they are changed
 
   auto request = AddressMode::requestAddress8(cpu, BusResponse{});
   CHECK(request.request == BusRequest::Read(0x8001_addr));
 
   // Only the PC should be incremented
-  CHECK((cpu == State{.pc = 0x8002_addr}));
+  CHECK(cpu.pc == 0x8002_addr);
 }
 
 TEST_CASE("requestAddress16", "[addressing]")
 {
-  State cpu{.pc = 0x8002_addr};
+  State cpu;
+  cpu.pc = 0x8002_addr;
 
   // Request 16-bit address should read 2 bytes, low byte first, then high byte
 
@@ -43,12 +47,15 @@ TEST_CASE("requestAddress16", "[addressing]")
   CHECK(next2 == nullptr);
 
   // Only the PC, and the lo byte should be set
-  CHECK((cpu == State{.pc = 0x8004_addr, .lo = 0x34}));
+  CHECK(cpu.pc == 0x8004_addr);
+  CHECK(cpu.lo == 0x34);
 }
 
 TEST_CASE("requestAddress", "[addressing]")
 {
-  State cpu{.pc = 0x8003_addr, .lo = 0x34};
+  State cpu;
+  cpu.pc = 0x8003_addr;
+  cpu.lo = 0x34;
 
   auto [request, next] = Absolute::ops[0](cpu, BusResponse{0x99});  // random
   CHECK(request == BusRequest::Read(0x8003_addr));
@@ -58,7 +65,8 @@ TEST_CASE("requestAddress", "[addressing]")
   CHECK(next2 == nullptr);
 
   // Only the PC, the lo byte, and the hi byte should be set
-  CHECK((cpu == State{.pc = 0x8005_addr, .lo = 0x34}));
+  CHECK(cpu.pc == 0x8005_addr);
+  CHECK(cpu.lo == 0x34);
 }
 
 // Helper to select register for template test case
@@ -119,7 +127,8 @@ TEMPLATE_TEST_CASE("AbsoluteIndex", "[addressing]", AbsoluteX, AbsoluteY)
 {
   constexpr auto reg = std::is_same_v<TestType, AbsoluteX> ? &State::x : &State::y;
 
-  State cpu{.pc = 0x1000_addr};
+  State cpu;
+  cpu.pc = 0x1000_addr;
 
   SECTION("Basic offset - no page crossing")
   {
@@ -136,9 +145,10 @@ TEMPLATE_TEST_CASE("AbsoluteIndex", "[addressing]", AbsoluteX, AbsoluteY)
 
     executeAddress(cpu, TestType::ops, cycles);
 
-    State expected{.pc = 0x1002_addr, .lo = 0x35, .hi = 0x12};
-    (expected.*reg) = 0x01;
-    CHECK((cpu == expected));
+    CHECK(cpu.pc == 0x1002_addr);
+    CHECK(cpu.lo == 0x35);
+    CHECK(cpu.hi == 0x12);
+    CHECK((cpu.*reg) == 0x01);
   }
 
   SECTION("Page boundary crossing - forward overflow")
@@ -157,9 +167,10 @@ TEMPLATE_TEST_CASE("AbsoluteIndex", "[addressing]", AbsoluteX, AbsoluteY)
     };
     executeAddress(cpu, TestType::ops, cycles);
 
-    State expected{.pc = 0x1002_addr, .lo = 0x7F, .hi = 0x13};
-    (expected.*reg) = 0xFF;
-    CHECK((cpu == expected));
+    CHECK(cpu.pc == 0x1002_addr);
+    CHECK(cpu.lo == 0x7F);
+    CHECK(cpu.hi == 0x13);
+    CHECK((cpu.*reg) == 0xFF);
   }
 
   SECTION("Page boundary crossing - maximum offset")
@@ -210,7 +221,9 @@ TEMPLATE_TEST_CASE("absolute-indexed", "[addressing]", AbsoluteX, AbsoluteY)
 
   SECTION("Basic offset - no page crossing")
   {
-    State cpu{.pc = 0x0800_addr};
+    State cpu;
+    cpu.pc = 0x0800_addr;
+
     (cpu.*reg) = 0x01;
 
     Cycle cycles[] = {
@@ -226,7 +239,9 @@ TEMPLATE_TEST_CASE("absolute-indexed", "[addressing]", AbsoluteX, AbsoluteY)
 
   SECTION("Page boundary crossing - forward overflow")
   {
-    State cpu{.pc = 0x800_addr};
+    State cpu;
+    cpu.pc = 0x800_addr;
+
     (cpu.*reg) = 0xFF;
 
     Cycle cycles[] = {
@@ -244,7 +259,9 @@ TEMPLATE_TEST_CASE("absolute-indexed", "[addressing]", AbsoluteX, AbsoluteY)
 
   SECTION("Page boundary crossing - maximum offset")
   {
-    State cpu{.pc = 0x0800_addr};
+    State cpu;
+    cpu.pc = 0x0800_addr;
+
     (cpu.*reg) = 0xFF;
 
     Cycle cycles[] = {
@@ -262,7 +279,9 @@ TEMPLATE_TEST_CASE("absolute-indexed", "[addressing]", AbsoluteX, AbsoluteY)
 
   SECTION("No page boundary crossing - near boundary")
   {
-    State cpu{.pc = 0x0800_addr};
+    State cpu;
+    cpu.pc = 0x0800_addr;
+
     (cpu.*reg) = 0x7F;
 
     Cycle cycles[] = {
@@ -296,7 +315,9 @@ TEMPLATE_TEST_CASE("requestZeroPageAddressIndexed", "[addressing]", ZeroPageX, Z
 
   SECTION("Normal addition within zero page")
   {
-    State cpu{.hi = 0x00};
+    State cpu;
+    cpu.hi = 0x00;
+
     (cpu.*reg) = 0x10;
 
     auto request = TestType::ops[1](cpu, BusResponse{0x80});
@@ -314,7 +335,9 @@ TEMPLATE_TEST_CASE("requestZeroPageAddressIndexed", "[addressing]", ZeroPageX, Z
 
   SECTION("Overflow wraps within zero page")
   {
-    State cpu{.hi = 0x00};
+    State cpu;
+    cpu.hi = 0x00;
+
     (cpu.*reg) = 0x10;
 
     // first read is done without adding the index
@@ -332,7 +355,9 @@ TEMPLATE_TEST_CASE("requestZeroPageAddressIndexed", "[addressing]", ZeroPageX, Z
 
   SECTION("Maximum overflow")
   {
-    State cpu{.hi = 0x00};
+    State cpu;
+    cpu.hi = 0x00;
+
     (cpu.*reg) = 0xFF;
 
     // first read is done without adding the index
@@ -350,7 +375,9 @@ TEMPLATE_TEST_CASE("requestZeroPageAddressIndexed", "[addressing]", ZeroPageX, Z
 
   SECTION("No offset - register is zero")
   {
-    State cpu{.hi = 0x00};
+    State cpu;
+    cpu.hi = 0x00;
+
     (cpu.*reg) = 0x00;
 
     auto request = TestType::ops[1](cpu, BusResponse{0x42});
@@ -366,7 +393,8 @@ TEST_CASE("Zero page addressing mode complete sequence", "[addressing]")
 {
   SECTION("Basic zero page read")
   {
-    State cpu{.pc = 0x8001_addr};
+    State cpu;
+    cpu.pc = 0x8001_addr;
 
     Cycle cycles[] = {
         {0x00, Common::BusRequest::Read(0x8001_addr)},  // requestAddress8: dummy input, request operand, set hi=0
@@ -384,7 +412,8 @@ TEST_CASE("Zero page addressing mode complete sequence", "[addressing]")
 
   SECTION("Zero page address 0x00")
   {
-    State cpu{.pc = 0x9000_addr};
+    State cpu;
+    cpu.pc = 0x9000_addr;
 
     Cycle cycles[] = {
         {0x00, Common::BusRequest::Read(0x9000_addr)},  // Request operand
@@ -400,7 +429,8 @@ TEST_CASE("Zero page addressing mode complete sequence", "[addressing]")
 
   SECTION("Zero page address 0xFF")
   {
-    State cpu{.pc = 0xA000_addr};
+    State cpu;
+    cpu.pc = 0xA000_addr;
 
     Cycle cycles[] = {
         {0x00, Common::BusRequest::Read(0xA000_addr)},  // Request operand
@@ -416,7 +446,8 @@ TEST_CASE("Zero page addressing mode complete sequence", "[addressing]")
 
   SECTION("Multiple sequential zero page operations")
   {
-    State cpu{.pc = 0x8000_addr};
+    State cpu;
+    cpu.pc = 0x8000_addr;
 
     // First zero page access
     Cycle cycles1[] = {
@@ -446,7 +477,9 @@ TEMPLATE_TEST_CASE("Zero page indexed addressing mode complete sequence", "[addr
 
   SECTION("Basic zero page indexed read - no wrapping")
   {
-    State cpu{.pc = 0x8001_addr};
+    State cpu;
+    cpu.pc = 0x8001_addr;
+
     (cpu.*reg) = 0x05;
 
     Cycle cycles[] = {
@@ -457,14 +490,17 @@ TEMPLATE_TEST_CASE("Zero page indexed addressing mode complete sequence", "[addr
 
     CHECK(executeAddress(cpu, TestType::ops, cycles));
 
-    State expected{.pc = 0x8002_addr, .lo = 0x45, .hi = 0x00};
-    (expected.*reg) = 0x05;
-    CHECK((cpu == expected));
+    CHECK(cpu.pc == 0x8002_addr);
+    CHECK(cpu.lo == 0x45);
+    CHECK(cpu.hi == 0x00);
+    CHECK((cpu.*reg) == 0x05);
   }
 
   SECTION("Zero page indexed with wrapping")
   {
-    State cpu{.pc = 0x8001_addr};
+    State cpu;
+    cpu.pc = 0x8001_addr;
+
     (cpu.*reg) = 0x10;
 
     Cycle cycles[] = {
@@ -475,14 +511,17 @@ TEMPLATE_TEST_CASE("Zero page indexed addressing mode complete sequence", "[addr
 
     CHECK(executeAddress(cpu, TestType::ops, cycles));
 
-    State expected{.pc = 0x8002_addr, .lo = 0x08, .hi = 0x00};
-    (expected.*reg) = 0x10;
-    CHECK((cpu == expected));
+    CHECK(cpu.pc == 0x8002_addr);
+    CHECK(cpu.lo == 0x08);
+    CHECK(cpu.hi == 0x00);
+    CHECK((cpu.*reg) == 0x10);
   }
 
   SECTION("Zero page indexed maximum wrapping")
   {
-    State cpu{.pc = 0x8001_addr};
+    State cpu;
+    cpu.pc = 0x8001_addr;
+
     (cpu.*reg) = 0xFF;
 
     Cycle cycles[] = {
@@ -493,14 +532,17 @@ TEMPLATE_TEST_CASE("Zero page indexed addressing mode complete sequence", "[addr
 
     CHECK(executeAddress(cpu, TestType::ops, cycles));
 
-    State expected{.pc = 0x8002_addr, .lo = 0xFE, .hi = 0x00};
-    (expected.*reg) = 0xFF;
-    CHECK((cpu == expected));
+    CHECK(cpu.pc == 0x8002_addr);
+    CHECK(cpu.lo == 0xFE);
+    CHECK(cpu.hi == 0x00);
+    CHECK((cpu.*reg) == 0xFF);
   }
 
   SECTION("Zero page indexed with register=0 (no offset)")
   {
-    State cpu{.pc = 0x8001_addr};
+    State cpu;
+    cpu.pc = 0x8001_addr;
+
     (cpu.*reg) = 0x00;
 
     Cycle cycles[] = {
@@ -511,14 +553,17 @@ TEMPLATE_TEST_CASE("Zero page indexed addressing mode complete sequence", "[addr
 
     CHECK(executeAddress(cpu, TestType::ops, cycles));
 
-    State expected{.pc = 0x8002_addr, .lo = 0x42, .hi = 0x00};
-    (expected.*reg) = 0x00;
-    CHECK((cpu == expected));
+    CHECK(cpu.pc == 0x8002_addr);
+    CHECK(cpu.lo == 0x42);
+    CHECK(cpu.hi == 0x00);
+    CHECK((cpu.*reg) == 0x00);
   }
 
   SECTION("Zero page indexed edge case - wrapping to start of zero page")
   {
-    State cpu{.pc = 0x8001_addr};
+    State cpu;
+    cpu.pc = 0x8001_addr;
+
     (cpu.*reg) = 0x01;
 
     Cycle cycles[] = {
@@ -529,14 +574,17 @@ TEMPLATE_TEST_CASE("Zero page indexed addressing mode complete sequence", "[addr
 
     CHECK(executeAddress(cpu, TestType::ops, cycles));
 
-    State expected{.pc = 0x8002_addr, .lo = 0x00, .hi = 0x00};
-    (expected.*reg) = 0x01;
-    CHECK((cpu == expected));
+    CHECK(cpu.pc == 0x8002_addr);
+    CHECK(cpu.lo == 0x00);
+    CHECK(cpu.hi == 0x00);
+    CHECK((cpu.*reg) == 0x01);
   }
 
   SECTION("Sequential zero page indexed operations")
   {
-    State cpu{.pc = 0x8000_addr};
+    State cpu;
+    cpu.pc = 0x8000_addr;
+
     (cpu.*reg) = 0x02;
 
     // First operation
@@ -559,9 +607,9 @@ TEMPLATE_TEST_CASE("Zero page indexed addressing mode complete sequence", "[addr
 
     CHECK(executeAddress(cpu, TestType::ops, cycles2));
 
-    State expected{.pc = 0x8002_addr, .lo = 0x22, .hi = 0x00};
-    (expected.*reg) = 0x02;
-    CHECK((cpu == expected));
+    CHECK(cpu.pc == 0x8002_addr);
+    CHECK(cpu.lo == 0x22);
+    CHECK((cpu.*reg) == 0x02);
   }
 }
 
@@ -569,7 +617,9 @@ TEST_CASE("Immediate addressing mode complete sequence", "[addressing]")
 {
   SECTION("Basic immediate mode")
   {
-    State cpu{.pc = 0x8001_addr};
+    State cpu;
+    cpu.pc = 0x8001_addr;
+
 
     Cycle cycles[] = {
         {0x42, Common::BusRequest::Read(0x8001_addr)},  // requestAddress8: receive immediate value (0x42)
@@ -584,7 +634,9 @@ TEST_CASE("Immediate addressing mode complete sequence", "[addressing]")
 
   SECTION("Immediate mode with different values")
   {
-    State cpu{.pc = 0x9000_addr};
+    State cpu;
+    cpu.pc = 0x9000_addr;
+
 
     Cycle cycles[] = {
         {0xFF, Common::BusRequest::Read(0x9000_addr)},  // Maximum 8-bit value
@@ -595,7 +647,9 @@ TEST_CASE("Immediate addressing mode complete sequence", "[addressing]")
 
   SECTION("Immediate mode with zero")
   {
-    State cpu{.pc = 0xA000_addr};
+    State cpu;
+    cpu.pc = 0xA000_addr;
+
 
     Cycle cycles[] = {
         {0x00, Common::BusRequest::Read(0xA000_addr)},  // Zero immediate value
@@ -607,7 +661,9 @@ TEST_CASE("Immediate addressing mode complete sequence", "[addressing]")
 
 TEST_CASE("IndirectZeroPageX addressing mode", "[addressing]")
 {
-  State cpu{.pc = 0x1000_addr, .x = 0x02};
+  State cpu;
+  cpu.pc = 0x1000_addr;
+  cpu.x = 0x02;
 
   auto request = IndirectZeroPageX::ops[0](cpu, BusResponse{});
   CHECK(request.request == BusRequest::Read(0x1000_addr));
@@ -632,7 +688,9 @@ TEST_CASE("IndirectZeroPageX addressing mode", "[addressing]")
 
 TEST_CASE("IndirectZeroPageY addressing mode", "[addressing]")
 {
-  State cpu{.pc = 0x1000_addr, .y = 0x02};
+  State cpu;
+  cpu.pc = 0x1000_addr;
+  cpu.y = 0x02;
 
   auto request = IndirectZeroPageY::ops[0](cpu, BusResponse{});
   CHECK(request.request == BusRequest::Read(0x1000_addr));

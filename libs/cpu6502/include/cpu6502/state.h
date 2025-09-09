@@ -6,7 +6,7 @@
 namespace cpu6502
 {
 
-struct State
+struct VisibleState
 {
   enum class Flag : Common::Byte
   {
@@ -32,33 +32,39 @@ struct State
   Common::Byte y{0};
   Common::Byte sp{0};
   Common::Byte p{static_cast<Common::Byte>(Flag::Unused)};  // keep U set
+};
 
+struct State : VisibleState
+{
   // Storage for low byte of address during addressing modes
   Common::Byte lo = 0;
   // Storage for high byte of address during addressing modes
   Common::Byte hi = 0;
   // Storage for operand during instruction execution
   Common::Byte operand = 0;
+
+  // PC at the start of the next cycle
+  Common::Address next_pc{0};
 };
 
-constexpr bool State::has(Flag f) const noexcept
+constexpr bool VisibleState::has(Flag f) const noexcept
 {
   return (p & static_cast<uint8_t>(f)) != 0;
 }
 
-constexpr void State::set(Flag f, bool v) noexcept
+constexpr void VisibleState::set(Flag f, bool v) noexcept
 {
   p = v ? (p | static_cast<uint8_t>(f)) : (p & ~static_cast<uint8_t>(f));
 }
 
-constexpr void State::setZN(Common::Byte v) noexcept
+constexpr void VisibleState::setZN(Common::Byte v) noexcept
 {
   set(Flag::Zero, v == 0);
   set(Flag::Negative, (v & 0x80) != 0);
 }
 
 // If you ever assign p wholesale, re-assert U:
-constexpr void State::assignP(Common::Byte v) noexcept
+constexpr void VisibleState::assignP(Common::Byte v) noexcept
 {
   p = Common::Byte((v | static_cast<uint8_t>(Flag::Unused)));
 }

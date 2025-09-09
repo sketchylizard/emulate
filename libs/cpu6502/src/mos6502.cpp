@@ -87,7 +87,7 @@ static MicrocodeResponse branchPageFixup(State& cpu, Common::BusResponse /*respo
   return {BusRequest::Read(cpu.pc)};
 }
 
-template<Common::Byte State::* reg>
+template<Common::Byte VisibleState::* reg>
 static MicrocodeResponse load(State& cpu, Common::BusResponse response)
 {
   // This is a generic load operation for A, X, or Y registers.
@@ -97,7 +97,7 @@ static MicrocodeResponse load(State& cpu, Common::BusResponse response)
   return MicrocodeResponse{};
 }
 
-template<Common::Byte State::* reg>
+template<Common::Byte VisibleState::* reg>
 static MicrocodeResponse store(State& cpu, Common::BusResponse /*response*/)
 {
   // This is a generic store operation for A, X, or Y registers.
@@ -280,7 +280,7 @@ static MicrocodeResponse jmpIndirect(State& cpu, Common::BusResponse response)
   return {BusRequest::Read(MakeAddress(cpu.lo, cpu.hi)), jmpIndirect1};
 }
 
-template<Common::Byte State::* reg>
+template<Common::Byte VisibleState::* reg>
   requires(reg != &State::a)
 static MicrocodeResponse increment(State& cpu, Common::BusResponse /*response*/)
 {
@@ -291,7 +291,7 @@ static MicrocodeResponse increment(State& cpu, Common::BusResponse /*response*/)
   return {BusRequest::Read(cpu.pc)};  // Dummy read to consume cycle
 }
 
-template<Common::Byte State::* reg>
+template<Common::Byte VisibleState::* reg>
   requires(reg != &State::a)
 static MicrocodeResponse decrement(State& cpu, Common::BusResponse /*response*/)
 {
@@ -309,7 +309,7 @@ static bool subtractWithBorrow(Byte& reg, Byte value) noexcept
   return borrow;
 }
 
-template<Common::Byte State::* reg>
+template<Common::Byte VisibleState::* reg>
 static MicrocodeResponse compare(State& cpu, Common::BusResponse response)
 {
   auto r = (cpu.*reg);
@@ -319,7 +319,7 @@ static MicrocodeResponse compare(State& cpu, Common::BusResponse response)
   return MicrocodeResponse{};
 }
 
-template<Common::Byte State::* src, Common::Byte State::* dst>
+template<Common::Byte VisibleState::* src, Common::Byte VisibleState::* dst>
   requires(src != dst)
 static MicrocodeResponse transfer(State& cpu, Common::BusResponse /*response*/)
 {
@@ -346,7 +346,7 @@ struct Eor
 };
 
 // Templated push operation following your struct pattern
-template<Common::Byte State::* SourceReg, bool SetBreakFlag = false>
+template<Common::Byte VisibleState::* SourceReg, bool SetBreakFlag = false>
 struct PushOp
 {
   // Step 1: Dummy read to consume cycle
@@ -373,7 +373,7 @@ struct PushOp
 };
 
 // Similar pattern for pull operations
-template<Common::Byte State::* TargetReg>
+template<Common::Byte VisibleState::* TargetReg>
 struct PullOp
 {
   // Step 1: Dummy read, increment SP

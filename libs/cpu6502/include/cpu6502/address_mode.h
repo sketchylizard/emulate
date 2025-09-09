@@ -39,8 +39,8 @@ struct AddressMode
   }
 
 protected:
-  template<Common::Byte State::* reg>
-  static MicrocodeResponse addZeroPageIndex(State& cpu, Common::BusResponse response)
+  template<Common::Byte VisibleState::* reg>
+  static MicrocodeResponse addZeroPageIndex(State& cpu, BusResponse response)
   // Stores the incoming low byte/only byte of a zero page address adjusts the low byte by the given
   // index register. Overflow is ignored for zero page indexing, it just wraps around onto the zero
   // page. However, because the 6502 could not add the index in one cycle, it will do one read from
@@ -61,7 +61,7 @@ protected:
     return {BusRequest::Read(effectiveAddr)};
   }
 
-  template<Common::Byte State::* reg>
+  template<Common::Byte VisibleState::* reg>
   static MicrocodeResponse addIndex16(State& cpu, Common::BusResponse response)
   // Stores the incoming hi byte into the operand and adjusts the low byte by the given index register.
   // If there is overflow, it sets up the next action to fix the page boundary crossing. Either way,
