@@ -42,7 +42,7 @@ TEST_CASE("MicrocodePump: Functional_tests", "[.]")
     auto programStart = Address{0x0400};
 
     // Set the reset vector to 0x0400
-    cpu.pc = programStart;
+    cpu.pc = cpu.next_pc = programStart;
 
     BusRequest request;
     BusResponse response;

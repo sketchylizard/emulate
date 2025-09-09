@@ -56,6 +56,9 @@ std::ostream& operator<<(std::ostream& os, const BusRequest& value)
 Address executeInstruction(MicrocodePump<mos6502>& pump, State& cpu, MemoryDevice<Byte>& memory,
     std::initializer_list<Byte> instruction, int32_t count = 1)
 {
+  // manually latch the PC value so we can place the instruction bytes correctly
+  cpu.pc = cpu.next_pc;
+
   // Copy instruction bytes to memory at current PC location
   std::size_t pc_addr = static_cast<std::size_t>(cpu.pc);
   auto memory_data = memory.data();  // Get writable access to memory
@@ -1187,7 +1190,7 @@ TEST_CASE("Branch Instructions - All Variants", "[branch][relative]")
   {
     MicrocodePump<mos6502> pump;
     State cpu;
-    cpu.pc = 0x1000_addr;
+    cpu.pc = cpu.next_pc = 0x1000_addr;
 
     // Set flag to opposite of branch condition (so branch is NOT taken)
     cpu.set(branch.flag, !branch.condition);
@@ -1201,7 +1204,7 @@ TEST_CASE("Branch Instructions - All Variants", "[branch][relative]")
     request = pump.tick(cpu, BusResponse{0x10});  // Branch offset (ignored)
     CHECK(request == BusRequest::Fetch(0x1002_addr));  // Next instruction
 
-    CHECK(cpu.pc == 0x1003_addr);  // PC should advance normally
+    CHECK(cpu.pc == 0x1002_addr);  // PC should advance normally
     CHECK(pump.cyclesSinceLastFetch() == 2);  // Two cycles for branch not taken
   }
 
@@ -1209,7 +1212,7 @@ TEST_CASE("Branch Instructions - All Variants", "[branch][relative]")
   {
     MicrocodePump<mos6502> pump;
     State cpu;
-    cpu.pc = 0x2000_addr;
+    cpu.pc = cpu.next_pc = 0x2000_addr;
 
     // Set flag to match branch condition (so branch IS taken)
     cpu.set(branch.flag, branch.condition);
@@ -1227,7 +1230,7 @@ TEST_CASE("Branch Instructions - All Variants", "[branch][relative]")
     request = pump.tick(cpu, BusResponse{0x91});  // random data
     CHECK(request == BusRequest::Fetch(0x2012_addr));  // PC(2002) + offset(16) = 2012
 
-    CHECK(cpu.pc == 0x2013_addr);  // PC should be at branch target
+    CHECK(cpu.pc == 0x2012_addr);  // PC should be at branch target
     CHECK(pump.cyclesSinceLastFetch() == 3);  // Three cycles for branch taken, same page
   }
 
@@ -1235,7 +1238,7 @@ TEST_CASE("Branch Instructions - All Variants", "[branch][relative]")
   {
     MicrocodePump<mos6502> pump;
     State cpu;
-    cpu.pc = 0x20F0_addr;  // Near page boundary
+    cpu.pc = cpu.next_pc = 0x20F0_addr;  // Near page boundary
 
     // Set flag to match branch condition
     cpu.set(branch.flag, branch.condition);
@@ -1257,7 +1260,7 @@ TEST_CASE("Branch Instructions - All Variants", "[branch][relative]")
     request = pump.tick(cpu, BusResponse{0xFF});  // Dummy data from page crossing fixup
     CHECK(request == BusRequest::Fetch(0x2112_addr));  // Correct address after fixup
 
-    CHECK(cpu.pc == 0x2113_addr);  // PC should be at branch target
+    CHECK(cpu.pc == 0x2112_addr);  // PC should be at branch target
     CHECK(pump.cyclesSinceLastFetch() == 4);  // Four cycles for page crossing branch
   }
 
@@ -1265,7 +1268,7 @@ TEST_CASE("Branch Instructions - All Variants", "[branch][relative]")
   {
     MicrocodePump<mos6502> pump;
     State cpu;
-    cpu.pc = 0x2110_addr;  // In upper part of page
+    cpu.pc = cpu.next_pc = 0x2110_addr;  // In upper part of page
 
     // Set flag to match branch condition
     cpu.set(branch.flag, branch.condition);
@@ -1287,7 +1290,7 @@ TEST_CASE("Branch Instructions - All Variants", "[branch][relative]")
     request = pump.tick(cpu, BusResponse{0xFF});  // Dummy data from page crossing fixup
     CHECK(request == BusRequest::Fetch(0x20F2_addr));  // Correct address after fixup
 
-    CHECK(cpu.pc == 0x20F3_addr);  // PC should be at branch target
+    CHECK(cpu.pc == 0x20F2_addr);  // PC should be at branch target
     CHECK(pump.cyclesSinceLastFetch() == 4);  // Four cycles for page crossing branch
   }
 
@@ -1295,7 +1298,7 @@ TEST_CASE("Branch Instructions - All Variants", "[branch][relative]")
   {
     MicrocodePump<mos6502> pump;
     State cpu;
-    cpu.pc = 0x3000_addr;
+    cpu.pc = cpu.next_pc = 0x3000_addr;
 
     // Set flag to match branch condition
     cpu.set(branch.flag, branch.condition);
@@ -1315,7 +1318,7 @@ TEST_CASE("Branch Instructions - All Variants", "[branch][relative]")
   {
     MicrocodePump<mos6502> pump;
     State cpu;
-    cpu.pc = 0x4000_addr;
+    cpu.pc = cpu.next_pc = 0x4000_addr;
 
     // Set flag to match branch condition
     cpu.set(branch.flag, branch.condition);
@@ -1334,7 +1337,7 @@ TEST_CASE("Branch Instructions - All Variants", "[branch][relative]")
     // PC after instruction = 4002, target = 4002 + 0 = 4002 (branch to next instruction)
     CHECK(request == BusRequest::Fetch(0x4002_addr));
 
-    CHECK(cpu.pc == 0x4003_addr);  // PC should be at next instruction
+    CHECK(cpu.pc == 0x4002_addr);  // PC should be at next instruction
     CHECK(pump.cyclesSinceLastFetch() == 3);  // Three cycles for branch taken
   }
 
@@ -1342,7 +1345,7 @@ TEST_CASE("Branch Instructions - All Variants", "[branch][relative]")
   {
     MicrocodePump<mos6502> pump;
     State cpu;
-    cpu.pc = 0x5000_addr;
+    cpu.pc = cpu.next_pc = 0x5000_addr;
 
     // Set flag to match branch condition
     cpu.set(branch.flag, branch.condition);
@@ -1361,7 +1364,7 @@ TEST_CASE("Branch Instructions - All Variants", "[branch][relative]")
     // PC after instruction = 5002, target = 5002 + 127 = 5081
     CHECK(request == BusRequest::Fetch(0x5081_addr));
 
-    CHECK(cpu.pc == 0x5082_addr);
+    CHECK(cpu.pc == 0x5081_addr);
     CHECK(pump.cyclesSinceLastFetch() == 3);  // Three cycles (same page)
   }
 
@@ -1369,7 +1372,7 @@ TEST_CASE("Branch Instructions - All Variants", "[branch][relative]")
   {
     MicrocodePump<mos6502> pump;
     State cpu;
-    cpu.pc = 0x6080_addr;  // Start high enough to avoid underflow
+    cpu.pc = cpu.next_pc = 0x6080_addr;  // Start high enough to avoid underflow
 
     // Set flag to match branch condition
     cpu.set(branch.flag, branch.condition);
@@ -1388,7 +1391,7 @@ TEST_CASE("Branch Instructions - All Variants", "[branch][relative]")
     // PC after instruction = 6082, target = 6082 + (-128) = 6002
     CHECK(request == BusRequest::Fetch(0x6002_addr));
 
-    CHECK(cpu.pc == 0x6003_addr);
+    CHECK(cpu.pc == 0x6002_addr);
     CHECK(pump.cyclesSinceLastFetch() == 3);  // Three cycles (same page)
   }
 }
@@ -1407,7 +1410,7 @@ TEST_CASE("JMP Absolute - Functional", "[jump][absolute][functional]")
   SECTION("Forward Jump")
   {
     State cpu;
-    cpu.pc = 0x1000_addr;
+    cpu.pc = cpu.next_pc = 0x1000_addr;
 
     auto addressOfNextInstruction = executeInstruction(pump, cpu, memory, {0x4C, 0x34, 0x12});  // JMP $1234
 
@@ -1417,7 +1420,7 @@ TEST_CASE("JMP Absolute - Functional", "[jump][absolute][functional]")
   SECTION("Backward Jump")
   {
     State cpu;
-    cpu.pc = 0x5000_addr;
+    cpu.pc = cpu.next_pc = 0x5000_addr;
 
     auto addressOfNextInstruction = executeInstruction(pump, cpu, memory, {0x4C, 0x00, 0x10});  // JMP $1000
 
@@ -1427,7 +1430,7 @@ TEST_CASE("JMP Absolute - Functional", "[jump][absolute][functional]")
   SECTION("Same Page Jump")
   {
     State cpu;
-    cpu.pc = 0x4000_addr;
+    cpu.pc = cpu.next_pc = 0x4000_addr;
 
     auto addressOfNextInstruction = executeInstruction(pump, cpu, memory, {0x4C, 0x80, 0x40});  // JMP $4080
 
@@ -1437,7 +1440,7 @@ TEST_CASE("JMP Absolute - Functional", "[jump][absolute][functional]")
   SECTION("Jump to Zero Page")
   {
     State cpu;
-    cpu.pc = 0x8000_addr;
+    cpu.pc = cpu.next_pc = 0x8000_addr;
 
     auto addressOfNextInstruction = executeInstruction(pump, cpu, memory, {0x4C, 0x80, 0x00});  // JMP $0080
 
@@ -1447,7 +1450,7 @@ TEST_CASE("JMP Absolute - Functional", "[jump][absolute][functional]")
   SECTION("Jump to High Memory")
   {
     State cpu;
-    cpu.pc = 0x1000_addr;
+    cpu.pc = cpu.next_pc = 0x1000_addr;
 
     auto addressOfNextInstruction = executeInstruction(pump, cpu, memory, {0x4C, 0xFF, 0xFF});  // JMP $FFFF
 
@@ -1457,7 +1460,7 @@ TEST_CASE("JMP Absolute - Functional", "[jump][absolute][functional]")
   SECTION("Register State Preserved")
   {
     State cpu;
-    cpu.pc = 0x2000_addr;
+    cpu.pc = cpu.next_pc = 0x2000_addr;
 
     // Set all registers to known values
     cpu.a = 0x42;
@@ -1489,7 +1492,7 @@ TEST_CASE("JMP Indirect - Functional", "[jump][indirect][functional]")
   SECTION("Normal Indirect Jump")
   {
     State cpu;
-    cpu.pc = 0x2000_addr;
+    cpu.pc = cpu.next_pc = 0x2000_addr;
 
     // Set up indirect address at $3010
     memory_array[0x3010] = 0xAB;  // Target low byte
@@ -1503,7 +1506,7 @@ TEST_CASE("JMP Indirect - Functional", "[jump][indirect][functional]")
   SECTION("Indirect Jump to Zero Page")
   {
     State cpu;
-    cpu.pc = 0x4000_addr;
+    cpu.pc = cpu.next_pc = 0x4000_addr;
 
     // Set up indirect address at $1000
     memory_array[0x1000] = 0x80;  // Target low byte
@@ -1517,7 +1520,7 @@ TEST_CASE("JMP Indirect - Functional", "[jump][indirect][functional]")
   SECTION("Page Boundary Bug - JMP ($xxFF)")
   {
     State cpu;
-    cpu.pc = 0x1000_addr;
+    cpu.pc = cpu.next_pc = 0x1000_addr;
 
     // Set up the bug case: indirect address $20FF
     memory_array[0x20FF] = 0x34;  // Target low byte from $20FF
@@ -1532,7 +1535,7 @@ TEST_CASE("JMP Indirect - Functional", "[jump][indirect][functional]")
   SECTION("Indirect Jump - No Bug Case")
   {
     State cpu;
-    cpu.pc = 0x3000_addr;
+    cpu.pc = cpu.next_pc = 0x3000_addr;
 
     // Set up normal case (not at page boundary)
     memory_array[0x4020] = 0x78;  // Target low byte
@@ -1546,7 +1549,7 @@ TEST_CASE("JMP Indirect - Functional", "[jump][indirect][functional]")
   SECTION("Register State Preserved")
   {
     State cpu;
-    cpu.pc = 0xA000_addr;
+    cpu.pc = cpu.next_pc = 0xA000_addr;
 
     // Set register state to verify preservation
     cpu.a = 0xFF;
@@ -1581,7 +1584,7 @@ TEST_CASE("JMP Self-Jump Trap Detection", "[jump][trap][functional]")
   SECTION("JMP Absolute Self-Jump")
   {
     State cpu;
-    cpu.pc = 0x7000_addr;
+    cpu.pc = cpu.next_pc = 0x7000_addr;
 
     // Self-jump: JMP $7000 when PC starts at $7000
     CHECK_THROWS_AS(executeInstruction(pump, cpu, memory, {0x4C, 0x00, 0x70}), TrapException);
@@ -1590,7 +1593,7 @@ TEST_CASE("JMP Self-Jump Trap Detection", "[jump][trap][functional]")
   SECTION("JMP Absolute Near Miss (Not Trapped)")
   {
     State cpu;
-    cpu.pc = 0x8000_addr;
+    cpu.pc = cpu.next_pc = 0x8000_addr;
 
     // Near miss: JMP $8001 when PC starts at $8000 (should NOT trap)
     auto addressOfNextInstruction = executeInstruction(pump, cpu, memory, {0x4C, 0x01, 0x80});
@@ -1601,7 +1604,7 @@ TEST_CASE("JMP Self-Jump Trap Detection", "[jump][trap][functional]")
   SECTION("JMP Indirect Self-Jump")
   {
     State cpu;
-    cpu.pc = 0x5000_addr;
+    cpu.pc = cpu.next_pc = 0x5000_addr;
 
     // Set up indirect jump that points back to itself
     memory_array[0x6000] = 0x00;  // Target low byte
@@ -1622,7 +1625,7 @@ TEST_CASE("JMP Edge Cases", "[jump][functional]")
   SECTION("Jump to Instruction Boundary")
   {
     State cpu;
-    cpu.pc = 0x1000_addr;
+    cpu.pc = cpu.next_pc = 0x1000_addr;
 
     // Jump to the byte right after this JMP instruction
     auto addressOfNextInstruction = executeInstruction(pump, cpu, memory, {0x4C, 0x03, 0x10});  // JMP $1003
@@ -1633,7 +1636,7 @@ TEST_CASE("JMP Edge Cases", "[jump][functional]")
   SECTION("Indirect Jump with Zero Address")
   {
     State cpu;
-    cpu.pc = 0x2000_addr;
+    cpu.pc = cpu.next_pc = 0x2000_addr;
 
     memory_array[0x0000] = 0x00;  // Target low
     memory_array[0x0001] = 0x30;  // Target high
@@ -1646,7 +1649,7 @@ TEST_CASE("JMP Edge Cases", "[jump][functional]")
   SECTION("Multiple Jumps in Sequence")
   {
     State cpu;
-    cpu.pc = 0x1000_addr;
+    cpu.pc = cpu.next_pc = 0x1000_addr;
 
     // Set up a chain of jumps
     memory_array[0x1000] = 0x4C;
@@ -1661,7 +1664,7 @@ TEST_CASE("JMP Edge Cases", "[jump][functional]")
     REQUIRE(addressOfNextInstruction == 0x2000_addr);
 
     // We need to fix up the PC because calling executeInstruction twice gets it out of sync.
-    cpu.pc = addressOfNextInstruction;
+    cpu.pc = cpu.next_pc = addressOfNextInstruction;
 
     // Execute second jump
     addressOfNextInstruction = executeInstruction(pump, cpu, memory, {});
@@ -2747,7 +2750,7 @@ TEST_CASE("JSR/RTS - Jump to Subroutine/Return", "[stack][jsr][rts]")
   SECTION("Basic Subroutine Call and Return")
   {
     State cpu;
-    cpu.pc = 0x1000_addr;
+    cpu.pc = cpu.next_pc = 0x1000_addr;
     cpu.sp = 0xFF;
 
     // JSR $2000 - should push return address and jump
@@ -2771,7 +2774,7 @@ TEST_CASE("JSR/RTS - Jump to Subroutine/Return", "[stack][jsr][rts]")
   SECTION("Nested Subroutine Calls")
   {
     State cpu;
-    cpu.pc = 0x1000_addr;
+    cpu.pc = cpu.next_pc = 0x1000_addr;
     cpu.sp = 0xFF;
 
     // First JSR
@@ -2794,7 +2797,7 @@ TEST_CASE("JSR/RTS - Jump to Subroutine/Return", "[stack][jsr][rts]")
   SECTION("JSR/RTS Don't Affect Flags")
   {
     State cpu;
-    cpu.pc = 0x1000_addr;
+    cpu.pc = cpu.next_pc = 0x1000_addr;
     cpu.sp = 0xFF;
 
     // Set all flags
@@ -2814,7 +2817,7 @@ TEST_CASE("JSR/RTS - Jump to Subroutine/Return", "[stack][jsr][rts]")
   SECTION("JSR/RTS Don't Affect Registers")
   {
     State cpu;
-    cpu.pc = 0x1000_addr;
+    cpu.pc = cpu.next_pc = 0x1000_addr;
     cpu.sp = 0xFF;
     cpu.a = 0x11;
     cpu.x = 0x22;
@@ -2951,7 +2954,7 @@ TEST_CASE("Mixed Stack Operations", "[stack][integration]")
   SECTION("Subroutine with Stack Usage")
   {
     State cpu;
-    cpu.pc = 0x1000_addr;
+    cpu.pc = cpu.next_pc = 0x1000_addr;
     cpu.sp = 0xFF;
     cpu.a = 0x42;
 
@@ -4965,7 +4968,7 @@ TEST_CASE("BRK - Software Interrupt", "[brk][interrupt]")
   SECTION("Basic BRK operation")
   {
     State cpu;
-    cpu.pc = 0x1000_addr;
+    cpu.pc = cpu.next_pc = 0x1000_addr;
     cpu.sp = 0xFF;
     cpu.p = static_cast<Byte>(State::Flag::Carry) | static_cast<Byte>(State::Flag::Unused);
 
@@ -4996,7 +4999,7 @@ TEST_CASE("BRK - Software Interrupt", "[brk][interrupt]")
   SECTION("BRK with all flags set")
   {
     State cpu;
-    cpu.pc = 0x2000_addr;
+    cpu.pc = cpu.next_pc = 0x2000_addr;
     cpu.sp = 0xFF;
     cpu.p = 0xFF;  // All flags set initially
 
@@ -5020,7 +5023,7 @@ TEST_CASE("RTI - Return from Interrupt", "[rti][interrupt]")
   SECTION("Basic RTI operation")
   {
     State cpu;
-    cpu.pc = 0xE000_addr;  // In interrupt handler
+    cpu.pc = cpu.next_pc = 0xE000_addr;  // In interrupt handler
     cpu.sp = 0xFC;  // Stack as left by BRK
 
     // Set up stack as BRK would have left it
@@ -5046,7 +5049,7 @@ TEST_CASE("RTI - Return from Interrupt", "[rti][interrupt]")
   SECTION("RTI clears Interrupt flag")
   {
     State cpu;
-    cpu.pc = 0xE000_addr;
+    cpu.pc = cpu.next_pc = 0xE000_addr;
     cpu.sp = 0xFC;
     cpu.set(State::Flag::Interrupt, true);  // Set by BRK
 
@@ -5071,9 +5074,11 @@ TEST_CASE("BRK/RTI Integration", "[brk][rti][integration]")
   SECTION("BRK followed by RTI")
   {
     State cpu;
-    cpu.pc = 0x1000_addr;
+    cpu.pc = cpu.next_pc = 0x1000_addr;
     cpu.sp = 0xFF;
     cpu.p = static_cast<Byte>(State::Flag::Zero) | static_cast<Byte>(State::Flag::Unused);
+
+    auto original_pc = cpu.pc;
 
     // Set up IRQ vector to point to RTI instruction
     memory_array[0xFFFE] = 0x00;
@@ -5084,15 +5089,15 @@ TEST_CASE("BRK/RTI Integration", "[brk][rti][integration]")
     executeInstruction(pump, cpu, memory, {0x00});  // BRK
 
     // Should be at interrupt handler
-    CHECK(cpu.pc == 0x2001_addr);  // After RTI instruction
+    CHECK(cpu.pc == 0x2000_addr);  // After RTI instruction
     CHECK(cpu.has(State::Flag::Interrupt) == true);
 
     // Execute RTI
-    cpu.pc = 0x2000_addr;  // Reset PC to RTI
+    cpu.pc = cpu.next_pc = 0x2000_addr;  // Reset PC to RTI
     executeInstruction(pump, cpu, memory, {0x40});  // RTI
 
     // Should be back to original location + 2
-    CHECK(cpu.pc == 0x1003_addr);  // BRK is 2 bytes, so PC+2 from original
+    CHECK(cpu.pc == original_pc + 2);  // BRK is 2 bytes, so PC+2 from original
     CHECK(cpu.has(State::Flag::Zero) == true);  // Original flags restored
     CHECK(cpu.has(State::Flag::Interrupt) == false);  // I flag cleared by RTI
     CHECK(cpu.has(State::Flag::Break) == false);  // B flag cleared by RTI

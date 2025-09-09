@@ -1,7 +1,14 @@
 #pragma once
 
+#include <concepts>
 #include <cstdint>
 #include <tuple>
+
+//! Concept returns true if the given CpuDefinition has a static method `latch(State&)`.
+template<typename CpuDefinition, typename State>
+concept HasLatch = requires(State& state) {
+  { CpuDefinition::latch(state) };
+};
 
 // MicrocodePump - executes microcode operations in sequence, fetching opcodes as needed.
 // The CpuDefinition template parameter must define the following types and static methods:
@@ -85,6 +92,12 @@ typename CpuDefinition::Microcode MicrocodePump<CpuDefinition>::getNextMicrocode
 template<typename CpuDefinition>
 typename CpuDefinition::BusRequest MicrocodePump<CpuDefinition>::tick(State& state, BusResponse response)
 {
+  // Latch the CPU definition latch any values at the beginning of the cycle
+  if constexpr (HasLatch<CpuDefinition, State>)
+  {
+    CpuDefinition::latch(state);
+  }
+
   // Get next microcode to execute
   auto microcode = getNextMicrocode(response);
 

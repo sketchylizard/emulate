@@ -23,6 +23,11 @@ struct mos6502 : CpuDefinition
   static Response fetchNextOpcode(State& state, BusResponse) noexcept;
 
   static std::pair<Microcode*, Microcode*> decodeOpcode(uint8_t opcode) noexcept;
+
+  //! Latch any values at the beginning of the cycle.
+  //! This is optional; only define it if you need to latch values.
+  //! It will be called at the start of each tick(), before executing any microcode.
+  static void latch(State& state) noexcept;
 };
 
 Common::FixedFormatter& operator<<(

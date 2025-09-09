@@ -1,5 +1,6 @@
 #pragma once
 
+#include <catch2/catch_tostring.hpp>
 #include <span>
 
 #include "common/address.h"
@@ -12,6 +13,3 @@
 // as the microcode functions are executed. Returns true if all cycles matched,
 // false if there was a mismatch or if the microcode ran out before the cycles did.
 bool execute(cpu6502::State& state, std::span<const cpu6502::Microcode> microcode, std::span<const Common::Cycle> cycles);
-
-// Helper function for readable output
-std::string formatBusRequest(const Common::BusRequest& request);

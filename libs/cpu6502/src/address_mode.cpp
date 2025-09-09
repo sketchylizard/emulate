@@ -7,21 +7,24 @@ MicrocodeResponse AddressMode::requestAddress8(State& cpu, BusResponse /*respons
 {
   // We don't care about the response; just fetch the low byte of the address
   cpu.lo = cpu.hi = 0;  // clear hi/lo to ensure they are set
-  return {BusRequest::Read(cpu.pc++)};
+  cpu.next_pc = cpu.pc + 1;
+  return {BusRequest::Read(cpu.pc)};
 }
 
 MicrocodeResponse AddressMode::requestAddress16(State& cpu, BusResponse /*response*/)
 {
   // We don't care about the response; just fetch the low byte of the address
   cpu.lo = cpu.hi = 0;  // clear hi/lo to ensure they are set
-  return {BusRequest::Read(cpu.pc++), &requestAddressHigh};
+  cpu.next_pc = cpu.pc + 1;
+  return {BusRequest::Read(cpu.pc), &requestAddressHigh};
 }
 
 MicrocodeResponse AddressMode::requestAddressHigh(State& cpu, BusResponse response)
 {
   // The incoming response data is the low byte of the address
   cpu.lo = response.data;
-  return {BusRequest::Read(cpu.pc++)};
+  cpu.next_pc = cpu.pc + 1;
+  return {BusRequest::Read(cpu.pc)};
 }
 
 MicrocodeResponse AddressMode::fixupPageCrossing(State& state, BusResponse /*response*/)

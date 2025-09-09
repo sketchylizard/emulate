@@ -36,7 +36,8 @@ static MicrocodeResponse branch(State& cpu, Common::BusResponse /*response*/)
     next = branchTaken;
   }
 
-  return {BusRequest::Read(cpu.pc++), next};
+  cpu.next_pc = cpu.pc + 1;
+  return {BusRequest::Read(cpu.pc), next};
 }
 
 static MicrocodeResponse branchTaken(State& cpu, Common::BusResponse response)
@@ -56,7 +57,7 @@ static MicrocodeResponse branchTaken(State& cpu, Common::BusResponse response)
   bool carry = tmp < 0 || tmp > 0xFF;
 
   // Update PC with new low byte (keep high byte for now)
-  cpu.pc = MakeAddress(static_cast<uint8_t>(tmp), HiByte(cpu.pc));
+  cpu.next_pc = cpu.pc = MakeAddress(static_cast<uint8_t>(tmp), HiByte(cpu.pc));
 
   Microcode nextStage = nullptr;
   if (carry)
@@ -83,6 +84,9 @@ static MicrocodeResponse branchPageFixup(State& cpu, Common::BusResponse /*respo
     cpu.pc += 0x100;
   }
   // 4 cycles total, we're done
+
+  cpu.next_pc = cpu.pc;
+
   // Dummy read to consume cycle
   return {BusRequest::Read(cpu.pc)};
 }
@@ -232,7 +236,7 @@ static MicrocodeResponse jmpAbsolute(State& cpu, Common::BusResponse response)
     throw TrapException(newPC);
   }
 
-  cpu.pc = newPC;
+  cpu.pc = cpu.next_pc = newPC;
   return MicrocodeResponse{};
 }
 
@@ -245,7 +249,7 @@ static MicrocodeResponse jmpIndirect3(State& cpu, Common::BusResponse /*response
   {  // Self-jump detected
     throw TrapException(target);
   }
-  cpu.pc = target;
+  cpu.pc = cpu.next_pc = target;
 
   return MicrocodeResponse{};
 }
@@ -438,7 +442,7 @@ struct jsr
     }
 
     // Set new PC
-    cpu.pc = newPC;
+    cpu.pc = cpu.next_pc = newPC;
 
     // Push return address low byte
     return {BusRequest::Write(Common::MakeAddress(cpu.sp--, 0x01), return_addr_low)};
@@ -469,14 +473,14 @@ struct rts
   static MicrocodeResponse step3(State& cpu, Common::BusResponse response)
   {
     cpu.hi = response.data;
-    cpu.pc = Common::MakeAddress(cpu.lo, cpu.hi);
+    cpu.pc = cpu.next_pc = Common::MakeAddress(cpu.lo, cpu.hi);
     return {BusRequest::Read(cpu.pc)};
   }
 
   // Step 4: Store low byte, pull return address high byte
   static MicrocodeResponse step4(State& cpu, Common::BusResponse /*response*/)
   {
-    cpu.pc = Common::MakeAddress(cpu.lo, cpu.hi) + 1;
+    cpu.pc = cpu.next_pc = Common::MakeAddress(cpu.lo, cpu.hi) + 1;
     return {BusRequest::Read(cpu.pc)};
   }
 
@@ -777,7 +781,8 @@ struct Brk
   // Step 1: Dummy read next instruction byte (like JSR)
   static MicrocodeResponse step1(State& cpu, Common::BusResponse /*response*/)
   {
-    return {BusRequest::Read(cpu.pc++)};  // Read and discard next byte
+    cpu.next_pc = cpu.pc + 1;
+    return {BusRequest::Read(cpu.pc)};  // Read and discard next byte
   }
 
   // Step 2: Push return address high byte (PC)
@@ -828,7 +833,7 @@ struct Brk
   {
     // Store high byte and set PC to interrupt vector
     cpu.hi = response.data;
-    cpu.pc = Common::MakeAddress(cpu.lo, cpu.hi);
+    cpu.pc = cpu.next_pc = Common::MakeAddress(cpu.lo, cpu.hi);
 
     // Final dummy read
     return {BusRequest::Read(cpu.pc)};
@@ -878,7 +883,7 @@ struct Rti
   static MicrocodeResponse step5(State& cpu, Common::BusResponse response)
   {
     cpu.hi = response.data;
-    cpu.pc = Common::MakeAddress(cpu.lo, cpu.hi);
+    cpu.pc = cpu.next_pc = Common::MakeAddress(cpu.lo, cpu.hi);
 
     // Note: Unlike RTS, RTI does NOT increment PC
     return {BusRequest::Read(cpu.pc)};
@@ -1197,13 +1202,19 @@ static constexpr auto c_instructions = []()
 
 mos6502::Response mos6502::fetchNextOpcode(State& state, BusResponse) noexcept
 {
-  return {BusRequest::Fetch(state.pc++)};
+  state.next_pc = state.pc + 1;
+  return {BusRequest::Fetch(state.pc)};
 }
 
 std::pair<Microcode*, Microcode*> mos6502::decodeOpcode(uint8_t opcode) noexcept
 {
   const Instruction& instr = c_instructions[opcode];
   return {const_cast<Microcode*>(instr.ops), const_cast<Microcode*>(instr.ops) + sizeof(instr.ops) / sizeof(instr.ops[0])};
+}
+
+void mos6502::latch(State& state) noexcept
+{
+  state.pc = state.next_pc;
 }
 
 FixedFormatter& operator<<(FixedFormatter& formatter, std::pair<const State&, std::span<Common::Byte, 3>> stateAndBytes) noexcept

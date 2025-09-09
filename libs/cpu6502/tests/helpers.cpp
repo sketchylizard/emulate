@@ -15,26 +15,6 @@ using BusRequest = Common::BusRequest;
 using BusResponse = Common::BusResponse;
 using MicrocodeResponse = cpu6502::MicrocodeResponse;
 
-// In common/test_helpers.h or wherever you put the test utilities
-// Helper function for readable output
-std::ostream& operator<<(std::ostream& os, const BusRequest& value)
-{
-  if (value.isSync())
-  {
-    os << std::format("Bus read(${:04x})", value.address);
-  }
-  else if (value.isRead())
-  {
-    os << std::format("Bus read(${:04x})", value.address);
-  }
-  else if (value.isWrite())
-  {
-    os << std::format("Bus write(${:04x}, ${:02x})", value.address, value.data);
-  }
-  os << "NONE";
-  return os;
-}
-
 bool execute(State& state, std::span<const Microcode> microcode, std::span<const Common::Cycle> cycles)
 {
   MicrocodeResponse stateResponse;
