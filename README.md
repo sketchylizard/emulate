@@ -26,6 +26,37 @@ EmuLate is a multi-system emulator focused on the legendary 6502 microprocessor 
 
 EmuLate is designed with modularity in mind:
 
+```mermaid
+sequenceDiagram
+    participant MP as MicrocodePump
+    participant CPU as CPU State
+    participant MEM as Memory
+    participant DEC as Decoder
+    
+    Note over MP: Cycle N: Fetch Opcode
+    MP->>+MEM: BusRequest::Fetch(PC)
+    MEM-->>-MP: BusResponse{opcode}
+    
+    Note over MP: Cycle N+1: Decode & Execute
+    MP->>+DEC: decodeOpcode(opcode)
+    DEC-->>-MP: Microcode sequence
+    
+    loop For each microcode operation
+        MP->>+CPU: Execute microcode(state, response)
+        Note over CPU: • Update registers<br/>• Calculate effective address<br/>• Generate bus request
+        CPU-->>-MP: {BusRequest, optional injection}
+        
+        alt Has injection (e.g., page crossing)
+            Note over MP: Queue injection for next cycle
+        end
+        
+        MP->>+MEM: Execute BusRequest
+        MEM-->>-MP: BusResponse
+    end
+    
+    Note over MP: Next instruction fetch...
+```
+
 TBD
 
 ## 🎮 Why EmuLate?
