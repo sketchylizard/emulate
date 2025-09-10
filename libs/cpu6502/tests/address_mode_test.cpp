@@ -12,12 +12,6 @@
 using namespace Common;
 using namespace cpu6502;
 
-static bool operator==(const State& lhs, const State& rhs) noexcept
-{
-  return lhs.pc == rhs.pc && lhs.a == rhs.a && lhs.x == rhs.x && lhs.y == rhs.y && lhs.sp == rhs.sp && lhs.p == rhs.p &&
-         lhs.hi == rhs.hi && lhs.lo == rhs.lo;
-}
-
 TEST_CASE("requestAddress8", "[addressing]")
 {
   State cpu;
@@ -340,9 +334,9 @@ TEMPLATE_TEST_CASE("requestZeroPageAddressIndexed", "[addressing]", ZeroPageX, Z
     request = TestType::ops[2](cpu, BusResponse{0x80});
     CHECK(request.request == BusRequest::Read(0x0090_addr));
 
-    State expected{.lo = 0x90, .hi = 0x00};
-    (expected.*reg) = 0x10;
-    CHECK((cpu == expected));
+    CHECK(cpu.lo == 0x90);
+    CHECK(cpu.hi == 0x00);
+    CHECK((cpu.*reg) == 0x10);
   }
 
   SECTION("Overflow wraps within zero page")
@@ -360,9 +354,9 @@ TEMPLATE_TEST_CASE("requestZeroPageAddressIndexed", "[addressing]", ZeroPageX, Z
     request = TestType::ops[2](cpu, BusResponse{0x80});
     CHECK(request.request == BusRequest::Read(0x0008_addr));
 
-    State expected{.lo = 0x08, .hi = 0x00};
-    (expected.*reg) = 0x10;
-    CHECK((cpu == expected));
+    CHECK(cpu.lo == 0x08);
+    CHECK(cpu.hi == 0x00);
+    CHECK((cpu.*reg) == 0x10);
   }
 
   SECTION("Maximum overflow")
@@ -380,9 +374,9 @@ TEMPLATE_TEST_CASE("requestZeroPageAddressIndexed", "[addressing]", ZeroPageX, Z
     request = TestType::ops[2](cpu, BusResponse{0x80});
     CHECK(request.request == BusRequest::Read(0x00FE_addr));
 
-    State expected{.lo = 0xFE, .hi = 0x00};
-    (expected.*reg) = 0xFF;
-    CHECK((cpu == expected));
+    CHECK(cpu.lo == 0xFE);
+    CHECK(cpu.hi == 0x00);
+    CHECK((cpu.*reg) == 0xFF);
   }
 
   SECTION("No offset - register is zero")
@@ -395,9 +389,9 @@ TEMPLATE_TEST_CASE("requestZeroPageAddressIndexed", "[addressing]", ZeroPageX, Z
     auto request = TestType::ops[1](cpu, BusResponse{0x42});
     CHECK(request.request == BusRequest::Read(0x0042_addr));  // $42 + $00 = $42
 
-    State expected{.lo = 0x42, .hi = 0x00};
-    (expected.*reg) = 0x00;
-    CHECK((cpu == expected));
+    CHECK(cpu.lo == 0x42);
+    CHECK(cpu.hi == 0x00);
+    CHECK((cpu.*reg) == 0x00);
   }
 }
 

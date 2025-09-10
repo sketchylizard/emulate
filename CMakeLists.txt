@@ -18,6 +18,8 @@ option(CMAKE_COMPILE_WARNING_AS_ERROR
 add_subdirectory(libs/common)
 add_subdirectory(libs/cpu6502)
 
-#if(BUILD_TESTING)
-  add_subdirectory(tests) # integration tests
-#endif()
+# if(BUILD_TESTING)
+add_subdirectory(tests) # integration tests
+add_subdirectory(harte) # integration tests
+
+# endif()

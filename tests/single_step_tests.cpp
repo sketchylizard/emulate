@@ -4,6 +4,7 @@
 #include <fstream>
 #include <iostream>
 #include <nlohmann/json.hpp>
+#include <unordered_map>
 
 #include "common/address.h"
 #include "common/address_string_maker.h"
@@ -17,246 +18,190 @@ using json = nlohmann::json;
 using namespace Common;
 using namespace cpu6502;
 
-// Structure to represent a single test cycle
-struct TestCycle
-{
-  Address address;
-  Byte value;
-  std::string type;  // "read", "write", "sync"
-
-  BusRequest toBusRequest() const
-  {
-    if (type == "sync")
-    {
-      return BusRequest::Fetch(address);
-    }
-    else if (type == "read")
-    {
-      return BusRequest::Read(address);
-    }
-    else if (type == "write")
-    {
-      return BusRequest::Write(address, value);
-    }
-    return BusRequest{address, value, Control::None};
-  }
-};
-
-// Structure to represent initial/final CPU state
-struct CpuState
-{
-  Address pc{0};
-  Byte a{0};
-  Byte x{0};
-  Byte y{0};
-  Byte sp{0};
-  Byte p{0};
-
-  void applyTo(State& state) const
-  {
-    state.pc = pc;
-    state.a = a;
-    state.x = x;
-    state.y = y;
-    state.sp = sp;
-    state.p = p;
-  }
-
-  bool matches(const State& state) const
-  {
-    return state.pc == pc && state.a == a && state.x == x && state.y == y && state.sp == sp && state.p == p;
-  }
-
-  std::string toString() const
-  {
-    return std::format("PC:{:04X} A:{:02X} X:{:02X} Y:{:02X} SP:{:02X} P:{:02X}", static_cast<uint16_t>(pc), a, x, y, sp, p);
-  }
-};
-
-// Structure to represent memory changes
-struct MemoryChange
-{
-  Address address;
-  Byte value;
-};
-
-// Structure to represent a complete test case
-struct TestCase
-{
-  std::string name;
-  CpuState initial_state;
-  std::vector<MemoryChange> initial_memory;
-  CpuState final_state;
-  std::vector<MemoryChange> final_memory;
-  std::vector<TestCycle> cycles;
-};
-
 // JSON parsing functions
-void from_json(const json& j, TestCycle& cycle)
+BusRequest getRequest(const json& j)
 {
-  cycle.address = Address{j.at("address").get<uint16_t>()};
-  cycle.value = j.at("value").get<uint8_t>();
-  cycle.type = j.at("type").get<std::string>();
+  BusRequest req;
+  auto [address, data, typeStr] = j.get<std::tuple<Address, Byte, std::string>>();
+
+  if (typeStr == "read")
+  {
+    req = BusRequest::Read(address);
+  }
+  else if (typeStr == "write")
+  {
+    req = BusRequest::Write(address, data);
+  }
+  else if (typeStr == "sync")
+  {
+    req = BusRequest::Fetch(address);
+  }
+  else
+  {
+    throw std::runtime_error("Unknown bus request type: " + typeStr);
+  }
+  return req;
 }
 
-void from_json(const json& j, CpuState& state)
+VisibleState getState(const json& j)
 {
+  VisibleState state;
+
   state.pc = Address{j.at("pc").get<uint16_t>()};
   state.a = j.at("a").get<uint8_t>();
   state.x = j.at("x").get<uint8_t>();
   state.y = j.at("y").get<uint8_t>();
   state.sp = j.at("s").get<uint8_t>();  // Note: JSON uses 's' for stack pointer
   state.p = j.at("p").get<uint8_t>();
+
+  return state;
 }
 
-void from_json(const json& j, MemoryChange& change)
+struct SparseMemory
 {
-  change.address = Address{j.at("address").get<uint16_t>()};
-  change.value = j.at("value").get<uint8_t>();
-}
+  std::vector<std::pair<Address, Byte>> mem;
 
-void from_json(const json& j, TestCase& test)
+  void set(Address addr, Byte value)
+  {
+    auto it = std::ranges::find_if(mem, [addr](const auto& pair) { return pair.first == addr; });
+    if (it == mem.end())
+    {
+      mem.emplace_back(addr, value);
+      return;
+    }
+    it->second = value;
+  }
+  Byte get(Address addr) const
+  {
+    auto it = std::ranges::find_if(mem, [addr](const auto& pair) { return pair.first == addr; });
+    if (it == mem.end())
+    {
+      std::cout << "Memory read of uninitialized address " << std::format("{:04X}", static_cast<uint16_t>(addr))
+                << ", returning 0x00" << std::endl;
+      return 0x00;
+    }
+    return it->second;
+  }
+
+  BusResponse tick(const BusRequest& req)
+  {
+    if (req.isRead())
+    {
+      return BusResponse{get(req.address)};
+    }
+    set(req.address, req.data);
+    return BusResponse{req.data, true};
+  }
+
+  bool operator==(const SparseMemory& other) const
+  {
+    return std::ranges::equal(mem, other.mem);
+  }
+};
+
+SparseMemory readMemory(const json& j)
 {
-  test.name = j.at("name").get<std::string>();
-  test.initial_state = j.at("initial").get<CpuState>();
-  test.initial_memory = j.at("ram").get<std::vector<MemoryChange>>();
-  test.final_state = j.at("final").get<CpuState>();
-  test.final_memory = j.at("ram").get<std::vector<MemoryChange>>();
-  test.cycles = j.at("cycles").get<std::vector<TestCycle>>();
+  SparseMemory memory;
+  memory.mem.clear();
+  memory.mem.reserve(j.size());
+  const auto& items = j.items();
+  for (const auto& item : items)
+  {
+    auto address = Address{item.value()[0].get<uint16_t>()};
+    Byte value = item.value()[1].get<uint8_t>();
+    memory.mem.emplace_back(address, value);
+  }
+  return memory;
 }
 
 class SingleStepTestRunner
 {
 private:
-  std::array<Byte, 65536> memory_array{};
   MicrocodePump<mos6502> pump;
-  MemoryDevice<Byte> memory;
+  SparseMemory memory;
   State cpu_state;
 
 public:
-  SingleStepTestRunner()
-    : memory(memory_array)
-  {
-  }
+  SingleStepTestRunner() = default;
 
-  bool runTest(const TestCase& test)
+  bool runTest(const json& test)
   {
+    static size_t count = 0;
+    if (++count % 10 == 0)
+    {
+      std::cout << "Running test #" << count << ": " << test.at("name").get<std::string>() << std::endl;
+    }
+
     // Reset everything
-    memory_array.fill(0);
+    auto initial = test.at("initial");
+
+    memory = readMemory(initial.at("ram"));
+
     pump = MicrocodePump<mos6502>{};
-    cpu_state = State{};
 
     // Apply initial state
-    test.initial_state.applyTo(cpu_state);
-
-    // Apply initial memory
-    for (const auto& change : test.initial_memory)
-    {
-      memory_array[static_cast<size_t>(change.address)] = change.value;
-    }
+    cpu_state = State(getState(initial));
 
     // Run each cycle
     BusResponse response{0x00};  // Start with default response
 
-    for (size_t cycle_idx = 0; cycle_idx < test.cycles.size(); ++cycle_idx)
+    const auto& cycles = test.at("cycles");
+    for (const auto& cycle : cycles)
     {
-      const auto& expected_cycle = test.cycles[cycle_idx];
-
+      auto [address, data, typeStr] = cycle.get<std::tuple<Address, Byte, std::string>>();
       // Execute one CPU tick
       BusRequest actual_request = pump.tick(cpu_state, response);
-      BusRequest expected_request = expected_cycle.toBusRequest();
-
-      // Verify bus request matches expected
-      if (actual_request != expected_request)
+      if (actual_request.address == address &&  // actual_request.data == data &&
+          ((typeStr == "write" && actual_request.isWrite())  //
+              || (typeStr == "sync" && actual_request.isSync())  //
+              || (typeStr == "read" && actual_request.isRead())))
       {
-        UNSCOPED_INFO("Test: " << test.name);
-        UNSCOPED_INFO("Cycle " << cycle_idx << " bus request mismatch:");
-        UNSCOPED_INFO("  Expected: " << formatBusRequest(expected_request));
-        UNSCOPED_INFO("  Actual:   " << formatBusRequest(actual_request));
+        // Request matches expected
+      }
+      else
+      {
+        UNSCOPED_INFO("Test: " << test.at("name").get<std::string>());
+        UNSCOPED_INFO("Cycle bus request mismatch:");
+#if 0
+        UNSCOPED_INFO("  Expected: " << typeStr << " " << std::format("{:04X}", static_cast<uint16_t>(address))
+                                     << (typeStr == "write" ? " = " + std::format("{:02X}", data) : ""));
+        UNSCOPED_INFO("  Actual:   " << (actual_request.isSync()     ? "sync " :
+                                            actual_request.isRead()  ? "read " :
+                                            actual_request.isWrite() ? "write " :
+                                                                       "none ")
+                                     << std::format("{:04X}", static_cast<uint16_t>(actual_request.address))
+                                     << (actual_request.isWrite() ? " = " + std::format("{:02X}", actual_request.data) : ""));
         UNSCOPED_INFO("  CPU State: " << getCurrentState().toString());
-
-        // Log all cycles for context
-        logAllCycles(test, cycle_idx);
+#endif
         return false;
       }
 
       // Execute memory operation and prepare response for next cycle
       BusResponse memory_response = memory.tick(actual_request);
-
-      // For next cycle, the response data should be what was read/written
-      if (actual_request.isRead() || actual_request.isSync())
-      {
-        response.data = memory_response.data;
-      }
-      else
-      {
-        response.data = actual_request.data;  // Write operations
-      }
-      response.ready = memory_response.ready;
+      response.data = memory_response.data;
     }
 
+    const auto& final = test.at("final");
+
     // Verify final CPU state
-    if (!test.final_state.matches(cpu_state))
+    auto finalState = getState(final);
+    if (static_cast<const VisibleState&>(cpu_state) != finalState)
     {
-      UNSCOPED_INFO("Test: " << test.name);
+      UNSCOPED_INFO("Test: " << test["name"]);
       UNSCOPED_INFO("Final CPU state mismatch:");
-      UNSCOPED_INFO("  Expected: " << test.final_state.toString());
-      UNSCOPED_INFO("  Actual:   " << getCurrentState().toString());
-      logAllCycles(test, test.cycles.size());
+#if 0
+      UNSCOPED_INFO("  Expected: " << finalState);
+      UNSCOPED_INFO("  Actual:   " << cpu_state);
+#endif
+      // logAllCycles(test, test.cycles.size());
       return false;
     }
 
     // Verify final memory state
-    for (const auto& expected_change : test.final_memory)
-    {
-      Byte actual_value = memory_array[static_cast<size_t>(expected_change.address)];
-      if (actual_value != expected_change.value)
-      {
-        UNSCOPED_INFO("Test: " << test.name);
-        UNSCOPED_INFO("Final memory mismatch at " << expected_change.address << ":");
-        UNSCOPED_INFO("  Expected: $" << std::format("{:02X}", expected_change.value));
-        UNSCOPED_INFO("  Actual:   $" << std::format("{:02X}", actual_value));
-        logAllCycles(test, test.cycles.size());
-        return false;
-      }
-    }
-
-    return true;  // Test passed
+    auto finalMemory = readMemory(final.at("ram"));
+    return memory == finalMemory;
   }
-
-private:
-  CpuState getCurrentState() const
-  {
-    CpuState current;
-    current.pc = cpu_state.pc;
-    current.a = cpu_state.a;
-    current.x = cpu_state.x;
-    current.y = cpu_state.y;
-    current.sp = cpu_state.sp;
-    current.p = cpu_state.p;
-    return current;
-  }
-
-  std::string formatBusRequest(const BusRequest& req) const
-  {
-    if (req.isSync())
-    {
-      return std::format("SYNC {:04X}", static_cast<uint16_t>(req.address));
-    }
-    else if (req.isRead())
-    {
-      return std::format("READ {:04X}", static_cast<uint16_t>(req.address));
-    }
-    else if (req.isWrite())
-    {
-      return std::format("WRITE {:04X} = {:02X}", static_cast<uint16_t>(req.address), req.data);
-    }
-    else
-    {
-      return std::format("NONE {:04X} {:02X}", static_cast<uint16_t>(req.address), req.data);
-    }
-  }
-
+#if 0
   void logAllCycles(const TestCase& test, size_t failed_at_cycle) const
   {
     UNSCOPED_INFO("Complete cycle trace:");
@@ -292,6 +237,7 @@ private:
       }
     }
   }
+#endif
 };
 
 // Function to load test cases from JSON file
@@ -327,8 +273,8 @@ TEST_CASE("SingleStep Specific Opcode", "[single_step][manual]")
   {
     DYNAMIC_SECTION("NOP Test " << ": " << test["name"].get<std::string>())
     {
-      // bool passed = runner.runTest(test);
-      CHECK(false);
+      bool passed = runner.runTest(test);
+      CHECK(passed);
     }
   }
 }

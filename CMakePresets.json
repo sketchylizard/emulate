@@ -7,7 +7,7 @@
       "binaryDir": "build/clang/debug",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/build/clang/debug/build/Debug/generators/conan_toolchain.cmake"
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/build/clang/debug/conan_toolchain.cmake"
       }
     },
     {
@@ -16,7 +16,7 @@
       "binaryDir": "build/clang/release",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/build/clang/release/build/Release/generators/conan_toolchain.cmake"
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/build/clang/release/conan_toolchain.cmake"
       }
     },
     {

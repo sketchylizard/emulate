@@ -32,10 +32,20 @@ struct VisibleState
   Common::Byte y{0};
   Common::Byte sp{0};
   Common::Byte p{static_cast<Common::Byte>(Flag::Unused)};  // keep U set
+
+  bool operator<=>(const VisibleState&) const = default;
 };
 
 struct State : VisibleState
 {
+  State() noexcept = default;
+
+  State(VisibleState state) noexcept
+    : VisibleState(state)
+  {
+    next_pc = pc;
+  }
+
   // Storage for low byte of address during addressing modes
   Common::Byte lo = 0;
   // Storage for high byte of address during addressing modes

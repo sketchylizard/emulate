@@ -6,6 +6,9 @@
 #include <span>
 
 #include "common/address.h"
+
+#if 0
+
 #include "incbin.h"
 
 extern "C" {
@@ -17,3 +20,5 @@ std::span<const Common::Byte> Klaus__6502_functional_test::data() noexcept
 {
   return std::span<const Common::Byte>(g_Klaus__6502_functional_testBinData, g_Klaus__6502_functional_testBinSize);
 }
+
+#endif

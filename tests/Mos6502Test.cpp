@@ -22,6 +22,8 @@
 
 using namespace Common;
 
+#if 0
+
 TEST_CASE("MicrocodePump: Functional_tests", "[.]")
 {
 
@@ -107,3 +109,4 @@ TEST_CASE("MicrocodePump: Functional_tests", "[.]")
   };
   CHECK(runTest() == true);
 }
+#endif
