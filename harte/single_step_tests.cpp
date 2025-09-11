@@ -36,6 +36,8 @@ int main(int argc, char* argv[])
   std::vector<BusRequest> expectedCycles;
   std::vector<BusRequest> actualCycles;
 
+  [[maybe_unused]] int32_t testCount = 0;
+  int32_t failCount = 0;
   for (auto test : doc.get_array())
   {
     std::string_view name = test["name"].get_string().value();
@@ -53,9 +55,10 @@ int main(int argc, char* argv[])
 
     BusResponse response{0x00};  // Start with default response
 
-    int32_t fetchCount = 0;
-    while (fetchCount < 2)
+    for (auto expected : final.cycles)
     {
+      static_cast<void>(expected);  // ignore unused in release builds
+
       // Execute one CPU tick
       BusRequest actual = pump.tick(cpu_state, response);
 
@@ -66,9 +69,9 @@ int main(int argc, char* argv[])
 
       if (actual.isSync())
       {
-        ++fetchCount;
         // Incoming cycles don't mark sync operations, so clear it here for comparison
         actual.control &= ~Control::Sync;
+        actual.control |= Control::Write;  // just to set the high bit
       }
       actualCycles.push_back(actual);
     }
@@ -81,11 +84,14 @@ int main(int argc, char* argv[])
     actual.memory = memory.mem;
     actual.cycles = actualCycles;
 
+    ++testCount;
     if (actual != final)
     {
-      std::cout << "Test '" << name << "' failed!" << std::endl;
+      ++failCount;
+      std::cout << "Test '" << name << "' failed\n";
+      // reportError(name, final, actual);
     }
   }
 
-  return 0;
+  return failCount;
 }
