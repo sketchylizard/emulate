@@ -11,6 +11,20 @@ using namespace Common;
 namespace cpu6502
 {
 
+mos6502::TrapHandler mos6502::trapHandler = nullptr;
+
+static void Trap(Address pc)
+{
+  if (mos6502::trapHandler)
+  {
+    mos6502::trapHandler(pc);
+  }
+  else
+  {
+    throw TrapException(pc);
+  }
+}
+
 static MicrocodeResponse branchTaken(State& cpu, Common::BusResponse /*response*/);
 static MicrocodeResponse branchPageFixup(State& cpu, Common::BusResponse /*response*/);
 
@@ -48,47 +62,39 @@ static MicrocodeResponse branchTaken(State& cpu, Common::BusResponse response)
 
   if (offset == -2)
   {  // Self-branch detected
-    throw TrapException(cpu.pc - 2);
+    Trap(cpu.pc - 2);
   }
 
   // Add offset to PC low byte
-  auto tmp = static_cast<int16_t>(static_cast<uint16_t>(cpu.pc) & 0xFF) + offset;
+  auto tmp = Address{static_cast<uint16_t>(static_cast<int16_t>(cpu.pc) + offset)};
   // Detect if page boundary is crossed
-  bool carry = tmp < 0 || tmp > 0xFF;
+  bool carry = HiByte(cpu.pc) != HiByte(tmp);
 
-  // Update PC with new low byte (keep high byte for now)
-  cpu.next_pc = cpu.pc = MakeAddress(static_cast<uint8_t>(tmp), HiByte(cpu.pc));
-
-  Microcode nextStage = nullptr;
-  if (carry)
+  if (!carry)
   {
-    // Page boundary crossed - need step 2 for fixup
-    nextStage = branchPageFixup;
+    // No page boundary crossed - branch complete
+    // Dummy read to consume cycle
+    cpu.next_pc = cpu.pc = tmp;
+    return {BusRequest::Read(cpu.pc)};
   }
 
-  // Dummy read to consume cycle
-  return {BusRequest::Read(cpu.pc), nextStage};
+  // Page boundary crossed - need step 2 for fixup
+  return {BusRequest::Read(cpu.pc), branchPageFixup};
 }
 
 static MicrocodeResponse branchPageFixup(State& cpu, Common::BusResponse /*response*/)
 {
-  // Apply the carry/borrow to the high byte
-  if (cpu.lo & 0x80)
-  {
-    // Negative offset - decrement high byte
-    cpu.pc -= 0x100;
-  }
-  else
-  {
-    // Positive offset - increment high byte
-    cpu.pc += 0x100;
-  }
+  // Add offset to PC low byte
+  int8_t offset = static_cast<int8_t>(cpu.lo);
+  auto tmp = Address{static_cast<uint16_t>(static_cast<int16_t>(cpu.pc) + offset)};
+
+  auto incorrectPage = MakeAddress(LoByte(tmp), HiByte(cpu.pc));
+
+  // Update PC with address
+  cpu.next_pc = cpu.pc = tmp;
+
   // 4 cycles total, we're done
-
-  cpu.next_pc = cpu.pc;
-
-  // Dummy read to consume cycle
-  return {BusRequest::Read(cpu.pc)};
+  return {BusRequest::Read(incorrectPage)};  // Dummy read to consume cycle
 }
 
 template<Common::Byte VisibleState::* reg>
@@ -233,7 +239,7 @@ static MicrocodeResponse jmpAbsolute(State& cpu, Common::BusResponse response)
   // it is a self-jump.
   if (newPC == cpu.pc - 3)
   {  // Self-jump detected
-    throw TrapException(newPC);
+    Trap(newPC);
   }
 
   cpu.pc = cpu.next_pc = newPC;
@@ -247,7 +253,7 @@ static MicrocodeResponse jmpIndirect3(State& cpu, Common::BusResponse /*response
   // it is a self-jump.
   if (target == cpu.pc - 3)
   {  // Self-jump detected
-    throw TrapException(target);
+    Trap(target);
   }
   cpu.pc = cpu.next_pc = target;
 
@@ -438,7 +444,7 @@ struct jsr
     auto newPC = Common::MakeAddress(cpu.lo, cpu.hi);
     if (newPC == cpu.pc - 3)  // JSR is 3 bytes long
     {
-      throw TrapException(newPC);
+      Trap(newPC);
     }
 
     // Set new PC

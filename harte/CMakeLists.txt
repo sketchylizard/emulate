@@ -3,6 +3,8 @@ if(BUILD_TESTING)
 
   add_executable(harte
     single_step_tests.cpp
+    test_run.cpp
+    test_run.h
   )
 
   target_link_libraries(harte PRIVATE

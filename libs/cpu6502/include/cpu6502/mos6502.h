@@ -28,6 +28,11 @@ struct mos6502 : CpuDefinition
   //! This is optional; only define it if you need to latch values.
   //! It will be called at the start of each tick(), before executing any microcode.
   static void latch(State& state) noexcept;
+
+  //! Trap exception handler. If set, this function will be called when a trap is triggered.
+  //! If not set, a TrapException will be thrown.
+  using TrapHandler = void (*)(Common::Address pc);
+  static TrapHandler trapHandler;  // Called on a trap exception
 };
 
 Common::FixedFormatter& operator<<(
