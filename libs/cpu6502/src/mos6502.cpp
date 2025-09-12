@@ -42,16 +42,14 @@ static MicrocodeResponse branch(State& cpu, Common::BusResponse /*response*/)
   bool flagSet = cpu.has(flag);
   bool shouldBranch = (flagSet == condition);
 
-  Microcode next = nullptr;
-
+  cpu.next_pc = cpu.pc + 1;
   if (shouldBranch)
   {
     // Branch taken - continue to step 1
-    next = branchTaken;
+    return {BusRequest::Read(cpu.pc), branchTaken};
   }
 
-  cpu.next_pc = cpu.pc + 1;
-  return {BusRequest::Read(cpu.pc), next};
+  return MicrocodeResponse{};
 }
 
 static MicrocodeResponse branchTaken(State& cpu, Common::BusResponse response)

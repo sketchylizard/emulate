@@ -87,9 +87,9 @@ int main(int argc, char* argv[])
     ++testCount;
     if (actual != final)
     {
-      ++failCount;
       std::cout << "Test '" << name << "' failed\n";
-      // reportError(name, final, actual);
+      reportError(name, final, actual);
+      ++failCount;
     }
   }
 
