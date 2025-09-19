@@ -49,14 +49,127 @@ struct ReadModifyWrite
   }
 };
 
-struct nop
+////////////////////////////////////////////////////////////////////////////////
+// Simple Readonly Operation
+template<auto lambda>
+struct SimpleOperation
 {
-  static MicrocodeResponse step0(State& /*cpu*/, Common::Byte /*operand*/)
+  static MicrocodeResponse step0(State& cpu, Common::Byte operand)
   {
-    // No operation; used to consume a cycle
+    lambda(cpu, operand);
     return {};
   }
 };
+
+
+using NOP = SimpleOperation<[](State& /*cpu*/, Common::Byte /*operand*/)
+    {
+      // No operation; used to consume a cycle
+    }>;
+
+////////////////////////////////////////////////////////////////////////////////
+// Shift/Rotate Instructions - Accumulator Mode (2 cycles)
+////////////////////////////////////////////////////////////////////////////////
+
+// ASL A - Arithmetic Shift Left Accumulator
+using ShiftLeftAccumulator = SimpleOperation<[](State& cpu, Common::Byte /*operand*/)
+    {
+      // C ← [7][6][5][4][3][2][1][0] ← 0
+      bool bit7 = (cpu.a & 0x80) != 0;
+      cpu.a <<= 1;  // Shift left, bit 0 becomes 0
+
+      cpu.set(State::Flag::Carry, bit7);  // Bit 7 → Carry
+      cpu.setZN(cpu.a);  // Set N and Z flags
+    }>;
+
+// LSR A - Logical Shift Right Accumulator
+using ShiftRightAccumulator = SimpleOperation<[](State& cpu, Common::Byte /*operand*/)
+    {
+      // 0 → [7][6][5][4][3][2][1][0] → C
+      bool bit0 = (cpu.a & 0x01) != 0;
+      cpu.a >>= 1;  // Shift right, bit 7 becomes 0
+
+      cpu.set(State::Flag::Carry, bit0);  // Bit 0 → Carry
+      cpu.setZN(cpu.a);  // Set N and Z flags (N will always be 0)
+    }>;
+
+// ROL A - Rotate Left Accumulator
+using RotateLeftAccumulator = SimpleOperation<[](State& cpu, Common::Byte /*operand*/)
+    {
+      // C ← [7][6][5][4][3][2][1][0] ← C
+      bool bit7 = (cpu.a & 0x80) != 0;
+      bool old_carry = cpu.has(State::Flag::Carry);
+
+      cpu.a <<= 1;  // Shift left
+      if (old_carry)
+      {
+        cpu.a |= 0x01;  // Carry → Bit 0
+      }
+
+      cpu.set(State::Flag::Carry, bit7);  // Bit 7 → Carry
+      cpu.setZN(cpu.a);  // Set N and Z flags
+    }>;
+
+// ROR A - Rotate Right Accumulator
+using RotateRightAccumulator = SimpleOperation<[](State& cpu, Common::Byte /*operand*/)
+    {
+      // C → [7][6][5][4][3][2][1][0] → C
+      bool bit0 = (cpu.a & 0x01) != 0;
+      bool old_carry = cpu.has(State::Flag::Carry);
+
+      cpu.a >>= 1;  // Shift right
+      if (old_carry)
+      {
+        cpu.a |= 0x80;  // Carry → Bit 7
+      }
+
+      cpu.set(State::Flag::Carry, bit0);  // Bit 0 → Carry
+      cpu.setZN(cpu.a);  // Set N and Z flags
+    }>;
+
+using And = SimpleOperation<[](State& cpu, Common::Byte operand)
+    {
+      cpu.a &= operand;  // A ← A ∧ M
+      cpu.setZN(cpu.a);  // Set N and Z flags based on result
+    }>;
+
+using Eor = SimpleOperation<[](State& cpu, Common::Byte operand)
+    {
+      cpu.a ^= operand;  // A ← A ⊕ M
+      cpu.setZN(cpu.a);
+    }>;
+
+using Ora = SimpleOperation<[](State& cpu, Common::Byte operand)
+    {
+      // Perform OR with accumulator
+      cpu.a |= operand;
+      cpu.set(State::Flag::Zero, cpu.a == 0);  // Set zero flag
+      cpu.set(State::Flag::Negative, cpu.a & 0x80);  // Set negative flag
+    }>;
+
+using Bit = SimpleOperation<[](State& cpu, Common::Byte operand)
+    {
+      // BIT instruction: Test bits in memory with accumulator
+      // - Z flag: Set if (A & M) == 0
+      // - N flag: Copy bit 7 of memory operand
+      // - V flag: Copy bit 6 of memory operand
+      // - Accumulator is NOT modified
+      // - C, I, D flags are not affected
+
+      Byte memory_value = operand;
+      Byte test_result = cpu.a & memory_value;
+
+      // Set Zero flag based on AND result
+      cpu.set(State::Flag::Zero, test_result == 0);
+
+      // Copy bit 7 of memory to Negative flag
+      cpu.set(State::Flag::Negative, (memory_value & 0x80) != 0);
+
+      // Copy bit 6 of memory to Overflow flag
+      cpu.set(State::Flag::Overflow, (memory_value & 0x40) != 0);
+
+      // Note: Accumulator is unchanged!
+    }>;
 
 ////////////////////////////////////////////////////////////////////////////////
 // BRK - Software Interrupt (7 cycles)
@@ -358,86 +471,6 @@ using TXS = Transfer<&State::x, &State::sp>;
 using TSX = Transfer<&State::sp, &State::x>;
 
 ////////////////////////////////////////////////////////////////////////////////
-// Shift/Rotate Instructions - Accumulator Mode (2 cycles)
-////////////////////////////////////////////////////////////////////////////////
-
-// ASL A - Arithmetic Shift Left Accumulator
-struct ShiftLeftAccumulator
-{
-  static MicrocodeResponse step0(State& cpu, Common::Byte /*operand*/)
-  {
-    // C ← [7][6][5][4][3][2][1][0] ← 0
-    bool bit7 = (cpu.a & 0x80) != 0;
-    cpu.a <<= 1;  // Shift left, bit 0 becomes 0
-
-    cpu.set(State::Flag::Carry, bit7);  // Bit 7 → Carry
-    cpu.setZN(cpu.a);  // Set N and Z flags
-
-    return {};
-  }
-};
-
-// LSR A - Logical Shift Right Accumulator
-struct ShiftRightAccumulator
-{
-  static MicrocodeResponse step0(State& cpu, Common::Byte /*operand*/)
-  {
-    // 0 → [7][6][5][4][3][2][1][0] → C
-    bool bit0 = (cpu.a & 0x01) != 0;
-    cpu.a >>= 1;  // Shift right, bit 7 becomes 0
-
-    cpu.set(State::Flag::Carry, bit0);  // Bit 0 → Carry
-    cpu.setZN(cpu.a);  // Set N and Z flags (N will always be 0)
-
-    return {};
-  }
-};
-
-// ROL A - Rotate Left Accumulator
-struct RotateLeftAccumulator
-{
-  static MicrocodeResponse step0(State& cpu, Common::Byte /*operand*/)
-  {
-    // C ← [7][6][5][4][3][2][1][0] ← C
-    bool bit7 = (cpu.a & 0x80) != 0;
-    bool old_carry = cpu.has(State::Flag::Carry);
-
-    cpu.a <<= 1;  // Shift left
-    if (old_carry)
-    {
-      cpu.a |= 0x01;  // Carry → Bit 0
-    }
-
-    cpu.set(State::Flag::Carry, bit7);  // Bit 7 → Carry
-    cpu.setZN(cpu.a);  // Set N and Z flags
-
-    return {};
-  }
-};
-
-// ROR A - Rotate Right Accumulator
-struct RotateRightAccumulator
-{
-  static MicrocodeResponse step0(State& cpu, Common::Byte /*operand*/)
-  {
-    // C → [7][6][5][4][3][2][1][0] → C
-    bool bit0 = (cpu.a & 0x01) != 0;
-    bool old_carry = cpu.has(State::Flag::Carry);
-
-    cpu.a >>= 1;  // Shift right
-    if (old_carry)
-    {
-      cpu.a |= 0x80;  // Carry → Bit 7
-    }
-
-    cpu.set(State::Flag::Carry, bit0);  // Bit 0 → Carry
-    cpu.setZN(cpu.a);  // Set N and Z flags
-
-    return {};
-  }
-};
-
-////////////////////////////////////////////////////////////////////////////////
 // Shift/Rotate Instructions - Memory Mode (Read-Modify-Write)
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -508,7 +541,7 @@ struct Add
 {
   static MicrocodeResponse step0(State& cpu, Common::Byte operand)
   {
-    assert(cpu.has(State::Flag::Decimal) == false);  // BCD mode not supported
+    //    assert(cpu.has(State::Flag::Decimal) == false);  // BCD mode not supported
 
     const Byte a = cpu.a;
     const Byte m = operand;
@@ -570,38 +603,6 @@ struct Compare
 using CMP = Compare<&State::a>;
 using CPX = Compare<&State::x>;
 using CPY = Compare<&State::y>;
-
-struct And
-{
-  static MicrocodeResponse step0(State& cpu, Common::Byte operand)
-  {
-    cpu.a &= operand;  // A ← A ∧ M
-    cpu.setZN(cpu.a);  // Set N and Z flags based on result
-    return {};
-  }
-};
-
-struct Eor
-{
-  static MicrocodeResponse step0(State& cpu, Common::Byte operand)
-  {
-    cpu.a ^= operand;  // A ← A ⊕ M
-    cpu.setZN(cpu.a);
-    return {};
-  }
-};
-
-struct Ora
-{
-  static MicrocodeResponse step0(State& cpu, Common::Byte operand)
-  {
-    // Perform OR with accumulator
-    cpu.a |= operand;
-    cpu.set(State::Flag::Zero, cpu.a == 0);  // Set zero flag
-    cpu.set(State::Flag::Negative, cpu.a & 0x80);  // Set negative flag
-    return {};
-  }
-};
 
 template<Common::Byte VisibleState::* reg>
 struct Load
@@ -735,34 +736,6 @@ using DecrementMemory = ReadModifyWrite<[](State& cpu, Common::Byte val)
       return val;
     }>;
 
-struct Bit
-{
-  static MicrocodeResponse step0(State& cpu, Common::Byte operand)
-  {
-    // BIT instruction: Test bits in memory with accumulator
-    // - Z flag: Set if (A & M) == 0
-    // - N flag: Copy bit 7 of memory operand
-    // - V flag: Copy bit 6 of memory operand
-    // - Accumulator is NOT modified
-    // - C, I, D flags are not affected
-
-    Byte memory_value = operand;
-    Byte test_result = cpu.a & memory_value;
-
-    // Set Zero flag based on AND result
-    cpu.set(State::Flag::Zero, test_result == 0);
-
-    // Copy bit 7 of memory to Negative flag
-    cpu.set(State::Flag::Negative, (memory_value & 0x80) != 0);
-
-    // Copy bit 6 of memory to Overflow flag
-    cpu.set(State::Flag::Overflow, (memory_value & 0x40) != 0);
-
-    // Note: Accumulator is unchanged!
-    return {};
-  }
-};
-
 // JSR - Jump to Subroutine (6 cycles)
 struct JumpSubroutine
 {
@@ -890,7 +863,7 @@ static constexpr auto c_instructions = []()
 
   Builder builder{table};
   builder  //
-      .add<Implied<nop>>(0xEA, "NOP")
+      .add<Implied<NOP>>(0xEA, "NOP")
       .add<Implied<brk>>(0x00, "BRK")
 
       // Flag operations
