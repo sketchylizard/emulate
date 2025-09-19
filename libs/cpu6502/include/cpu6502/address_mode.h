@@ -31,6 +31,7 @@ struct AddressMode
   using Address = Generic6502Definition::Address;
   using Byte = Common::Byte;
   using State = Generic6502Definition::State;
+  using Format = Generic6502Definition::DisassemblyFormat;
 };
 
 template<typename Derived>
@@ -40,7 +41,7 @@ struct Implied : AddressMode
   {
     return Derived::step0(cpu, bus.read(cpu.pc));
   }
-  static constexpr Generic6502Definition::DisassemblyFormat format;
+  static constexpr Format format;
 };
 
 template<typename Derived>
@@ -50,7 +51,7 @@ struct Accumulator : AddressMode
   {
     return Derived::step0(cpu, bus.read(cpu.pc));
   }
-  static constexpr Generic6502Definition::DisassemblyFormat format;
+  static constexpr Format format;
 };
 
 template<typename Derived>
@@ -61,7 +62,7 @@ struct Immediate : AddressMode
     // Read the immediate operand from the instruction
     return Derived::step0(cpu, bus.read(cpu.pc++));
   }
-  static constexpr Generic6502Definition::DisassemblyFormat format{"#$", "", 1 /* e.g. "#$44" */};
+  static constexpr Format format{"#$", "", 1 /* e.g. "#$44" */};
 };
 
 template<typename Derived>
@@ -72,7 +73,7 @@ struct Relative : AddressMode
     // Read the signed 8-bit offset from the instruction
     return Derived::step0(cpu, bus.read(cpu.pc++));
   }
-  static constexpr Generic6502Definition::DisassemblyFormat format{"$", "", 1 /* e.g. "$44" */};
+  static constexpr Format format{"$", "", 1 /* e.g. "$44" */};
 };
 
 template<typename Derived, Common::Byte VisibleState::* reg>
@@ -115,13 +116,9 @@ struct ZeroPageBase : AddressMode
       return Derived::step0(cpu, bus, effectiveAddr);
   }
 
-#if 0
-  static Generic6502Definition::DisassemblyFormat format{"$",
-      (reg == &State::x    ? ",X" :
-          reg == &State::y ? ",Y" :
-                             ""),
-      1};  // e.g. "$44,X"
-#endif
+  static constexpr Format format =  //
+      (reg == &State::x ? Format{"$", ",X", 1} :  //
+                          Format{"$", ",Y", 1});  // e.g. "$44,X"
 };
 
 template<typename Derived>
@@ -141,14 +138,8 @@ struct Absolute : AddressMode
     cpu.lo = bus.read(cpu.pc++);
     return {readHighByte};
   }
-#if 0
 
-  static constexpr Generic6502Definition::DisassemblyFormat format{"$",
-      (reg == &State::x    ? ",X" :
-          reg == &State::y ? ",Y" :
-                             ""),
-      2 /* e.g. "$4400" */};
-#endif
+  static constexpr Format format{"$", "", 2};
 
 protected:
   static MicrocodeResponse readHighByte(State& cpu, BusToken bus)
@@ -178,6 +169,11 @@ struct AbsoluteIndex : AddressMode
     return {readHighByte};
   }
 
+  static constexpr Format format =  //
+      (reg == &State::x ? Format{"$", ",X", 2} :  //
+                          Format{"$", ",Y", 2});
+
+private:
   static MicrocodeResponse readHighByte(State& cpu, BusToken bus)
   {
     cpu.hi = bus.read(cpu.pc++);
@@ -263,7 +259,7 @@ struct AbsoluteJump : AddressMode
     return {};
   }
 
-  static constexpr Generic6502Definition::DisassemblyFormat format{"$", "", 2 /* e.g. "$4400" */};
+  static constexpr Format format{"$", "", 2 /* e.g. "$4400" */};
 };
 
 struct AbsoluteIndirectJump : AddressMode
@@ -275,7 +271,7 @@ struct AbsoluteIndirectJump : AddressMode
     return {};
   }
 
-  static constexpr Generic6502Definition::DisassemblyFormat format{"($", ")", 2 /* e.g. "($4400)" */};
+  static constexpr Format format{"($", ")", 2 /* e.g. "($4400)" */};
 };
 
 template<typename Derived>
@@ -289,9 +285,7 @@ struct IndirectZeroPageX : AddressMode
     return {spuriousRead};
   }
 
-#if 0
-  static constexpr Generic6502Definition::DisassemblyFormat{"($", (reg == &State::x ? ",X)" : "),Y"), 1};
-#endif
+  static constexpr Format format{"($", ",X)", 1};
 
 private:
   static MicrocodeResponse spuriousRead(State& cpu, BusToken bus)
@@ -348,9 +342,7 @@ struct IndirectZeroPageY : AddressMode
     return {readLoByteFromZeroPage};
   }
 
-#if 0
-  static constexpr Generic6502Definition::DisassemblyFormat{"($", (reg == &State::x ? ",X)" : "),Y"), 1};
-#endif
+  static constexpr Format format{"($", "),Y", 1};
 
 private:
   static MicrocodeResponse readLoByteFromZeroPage(State& cpu, BusToken bus)

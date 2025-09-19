@@ -1106,15 +1106,13 @@ mos6502::Microcode mos6502::fetchNextOpcode(State& cpu, BusToken bus) noexcept
   return microcode;
 }
 
-#if 0
-
 FixedFormatter& operator<<(FixedFormatter& formatter, std::pair<const State&, std::span<Common::Byte, 3>> stateAndBytes) noexcept
 {
-  const auto& [state, bytes] = stateAndBytes;
+  const auto& [cpu, bytes] = stateAndBytes;
   formatter << (cpu.pc - 1) << " : ";
 
   const Byte opcode = bytes[0];
-  const Instruction& instr = c_instructions[opcode];
+  const auto& instr = c_instructions[opcode];
 
   assert(instr.format.numberOfOperands < std::size(bytes));
 
@@ -1172,6 +1170,5 @@ FixedFormatter& operator<<(FixedFormatter& formatter, std::pair<const State&, st
 
   return formatter;
 }
-#endif
 
 }  // namespace cpu6502
