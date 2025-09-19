@@ -950,16 +950,6 @@ static constexpr auto c_instructions = []()
       .add<Absolute<RotateRight>>(0x6E, "ROR")  // ROR $nnnn
       .add<AbsoluteX<RotateRight>>(0x7E, "ROR")  // ROR $nnnn,X
 
-      // ADC instructions
-      .add<Immediate<Add>>(0x69, "ADC")
-      //.add<ZeroPage, Add>(0x65, "ADC")
-      //.add<ZeroPageX, Add>(0x75, "ADC")
-      //.add<Absolute, Add>(0x6D, "ADC")
-      //.add<AbsoluteX, Add>(0x7D, "ADC")
-      //.add<AbsoluteY, Add>(0x79, "ADC")
-      //.add<IndirectZeroPageX, Add>(0x61, "ADC")
-      //.add<IndirectZeroPageY, Add>(0x71, "ADC")
-
       // AND instructions - all addressing modes
       .add<Immediate<And>>(0x29, "AND")  // AND #$nn
       .add<ZeroPage<And>>(0x25, "AND")  // AND $nn
@@ -1056,15 +1046,25 @@ static constexpr auto c_instructions = []()
       .add<AbsoluteY<Ora>>(0x19, "ORA")
       .add<AbsoluteX<Ora>>(0x1D, "ORA")
 
+      // ADC instructions
+      .add<Immediate<Add>>(0x69, "ADC")
+      .add<ZeroPage<Add>>(0x65, "ADC")
+      .add<ZeroPageX<Add>>(0x75, "ADC")
+      .add<Absolute<Add>>(0x6D, "ADC")
+      .add<AbsoluteX<Add>>(0x7D, "ADC")
+      .add<AbsoluteY<Add>>(0x79, "ADC")
+      .add<IndirectZeroPageX<Add>>(0x61, "ADC")
+      .add<IndirectZeroPageY<Add>>(0x71, "ADC")
+
       // SBC instructions - all addressing modes
       .add<Immediate<Subtract>>(0xE9, "SBC")
-      // .add<ZeroPage<Subtract>>(0xE5, "SBC")
-      // .add<ZeroPageX<Subtract>>(0xF5, "SBC")
+      .add<ZeroPage<Subtract>>(0xE5, "SBC")
+      .add<ZeroPageX<Subtract>>(0xF5, "SBC")
       .add<Absolute<Subtract>>(0xED, "SBC")
-      //.add<AbsoluteX<Subtract>>(0xFD, "SBC")
-      //.add<AbsoluteY<Subtract>>(0xF9, "SBC")
-      // .add<IndirectZeroPageX<Subtract>>(0xE1, "SBC")
-      // .add<IndirectZeroPageY<Subtract>>(0xF1, "SBC")
+      .add<AbsoluteX<Subtract>>(0xFD, "SBC")
+      .add<AbsoluteY<Subtract>>(0xF9, "SBC")
+      .add<IndirectZeroPageX<Subtract>>(0xE1, "SBC")
+      .add<IndirectZeroPageY<Subtract>>(0xF1, "SBC")
 
       // Branch instructions
       .add<Relative<BNE>>(0xD0, "BNE")
