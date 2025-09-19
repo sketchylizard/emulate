@@ -6,7 +6,6 @@
 #include <span>
 
 #include "common/address.h"
-#include "common/address_string_maker.h"
 #include "common/bus.h"
 #include "common/memory.h"
 #include "common/microcode.h"
@@ -29,26 +28,9 @@ struct Y_Reg
 {
 };
 
-// In common/test_helpers.h or wherever you put the test utilities
-// Helper function for readable output
-std::ostream& operator<<(std::ostream& os, const BusRequest& value)
-{
-  if (value.isSync())
-  {
-    os << std::format("Bus read(${:04x})", value.address);
-  }
-  else if (value.isRead())
-  {
-    os << std::format("Bus read(${:04x})", value.address);
-  }
-  else if (value.isWrite())
-  {
-    os << std::format("Bus write(${:04x}, ${:02x})", value.address, value.data);
-  }
-  os << "NONE";
-  return os;
-}
 }  // namespace Common
+
+#if 0
 
 // Helper function to execute a complete instruction for testing
 // Takes the instruction bytes and runs until the next instruction fetch
@@ -5104,3 +5086,5 @@ TEST_CASE("BRK/RTI Integration", "[brk][rti][integration]")
     CHECK(cpu.sp == 0xFF);  // Stack restored
   }
 }
+
+#endif

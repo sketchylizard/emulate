@@ -21,11 +21,24 @@ std::vector<Byte> LoadFile(const std::string_view& filename) noexcept;
 // bytes and then create a RomSpan over it, presenting a read-only view of the data.
 void Load(std::span<Byte> memory, const std::string& filename, Address start_addr = Address{0});
 
-//! A Bus device that uses a contiguous range (array, vector, span, etc) as backing storage. The
-//! range can be of Byte or const Byte, allowing for RAM-like (read/write) or ROM-like (read-only)
-//! behavior.
+// Define a concept for a type that must be a Byte or Const Byte
 template<typename T>
-  requires std::same_as<T, Common::Byte> || std::same_as<T, const Common::Byte>
+concept ByteOrConstByte = std::same_as<T, Byte> || std::same_as<T, const Byte>;
+
+// Define a concept for a range that is a contiguous range of Byte
+template<typename R>
+concept WritableByteRange =
+    std::ranges::contiguous_range<R> &&
+    (std::same_as<std::ranges::range_value_t<R>, Byte> || std::same_as<std::ranges::range_value_t<R>, const Byte>);
+
+// Define a concept for a range that is a contiguous range of const Byte
+template<typename R>
+concept ConstByteRange = std::ranges::contiguous_range<R> && std::same_as<std::ranges::range_value_t<R>, const Byte>;
+
+//! A Bus device that uses a contiguous range (array, vector, span, etc) as
+//! backing storage. The range can be of Byte or const Byte, allowing for
+//! RAM-like (read/write) or ROM-like (read-only) behavior.
+template<ByteOrConstByte T>
 class MemoryDevice
 {
 public:
@@ -35,8 +48,7 @@ public:
   // Check if the range allows writes (reference type is non-const)
   static constexpr bool isWritable = !std::is_const_v<std::remove_reference_t<ReferenceType>>;
 
-  template<typename R>
-    requires std::ranges::contiguous_range<R> && std::same_as<std::ranges::range_value_t<R>, Byte>
+  template<WritableByteRange R>
   explicit constexpr MemoryDevice(R&& range, Address baseAddress = Address{0}) noexcept
     : m_memory(std::span{range})
     , m_baseAddress(static_cast<size_t>(baseAddress))
@@ -44,47 +56,11 @@ public:
   }
 
   // For const ranges (ROM-like behavior)
-  template<typename R>
-    requires std::ranges::contiguous_range<R> && std::same_as<std::ranges::range_value_t<R>, const Byte>
+  template<ConstByteRange R>
   explicit constexpr MemoryDevice(R&& range, Address baseAddress = Address{0}) noexcept
     : m_memory(reinterpret_cast<const Byte*>(std::ranges::data(range)), std::ranges::size(range))
     , m_baseAddress(static_cast<size_t>(baseAddress))
   {
-  }
-
-  constexpr BusResponse tick(BusRequest req) noexcept
-  {
-    // Calculate offset into the backing array
-    size_t busAddress = static_cast<uint16_t>(req.address);
-    if (busAddress < m_baseAddress)
-    {
-      return {0x00, true};  // Address below our range
-    }
-
-    size_t offset = busAddress - m_baseAddress;
-    if (offset >= m_memory.size())
-    {
-      return {0x00, true};  // Address above our range
-    }
-
-    if (req.isWrite())
-    {
-      if constexpr (isWritable)
-      {
-        m_memory[offset] = req.data;
-        return {req.data, true};
-      }
-      else
-      {
-        // Write to ROM - ignore the write but return the existing data
-        return {m_memory[offset], true};
-      }
-    }
-    else
-    {
-      // Read operation
-      return {m_memory[offset], true};
-    }
   }
 
   // Constexpr size for compile-time bus mapping

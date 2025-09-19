@@ -114,16 +114,3 @@ struct std::formatter<Common::Address> : std::formatter<uint16_t>
     return std::formatter<uint16_t>::format(static_cast<uint16_t>(addr), ctx);
   }
 };
-
-namespace Catch
-{
-
-template<typename T, typename>
-struct StringMaker;
-
-// If you get an error here, you probably need to #include "common/address_string_maker.cpp"
-
-template<>
-struct StringMaker<Common::Address, void>;
-
-}  // namespace Catch

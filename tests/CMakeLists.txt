@@ -1,7 +1,6 @@
 if(BUILD_TESTING)
   find_package(Catch2 REQUIRED)
   find_package(incbin REQUIRED)
-  find_package(nlohmann_json REQUIRED)
 
   message(STATUS "Klaus6502 found: ${Klaus6502_ADDED}")
   message(STATUS "incbin found: ${incbin_FOUND} @ ${incbin_DIR}")
@@ -18,7 +17,6 @@ if(BUILD_TESTING)
     common
     Catch2::Catch2WithMain
     incbin::incbin
-    nlohmann_json::nlohmann_json
   )
 
   target_include_directories(integrationTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

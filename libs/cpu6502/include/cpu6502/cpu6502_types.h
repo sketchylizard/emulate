@@ -3,59 +3,31 @@
 #include <cstdint>
 
 #include "common/address.h"
-#include "common/bus.h"
 #include "common/microcode.h"
 #include "cpu6502/state.h"
 
 namespace cpu6502
 {
-using CpuDefinition = Common::MicrocodeDefinition<State, Common::BusResponse, Common::BusRequest>;
 
-using Microcode = CpuDefinition::Microcode;
-using BusRequest = Common::BusRequest;
-using BusResponse = Common::BusResponse;
-using MicrocodeResponse = CpuDefinition::Response;
-
-struct DisassemblyFormat
+struct Generic6502Definition : public Common::ProcessorDefinition<Common::Address, Common::Byte, State>
 {
-  char prefix[3] = "";  // e.g. "#$" or "($" -- 2 characters + null terminator
-  char suffix[4] = "";  // e.g. ",X)" or ",Y" -- 3 characters + null terminator
-  Common::Byte numberOfOperands = 0;
-};
-static_assert(sizeof(DisassemblyFormat) == 8);
 
-struct Instruction
-{
-  static constexpr size_t c_maxOperations = 7;
-
-  Common::Byte opcode = 0;
-  char mnemonic[4] = "???";
-  DisassemblyFormat format;
-  Microcode ops[c_maxOperations] = {};  // sequence of microcode functions to execute
-};
-
-//! Exception thrown when the CPU encounters a trap condition, such as a self-jump
-//! or self branch.
-class TrapException : public std::exception
-{
-public:
-  explicit TrapException(Common::Address trapAddress)
-    : m_address(trapAddress)
+  struct DisassemblyFormat
   {
-  }
+    const char prefix[3] = "";  // e.g. "#$" or "($" -- 2 characters + null terminator
+    const char suffix[4] = "";  // e.g. ",X)" or ",Y" -- 3 characters + null terminator
+    Common::Byte numberOfOperands = 0;
+  };
 
-  Common::Address address() const noexcept
+  struct Instruction
   {
-    return m_address;
-  }
+    static constexpr size_t c_maxOperations = 7;
 
-  const char* what() const noexcept override
-  {
-    return "CPU trap detected";
-  }
-
-private:
-  Common::Address m_address;
+    Common::Byte opcode = 0;
+    char mnemonic[4] = "???";
+    DisassemblyFormat format;
+    Microcode op = {};  // first microcode operation
+  };
 };
 
 }  // namespace cpu6502

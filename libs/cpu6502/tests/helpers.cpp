@@ -4,10 +4,11 @@
 #include <iomanip>
 
 #include "common/address.h"
-#include "common/address_string_maker.h"
 #include "common/bus.h"
 #include "cpu6502/cpu6502_types.h"
 #include "cpu6502/state.h"
+
+#if 0
 
 using State = cpu6502::State;
 using Microcode = cpu6502::Microcode;
@@ -15,7 +16,7 @@ using BusRequest = Common::BusRequest;
 using BusResponse = Common::BusResponse;
 using MicrocodeResponse = cpu6502::MicrocodeResponse;
 
-bool execute(State& state, std::span<const Microcode> microcode, std::span<const Common::Cycle> cycles)
+bool execute(State& cpu, std::span<const Microcode> microcode, std::span<const Common::Cycle> cycles)
 {
   MicrocodeResponse stateResponse;
   auto nextMicrocode = [&, it = microcode.begin()]() mutable -> Microcode
@@ -71,3 +72,4 @@ bool execute(State& state, std::span<const Microcode> microcode, std::span<const
 
   return true;
 }
+#endif

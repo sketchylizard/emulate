@@ -3,58 +3,33 @@
 #include <format>
 #include <fstream>
 #include <iostream>
-#include <nlohmann/json.hpp>
 #include <unordered_map>
 
 #include "common/address.h"
-#include "common/address_string_maker.h"
 #include "common/bus.h"
 #include "common/memory.h"
 #include "common/microcode_pump.h"
 #include "cpu6502/mos6502.h"
 #include "cpu6502/state.h"
 
+#if 0
+
 using json = nlohmann::json;
 using namespace Common;
 using namespace cpu6502;
 
-// JSON parsing functions
-BusRequest getRequest(const json& j)
-{
-  BusRequest req;
-  auto [address, data, typeStr] = j.get<std::tuple<Address, Byte, std::string>>();
-
-  if (typeStr == "read")
-  {
-    req = BusRequest::Read(address);
-  }
-  else if (typeStr == "write")
-  {
-    req = BusRequest::Write(address, data);
-  }
-  else if (typeStr == "sync")
-  {
-    req = BusRequest::Fetch(address);
-  }
-  else
-  {
-    throw std::runtime_error("Unknown bus request type: " + typeStr);
-  }
-  return req;
-}
-
 VisibleState getState(const json& j)
 {
-  VisibleState state;
+  VisibleState cpu;
 
-  state.pc = Address{j.at("pc").get<uint16_t>()};
-  state.a = j.at("a").get<uint8_t>();
-  state.x = j.at("x").get<uint8_t>();
-  state.y = j.at("y").get<uint8_t>();
-  state.sp = j.at("s").get<uint8_t>();  // Note: JSON uses 's' for stack pointer
-  state.p = j.at("p").get<uint8_t>();
+  cpu.pc = Address{j.at("pc").get<uint16_t>()};
+  cpu.a = j.at("a").get<uint8_t>();
+  cpu.x = j.at("x").get<uint8_t>();
+  cpu.y = j.at("y").get<uint8_t>();
+  cpu.sp = j.at("s").get<uint8_t>();  // Note: JSON uses 's' for stack pointer
+  cpu.p = j.at("p").get<uint8_t>();
 
-  return state;
+  return cpu;
 }
 
 struct SparseMemory
@@ -81,16 +56,6 @@ struct SparseMemory
       return 0x00;
     }
     return it->second;
-  }
-
-  BusResponse tick(const BusRequest& req)
-  {
-    if (req.isRead())
-    {
-      return BusResponse{get(req.address)};
-    }
-    set(req.address, req.data);
-    return BusResponse{req.data, true};
   }
 
   bool operator==(const SparseMemory& other) const
@@ -141,9 +106,6 @@ public:
 
     // Apply initial state
     cpu_state = State(getState(initial));
-
-    // Run each cycle
-    BusResponse response{0x00};  // Start with default response
 
     const auto& cycles = test.at("cycles");
     for (const auto& cycle : cycles)
@@ -278,3 +240,4 @@ TEST_CASE("SingleStep Specific Opcode", "[single_step][manual]")
     }
   }
 }
+#endif

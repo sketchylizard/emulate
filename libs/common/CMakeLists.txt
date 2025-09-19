@@ -1,7 +1,6 @@
 find_package(Catch2 REQUIRED)
 
 add_library(common STATIC
-  include/common/address_string_maker.h
   include/common/address.h
   include/common/bus.h
   include/common/fixed_formatter.h

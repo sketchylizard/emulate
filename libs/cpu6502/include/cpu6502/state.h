@@ -2,6 +2,7 @@
 
 #include "common/address.h"
 #include "common/bus.h"
+#include "common/fixed_formatter.h"
 
 namespace cpu6502
 {
@@ -38,23 +39,12 @@ struct VisibleState
 
 struct State : VisibleState
 {
-  State() noexcept = default;
-
-  State(VisibleState state) noexcept
-    : VisibleState(state)
-  {
-    next_pc = pc;
-  }
-
   // Storage for low byte of address during addressing modes
   Common::Byte lo = 0;
   // Storage for high byte of address during addressing modes
   Common::Byte hi = 0;
   // Storage for operand during instruction execution
   Common::Byte operand = 0;
-
-  // PC at the start of the next cycle
-  Common::Address next_pc{0};
 };
 
 constexpr bool VisibleState::has(Flag f) const noexcept
@@ -78,5 +68,7 @@ constexpr void VisibleState::assignP(Common::Byte v) noexcept
 {
   p = Common::Byte((v | static_cast<uint8_t>(Flag::Unused)));
 }
+
+Common::FixedFormatter& flagsToStr(Common::FixedFormatter& formatter, Common::Byte value) noexcept;
 
 }  // namespace cpu6502
