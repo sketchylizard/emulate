@@ -16,4 +16,8 @@ if(BUILD_TESTING)
   )
 
   target_include_directories(harte PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+  if(EMULATE_ENABLE_LOGGING)
+    target_compile_definitions(harte PRIVATE EMULATE_ENABLE_LOGGING)
+  endif()
 endif()

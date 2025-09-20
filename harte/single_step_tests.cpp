@@ -6,6 +6,7 @@
 #include "common/bus.h"
 #include "common/memory.h"
 #include "common/microcode_pump.h"
+#include "cpu6502/logger.h"
 #include "cpu6502/mos6502.h"
 #include "cpu6502/state.h"
 #include "simdjson.h"
@@ -52,6 +53,8 @@ int main(int argc, char* argv[])
 
   std::cout << "Using test file: " << argv[1] << std::endl;
 
+  // Logger::setLevel(LogLevel::Minimal);
+
   // Disable trap handling for tests
   cpu6502::mos6502::trapHandler = [](Address /*pc*/) { /* ignore traps */ };
 
@@ -92,6 +95,8 @@ int main(int argc, char* argv[])
     //  std::cout << "Skipping " << name << "\n";
     //  continue;
     //}
+
+    LOG_INSTRUCTION_BYTES(cpu_state, name);
 
     while (pump.tick(cpu_state, BusToken{&bus}))
     {

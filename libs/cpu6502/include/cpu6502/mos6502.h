@@ -20,9 +20,9 @@ namespace cpu6502
 struct mos6502 : public Generic6502Definition
 {
   static Microcode fetchNextOpcode(State& cpu, BusToken bus) noexcept;
-};
 
-// Common::FixedFormatter& operator<<(
-//     Common::FixedFormatter& formatter, std::pair<const State&, std::span<Common::Byte, 3>> stateAndBytes) noexcept;
+  static void disassemble(
+      const VisibleState& cpu, std::span<const Common::Byte, 3> bytes, Common::FixedFormatter& formatter) noexcept;
+};
 
 }  // namespace cpu6502
