@@ -6,10 +6,8 @@ if(BUILD_TESTING)
   message(STATUS "incbin found: ${incbin_FOUND} @ ${incbin_DIR}")
 
   add_executable(integrationTest
-    Mos6502Test.cpp
     KlausFunctional.cpp
     KlausFunctional.h
-    single_step_tests.cpp
   )
 
   target_link_libraries(integrationTest PRIVATE

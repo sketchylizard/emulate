@@ -1,13 +1,12 @@
-#include "cpu6502/state.h"
-
 #include "common/fixed_formatter.h"
+#include "cpu6502/registers.h"
 
 namespace cpu6502
 {
 
 Common::FixedFormatter& flagsToStr(Common::FixedFormatter& formatter, Common::Byte value) noexcept
 {
-  using Flag = VisibleState::Flag;
+  using Flag = Registers::Flag;
 
   auto uvalue = static_cast<uint8_t>(value);
 

@@ -8,7 +8,7 @@
 
 #include "common/address.h"
 #include "common/fixed_formatter.h"
-#include "cpu6502/state.h"
+#include "cpu6502/registers.h"
 
 namespace cpu6502
 {
@@ -45,13 +45,13 @@ public:
   Logger() noexcept;
 
   // Parse hex string and log (for test harness)
-  void logInstructionFromHex(const VisibleState& cpu, std::string_view hexStr);
+  void logInstructionFromHex(const Registers& cpu, std::string_view hexStr);
 
   // Disassembly from raw bytes (internal use)
-  void logInstruction(const VisibleState& cpu, std::span<const Common::Byte, 3> bytes);
+  void logInstruction(const Registers& cpu, std::span<const Common::Byte, 3> bytes);
 
   // Disassembly from memory span (for normal execution)
-  void logInstructionFromMemory(const VisibleState& cpu, std::span<const Common::Byte> memory);
+  void logInstructionFromMemory(const Registers& cpu, std::span<const Common::Byte> memory);
 
   // Bus cycle logging (for verbose mode)
   void logBusRead(Common::Address address, Common::Byte data);

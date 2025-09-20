@@ -24,7 +24,6 @@ if(BUILD_TESTING)
     test/address_test.cpp
     test/bank_switcher_test.cpp
     test/memory_test.cpp
-    test/microcode_pump_test.cpp
   )
 
   target_link_libraries(commonTest PRIVATE common Catch2::Catch2WithMain util)

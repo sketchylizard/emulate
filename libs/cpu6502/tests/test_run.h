@@ -5,7 +5,7 @@
 
 #include "common/address.h"
 #include "common/bus.h"
-#include "cpu6502/state.h"
+#include "cpu6502/registers.h"
 #include "simdjson.h"
 
 
@@ -33,7 +33,7 @@ struct Cycle
 //! Snapshot of CPU registers and memory at a point in time
 struct Snapshot
 {
-  cpu6502::VisibleState regs;
+  cpu6502::Registers regs;
   std::vector<MemoryLocation> memory;
   std::vector<Cycle> cycles;
 

@@ -4,7 +4,7 @@
 #include "common/bus.h"
 #include "common/fixed_formatter.h"
 #include "cpu6502/address_mode.h"
-#include "cpu6502/state.h"
+#include "cpu6502/registers.h"
 
 using namespace Common;
 
@@ -14,7 +14,8 @@ namespace cpu6502
 using MicrocodeResponse = Generic6502Definition::Response;
 using BusToken = Generic6502Definition::BusToken;
 using Address = Generic6502Definition::Address;
-using State = Generic6502Definition::State;
+using State = Generic6502Definition;
+using Flag = Registers::Flag;
 
 ////////////////////////////////////////////////////////////////////////////////
 // ReadModifyWrite Operation
@@ -61,7 +62,6 @@ struct SimpleOperation
   }
 };
 
-
 using NOP = SimpleOperation<[](State& /*cpu*/, Common::Byte /*operand*/)
     {
       // No operation; used to consume a cycle
@@ -75,76 +75,76 @@ using NOP = SimpleOperation<[](State& /*cpu*/, Common::Byte /*operand*/)
 using ShiftLeftAccumulator = SimpleOperation<[](State& cpu, Common::Byte /*operand*/)
     {
       // C ← [7][6][5][4][3][2][1][0] ← 0
-      bool bit7 = (cpu.a & 0x80) != 0;
-      cpu.a <<= 1;  // Shift left, bit 0 becomes 0
+      bool bit7 = (cpu.registers.a & 0x80) != 0;
+      cpu.registers.a <<= 1;  // Shift left, bit 0 becomes 0
 
-      cpu.set(State::Flag::Carry, bit7);  // Bit 7 → Carry
-      cpu.setZN(cpu.a);  // Set N and Z flags
+      cpu.set(Flag::Carry, bit7);  // Bit 7 → Carry
+      cpu.setZN(cpu.registers.a);  // Set N and Z flags
     }>;
 
 // LSR A - Logical Shift Right Accumulator
 using ShiftRightAccumulator = SimpleOperation<[](State& cpu, Common::Byte /*operand*/)
     {
       // 0 → [7][6][5][4][3][2][1][0] → C
-      bool bit0 = (cpu.a & 0x01) != 0;
-      cpu.a >>= 1;  // Shift right, bit 7 becomes 0
+      bool bit0 = (cpu.registers.a & 0x01) != 0;
+      cpu.registers.a >>= 1;  // Shift right, bit 7 becomes 0
 
-      cpu.set(State::Flag::Carry, bit0);  // Bit 0 → Carry
-      cpu.setZN(cpu.a);  // Set N and Z flags (N will always be 0)
+      cpu.set(Flag::Carry, bit0);  // Bit 0 → Carry
+      cpu.setZN(cpu.registers.a);  // Set N and Z flags (N will always be 0)
     }>;
 
 // ROL A - Rotate Left Accumulator
 using RotateLeftAccumulator = SimpleOperation<[](State& cpu, Common::Byte /*operand*/)
     {
       // C ← [7][6][5][4][3][2][1][0] ← C
-      bool bit7 = (cpu.a & 0x80) != 0;
-      bool old_carry = cpu.has(State::Flag::Carry);
+      bool bit7 = (cpu.registers.a & 0x80) != 0;
+      bool old_carry = cpu.has(Flag::Carry);
 
-      cpu.a <<= 1;  // Shift left
+      cpu.registers.a <<= 1;  // Shift left
       if (old_carry)
       {
-        cpu.a |= 0x01;  // Carry → Bit 0
+        cpu.registers.a |= 0x01;  // Carry → Bit 0
       }
 
-      cpu.set(State::Flag::Carry, bit7);  // Bit 7 → Carry
-      cpu.setZN(cpu.a);  // Set N and Z flags
+      cpu.set(Flag::Carry, bit7);  // Bit 7 → Carry
+      cpu.setZN(cpu.registers.a);  // Set N and Z flags
     }>;
 
 // ROR A - Rotate Right Accumulator
 using RotateRightAccumulator = SimpleOperation<[](State& cpu, Common::Byte /*operand*/)
     {
       // C → [7][6][5][4][3][2][1][0] → C
-      bool bit0 = (cpu.a & 0x01) != 0;
-      bool old_carry = cpu.has(State::Flag::Carry);
+      bool bit0 = (cpu.registers.a & 0x01) != 0;
+      bool old_carry = cpu.has(Flag::Carry);
 
-      cpu.a >>= 1;  // Shift right
+      cpu.registers.a >>= 1;  // Shift right
       if (old_carry)
       {
-        cpu.a |= 0x80;  // Carry → Bit 7
+        cpu.registers.a |= 0x80;  // Carry → Bit 7
       }
 
-      cpu.set(State::Flag::Carry, bit0);  // Bit 0 → Carry
-      cpu.setZN(cpu.a);  // Set N and Z flags
+      cpu.set(Flag::Carry, bit0);  // Bit 0 → Carry
+      cpu.setZN(cpu.registers.a);  // Set N and Z flags
     }>;
 
 using And = SimpleOperation<[](State& cpu, Common::Byte operand)
     {
-      cpu.a &= operand;  // A ← A ∧ M
-      cpu.setZN(cpu.a);  // Set N and Z flags based on result
+      cpu.registers.a &= operand;  // A ← A ∧ M
+      cpu.setZN(cpu.registers.a);  // Set N and Z flags based on result
     }>;
 
 using Eor = SimpleOperation<[](State& cpu, Common::Byte operand)
     {
-      cpu.a ^= operand;  // A ← A ⊕ M
-      cpu.setZN(cpu.a);
+      cpu.registers.a ^= operand;  // A ← A ⊕ M
+      cpu.setZN(cpu.registers.a);
     }>;
 
 using Ora = SimpleOperation<[](State& cpu, Common::Byte operand)
     {
       // Perform OR with accumulator
-      cpu.a |= operand;
-      cpu.set(State::Flag::Zero, cpu.a == 0);  // Set zero flag
-      cpu.set(State::Flag::Negative, cpu.a & 0x80);  // Set negative flag
+      cpu.registers.a |= operand;
+      cpu.set(Flag::Zero, cpu.registers.a == 0);  // Set zero flag
+      cpu.set(Flag::Negative, cpu.registers.a & 0x80);  // Set negative flag
     }>;
 
 using Bit = SimpleOperation<[](State& cpu, Common::Byte operand)
@@ -157,16 +157,16 @@ using Bit = SimpleOperation<[](State& cpu, Common::Byte operand)
       // - C, I, D flags are not affected
 
       Byte memory_value = operand;
-      Byte test_result = cpu.a & memory_value;
+      Byte test_result = cpu.registers.a & memory_value;
 
       // Set Zero flag based on AND result
-      cpu.set(State::Flag::Zero, test_result == 0);
+      cpu.set(Flag::Zero, test_result == 0);
 
       // Copy bit 7 of memory to Negative flag
-      cpu.set(State::Flag::Negative, (memory_value & 0x80) != 0);
+      cpu.set(Flag::Negative, (memory_value & 0x80) != 0);
 
       // Copy bit 6 of memory to Overflow flag
-      cpu.set(State::Flag::Overflow, (memory_value & 0x40) != 0);
+      cpu.set(Flag::Overflow, (memory_value & 0x40) != 0);
 
       // Note: Accumulator is unchanged!
     }>;
@@ -186,16 +186,16 @@ struct brk
   static MicrocodeResponse pushHighPC(State& cpu, BusToken bus)
   {
     // BRK pushes PC (current instruction + 2), unlike JSR which pushes PC-1
-    Byte return_addr_high = Common::HiByte(++cpu.pc);
-    bus.write(Common::MakeAddress(cpu.sp--, 0x01), return_addr_high);
+    Byte return_addr_high = Common::HiByte(++cpu.registers.pc);
+    bus.write(Common::MakeAddress(cpu.registers.sp--, 0x01), return_addr_high);
     return {pushLowPC};
   }
 
   // Step 2: Push return address low byte
   static MicrocodeResponse pushLowPC(State& cpu, BusToken bus)
   {
-    Byte return_addr_low = Common::LoByte(static_cast<uint16_t>(cpu.pc));
-    bus.write(Common::MakeAddress(cpu.sp--, 0x01), return_addr_low);
+    Byte return_addr_low = Common::LoByte(static_cast<uint16_t>(cpu.registers.pc));
+    bus.write(Common::MakeAddress(cpu.registers.sp--, 0x01), return_addr_low);
     return {pushProcessorStatus};
   }
 
@@ -203,8 +203,8 @@ struct brk
   static MicrocodeResponse pushProcessorStatus(State& cpu, BusToken bus)
   {
     // Push P with Break flag set (like PHP)
-    Byte status = cpu.p | static_cast<Byte>(State::Flag::Break);
-    bus.write(Common::MakeAddress(cpu.sp--, 0x01), status);
+    Byte status = cpu.registers.p | static_cast<Byte>(Flag::Break);
+    bus.write(Common::MakeAddress(cpu.registers.sp--, 0x01), status);
     return {readIRQVectorLow};
   }
 
@@ -212,7 +212,7 @@ struct brk
   static MicrocodeResponse readIRQVectorLow(State& cpu, BusToken bus)
   {
     // Set Interrupt flag to disable further interrupts
-    cpu.set(State::Flag::Interrupt, true);
+    cpu.set(Flag::Interrupt, true);
 
     // Read IRQ vector low byte from $FFFE
     cpu.lo = bus.read(0xFFFE_addr);
@@ -225,7 +225,7 @@ struct brk
   {
     // Read IRQ vector high byte from $FFFF
     cpu.hi = bus.read(0xFFFF_addr);
-    cpu.pc = Common::MakeAddress(cpu.lo, cpu.hi);
+    cpu.registers.pc = Common::MakeAddress(cpu.lo, cpu.hi);
     return {};
   }
 };
@@ -233,7 +233,7 @@ struct brk
 ////////////////////////////////////////////////////////////////////////////////
 // Flag operations (CLC, SEC, CLI, SEI, CLD, SED, CLV)
 ////////////////////////////////////////////////////////////////////////////////
-template<State::Flag Flag, bool Set>
+template<Registers::Flag Flag, bool Set>
 struct FlagOp
 {
   static MicrocodeResponse step0(State& cpu, Common::Byte /*operand*/)
@@ -243,56 +243,56 @@ struct FlagOp
   }
 };
 
-using CLC = FlagOp<State::Flag::Carry, false>;
-using SEC = FlagOp<State::Flag::Carry, true>;
-using CLI = FlagOp<State::Flag::Interrupt, false>;
-using SEI = FlagOp<State::Flag::Interrupt, true>;
-using CLV = FlagOp<State::Flag::Overflow, false>;
-using CLD = FlagOp<State::Flag::Decimal, false>;
-using SED = FlagOp<State::Flag::Decimal, true>;
+using CLC = FlagOp<Flag::Carry, false>;
+using SEC = FlagOp<Flag::Carry, true>;
+using CLI = FlagOp<Flag::Interrupt, false>;
+using SEI = FlagOp<Flag::Interrupt, true>;
+using CLV = FlagOp<Flag::Overflow, false>;
+using CLD = FlagOp<Flag::Decimal, false>;
+using SED = FlagOp<Flag::Decimal, true>;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Increment operations (INX, INY)
 
-template<Common::Byte VisibleState::* reg>
-  requires(reg != &State::a)
+template<Common::Byte Registers::* reg>
+  requires(reg != &Registers::a)
 struct Increment
 {
   static MicrocodeResponse step0(State& cpu, Common::Byte /*operand*/)
   {
     // Handle increment operation for X or Y registers
-    auto& r = (cpu.*reg);
+    auto& r = (cpu.registers.*reg);
     ++r;
     cpu.setZN(r);
     return {};
   }
 };
 
-using INX = Increment<&State::x>;
-using INY = Increment<&State::y>;
+using INX = Increment<&Registers::x>;
+using INY = Increment<&Registers::y>;
 
-template<Common::Byte VisibleState::* reg>
-  requires(reg != &State::a)
+template<Common::Byte Registers::* reg>
+  requires(reg != &Registers::a)
 struct Decrement
 {
   static MicrocodeResponse step0(State& cpu, Common::Byte /*operand*/)
   {
     // Handle decrement operation for X or Y registers
-    auto& r = (cpu.*reg);
+    auto& r = ((cpu.registers.*reg));
     --r;
     cpu.setZN(r);
     return {};
   }
 };
 
-using DEX = Decrement<&State::x>;
-using DEY = Decrement<&State::y>;
+using DEX = Decrement<&Registers::x>;
+using DEY = Decrement<&Registers::y>;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Push/Pull operations, PLA, PLA, PHP, PLP
 ////////////////////////////////////////////////////////////////////////////////
 
-template<Common::Byte VisibleState::* SourceReg, bool SetBreakFlag = false>
+template<Common::Byte Registers::* SourceReg, bool SetBreakFlag = false>
 struct PushOp
 {
   // Step 0: Dummy read to consume cycle
@@ -304,20 +304,20 @@ struct PushOp
   // Step 2: Write register value to stack
   static MicrocodeResponse step1(State& cpu, BusToken bus)
   {
-    Byte data = (cpu.*SourceReg);
+    Byte data = (cpu.registers.*SourceReg);
 
     // Apply Break flag modification for PHP
     if constexpr (SetBreakFlag)
     {
-      data |= static_cast<Byte>(State::Flag::Break);
+      data |= static_cast<Byte>(Flag::Break);
     }
 
-    bus.write(Common::MakeAddress(cpu.sp--, 0x01), data);
+    bus.write(Common::MakeAddress(cpu.registers.sp--, 0x01), data);
     return {};
   }
 };
 
-template<Common::Byte VisibleState::* TargetReg>
+template<Common::Byte Registers::* TargetReg>
 struct PullOp
 {
   static MicrocodeResponse step0(State& /*cpu*/, Common::Byte /*operand*/)
@@ -327,26 +327,26 @@ struct PullOp
 
   static MicrocodeResponse step2(State& cpu, BusToken bus)
   {
-    cpu.operand = bus.read(Common::MakeAddress(cpu.sp++, 0x01));
+    cpu.operand = bus.read(Common::MakeAddress(cpu.registers.sp++, 0x01));
     return {step3};
   }
 
   // Step 3: Store data and set flags if needed
   static MicrocodeResponse step3(State& cpu, BusToken bus)
   {
-    Common::Byte data = bus.read(Common::MakeAddress(cpu.sp, 0x01));
+    Common::Byte data = bus.read(Common::MakeAddress(cpu.registers.sp, 0x01));
 
     // Apply Break flag clearing for PLP
-    if constexpr (TargetReg == &State::p)
+    if constexpr (TargetReg == &Registers::p)
     {
-      data &= ~static_cast<Byte>(State::Flag::Break);
+      data &= ~static_cast<Byte>(Flag::Break);
       cpu.assignP(data);  // Use assignP to ensure U flag is set
     }
     else
     {
       // Update N/Z flags for PLA
       // Store in target register
-      (cpu.*TargetReg) = data;
+      (cpu.registers.*TargetReg) = data;
       cpu.setZN(data);
     }
 
@@ -354,10 +354,10 @@ struct PullOp
   }
 };
 
-using PLA = PullOp<&State::a>;
-using PLP = PullOp<&State::p>;
-using PHA = PushOp<&State::a, false>;
-using PHP = PushOp<&State::p, true>;
+using PLA = PullOp<&Registers::a>;
+using PLP = PullOp<&Registers::p>;
+using PHA = PushOp<&Registers::a, false>;
+using PHP = PushOp<&Registers::p, true>;
 
 ////////////////////////////////////////////////////////////////////////////////
 // RTI - Return from Interrupt (6 cycles)
@@ -373,14 +373,14 @@ struct Rti
 
   static MicrocodeResponse step2(State& cpu, BusToken bus)
   {
-    [[maybe_unused]] auto byte = bus.read(Common::MakeAddress(cpu.sp++, 0x01));
+    [[maybe_unused]] auto byte = bus.read(Common::MakeAddress(cpu.registers.sp++, 0x01));
     return {popProcessorStatus};
   }
 
   static MicrocodeResponse popProcessorStatus(State& cpu, BusToken bus)
   {
     // Restore processor status (clear Break flag like PLP)
-    Byte status = bus.read(Common::MakeAddress(cpu.sp++, 0x01)) & ~static_cast<Byte>(State::Flag::Break);
+    Byte status = bus.read(Common::MakeAddress(cpu.registers.sp++, 0x01)) & ~static_cast<Byte>(Flag::Break);
     cpu.assignP(status);  // Use assignP to preserve Unused flag
 
     return {popReturnAddressLow};
@@ -388,14 +388,14 @@ struct Rti
 
   static MicrocodeResponse popReturnAddressLow(State& cpu, BusToken bus)
   {
-    cpu.lo = bus.read(Common::MakeAddress(cpu.sp++, 0x01));
+    cpu.lo = bus.read(Common::MakeAddress(cpu.registers.sp++, 0x01));
     return {popReturnAddressHigh};
   }
 
   static MicrocodeResponse popReturnAddressHigh(State& cpu, BusToken bus)
   {
-    cpu.hi = bus.read(Common::MakeAddress(cpu.sp, 0x01));
-    cpu.pc = Common::MakeAddress(cpu.lo, cpu.hi);
+    cpu.hi = bus.read(Common::MakeAddress(cpu.registers.sp, 0x01));
+    cpu.registers.pc = Common::MakeAddress(cpu.lo, cpu.hi);
 
     // Note: Unlike RTS, RTI does NOT increment PC
     return {};
@@ -415,28 +415,28 @@ struct Rts
 
   static MicrocodeResponse step2(State& cpu, BusToken bus)
   {
-    [[maybe_unused]] auto byte = bus.read(Common::MakeAddress(cpu.sp++, 0x01));
+    [[maybe_unused]] auto byte = bus.read(Common::MakeAddress(cpu.registers.sp++, 0x01));
     return {popReturnAddressLow};
   }
 
   static MicrocodeResponse popReturnAddressLow(State& cpu, BusToken bus)
   {
-    cpu.lo = bus.read(Common::MakeAddress(cpu.sp++, 0x01));
+    cpu.lo = bus.read(Common::MakeAddress(cpu.registers.sp++, 0x01));
 
     return {popReturnAddressHigh};
   }
 
   static MicrocodeResponse popReturnAddressHigh(State& cpu, BusToken bus)
   {
-    cpu.hi = bus.read(Common::MakeAddress(cpu.sp, 0x01));
+    cpu.hi = bus.read(Common::MakeAddress(cpu.registers.sp, 0x01));
     return {jumpToReturnAddress};
   }
 
   static MicrocodeResponse jumpToReturnAddress(State& cpu, BusToken bus)
   {
-    cpu.pc = Common::MakeAddress(cpu.lo, cpu.hi);
+    cpu.registers.pc = Common::MakeAddress(cpu.lo, cpu.hi);
 
-    bus.read(cpu.pc++);
+    bus.read(cpu.registers.pc++);
 
     // Note: Unlike RTS, RTI does NOT increment PC
     return {};
@@ -446,29 +446,29 @@ struct Rts
 ////////////////////////////////////////////////////////////////////////////////
 // Transfer operations (TAX, TAY, TXA, TYA, TSX, TXS)
 ////////////////////////////////////////////////////////////////////////////////
-template<Common::Byte VisibleState::* src, Common::Byte VisibleState::* dst>
+template<Common::Byte Registers::* src, Common::Byte Registers::* dst>
   requires(src != dst)
 struct Transfer
 {
   static MicrocodeResponse step0(State& cpu, Common::Byte /*operand*/)
   {
-    (cpu.*dst) = (cpu.*src);
+    (cpu.registers.*dst) = (cpu.registers.*src);
 
-    if constexpr (dst != &State::sp)
+    if constexpr (dst != &Registers::sp)
     {
       // Only affect flags if not transferring to stack pointer
-      cpu.setZN((cpu.*dst));
+      cpu.setZN((cpu.registers.*dst));
     }
     return {};
   }
 };
 
-using TYA = Transfer<&State::y, &State::a>;
-using TAY = Transfer<&State::a, &State::y>;
-using TXA = Transfer<&State::x, &State::a>;
-using TAX = Transfer<&State::a, &State::x>;
-using TXS = Transfer<&State::x, &State::sp>;
-using TSX = Transfer<&State::sp, &State::x>;
+using TYA = Transfer<&Registers::y, &Registers::a>;
+using TAY = Transfer<&Registers::a, &Registers::y>;
+using TXA = Transfer<&Registers::x, &Registers::a>;
+using TAX = Transfer<&Registers::a, &Registers::x>;
+using TXS = Transfer<&Registers::x, &Registers::sp>;
+using TSX = Transfer<&Registers::sp, &Registers::x>;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Shift/Rotate Instructions - Memory Mode (Read-Modify-Write)
@@ -480,7 +480,7 @@ using ShiftLeft = ReadModifyWrite<[](State& cpu, Common::Byte value)
       bool bit7 = (value & 0x80) != 0;
       value <<= 1;  // Shift left, bit 0 becomes 0
 
-      cpu.set(State::Flag::Carry, bit7);  // Bit 7 → Carry
+      cpu.set(Flag::Carry, bit7);  // Bit 7 → Carry
       cpu.setZN(value);  // Set N and Z flags
 
       return value;
@@ -492,7 +492,7 @@ using ShiftRight = ReadModifyWrite<[](State& cpu, Common::Byte value)
       bool bit0 = (value & 0x01) != 0;
       value >>= 1;  // Shift right, bit 7 becomes 0
 
-      cpu.set(State::Flag::Carry, bit0);  // Bit 0 → Carry
+      cpu.set(Flag::Carry, bit0);  // Bit 0 → Carry
       cpu.setZN(value);  // Set N and Z flags (N will always be 0)
 
       return value;
@@ -502,7 +502,7 @@ using RotateLeft = ReadModifyWrite<[](State& cpu, Common::Byte value)
     {
       // C ← [7][6][5][4][3][2][1][0] ← C
       bool bit7 = (value & 0x80) != 0;
-      bool old_carry = cpu.has(State::Flag::Carry);
+      bool old_carry = cpu.has(Flag::Carry);
 
       value <<= 1;  // Shift left
       if (old_carry)
@@ -510,7 +510,7 @@ using RotateLeft = ReadModifyWrite<[](State& cpu, Common::Byte value)
         value |= 0x01;  // Carry → Bit 0
       }
 
-      cpu.set(State::Flag::Carry, bit7);  // Bit 7 → Carry
+      cpu.set(Flag::Carry, bit7);  // Bit 7 → Carry
       cpu.setZN(value);  // Set N and Z flags
 
       return value;
@@ -520,7 +520,7 @@ using RotateRight = ReadModifyWrite<[](State& cpu, Common::Byte value)
     {
       // C → [7][6][5][4][3][2][1][0] → C
       bool bit0 = (value & 0x01) != 0;
-      bool old_carry = cpu.has(State::Flag::Carry);
+      bool old_carry = cpu.has(Flag::Carry);
 
       value >>= 1;  // Shift right
       if (old_carry)
@@ -528,7 +528,7 @@ using RotateRight = ReadModifyWrite<[](State& cpu, Common::Byte value)
         value |= 0x80;  // Carry → Bit 7
       }
 
-      cpu.set(State::Flag::Carry, bit0);  // Bit 0 → Carry
+      cpu.set(Flag::Carry, bit0);  // Bit 0 → Carry
       cpu.setZN(value);  // Set N and Z flags
 
       return value;
@@ -541,20 +541,20 @@ struct Add
 {
   static MicrocodeResponse step0(State& cpu, Common::Byte operand)
   {
-    //    assert(cpu.has(State::Flag::Decimal) == false);  // BCD mode not supported
+    //    assert(cpu.has(Flag::Decimal) == false);  // BCD mode not supported
 
-    const Byte a = cpu.a;
+    const Byte a = cpu.registers.a;
     const Byte m = operand;
-    const Byte c = cpu.has(State::Flag::Carry) ? 1 : 0;
+    const Byte c = cpu.has(Flag::Carry) ? 1 : 0;
 
     const uint16_t sum = uint16_t(a) + uint16_t(m) + uint16_t(c);
     const Byte result = Byte(sum & 0xFF);
 
-    cpu.set(State::Flag::Carry, (sum & 0x100) != 0);
-    cpu.set(State::Flag::Overflow, ((~(a ^ m) & (a ^ result)) & 0x80) != 0);
+    cpu.set(Flag::Carry, (sum & 0x100) != 0);
+    cpu.set(Flag::Overflow, ((~(a ^ m) & (a ^ result)) & 0x80) != 0);
     cpu.setZN(result);
 
-    cpu.a = result;
+    cpu.registers.a = result;
     return {};
   }
 };
@@ -565,63 +565,63 @@ struct Subtract
   {
     // SBC: A = A - M - (1 - C) = A + (~M) + C
     operand = ~operand;  // Invert the operand for two's complement
-    Common::Byte carry = cpu.has(State::Flag::Carry) ? 1 : 0;
+    Common::Byte carry = cpu.has(Flag::Carry) ? 1 : 0;
 
-    uint16_t temp = static_cast<uint16_t>(cpu.a) + operand + carry;
+    uint16_t temp = static_cast<uint16_t>(cpu.registers.a) + operand + carry;
 
     // Set carry flag (no borrow occurred if bit 8 is set)
-    cpu.set(State::Flag::Carry, (temp & 0x100) != 0);
+    cpu.set(Flag::Carry, (temp & 0x100) != 0);
 
     // Check for signed overflow
     auto result = static_cast<Common::Byte>(temp & 0xFF);
-    bool overflow = ((cpu.a ^ result) & (operand ^ result) & 0x80) != 0;
-    cpu.set(State::Flag::Overflow, overflow);
+    bool overflow = ((cpu.registers.a ^ result) & (operand ^ result) & 0x80) != 0;
+    cpu.set(Flag::Overflow, overflow);
 
     // Store result and set N,Z flags
-    cpu.a = result;
-    cpu.setZN(cpu.a);
+    cpu.registers.a = result;
+    cpu.setZN(cpu.registers.a);
 
     return {};
   }
 };
 
-template<Common::Byte VisibleState::* reg>
+template<Common::Byte Registers::* reg>
 struct Compare
 {
   static MicrocodeResponse step0(State& cpu, Common::Byte operand)
   {
-    auto r = (cpu.*reg);
+    auto r = ((cpu.registers.*reg));
     uint16_t diff = uint16_t(r) - uint16_t(operand);  // Unsigned arithmetic
     bool borrow = (diff & 0x100) != 0;
 
-    cpu.set(State::Flag::Carry, !borrow);
+    cpu.set(Flag::Carry, !borrow);
     cpu.setZN(static_cast<Common::Byte>(diff & 0xFF));
     return {};
   }
 };
 
-using CMP = Compare<&State::a>;
-using CPX = Compare<&State::x>;
-using CPY = Compare<&State::y>;
+using CMP = Compare<&Registers::a>;
+using CPX = Compare<&Registers::x>;
+using CPY = Compare<&Registers::y>;
 
-template<Common::Byte VisibleState::* reg>
+template<Common::Byte Registers::* reg>
 struct Load
 {
   static MicrocodeResponse step0(State& cpu, Common::Byte operand)
   {
     // This is a generic load operation for A, X, or Y registers.
 
-    auto data = (cpu.*reg) = operand;
+    auto data = (cpu.registers.*reg) = operand;
     cpu.setZN(data);
     return {};
   }
 };
 
-using LDA = Load<&State::a>;
-using LDX = Load<&State::x>;
-using LDY = Load<&State::y>;
+using LDA = Load<&Registers::a>;
+using LDX = Load<&Registers::x>;
+using LDY = Load<&Registers::y>;
 
-template<Common::Byte VisibleState::* reg>
+template<Common::Byte Registers::* reg>
 struct Store
 {
   static constexpr bool isWrite = true;
@@ -629,17 +629,17 @@ struct Store
   static MicrocodeResponse step0(State& cpu, BusToken bus, Common::Address effectiveAddress)
   {
     // This is a generic store operation for A, X, or Y registers.
-    bus.write(effectiveAddress, (cpu.*reg));
+    bus.write(effectiveAddress, (cpu.registers.*reg));
 
     return {};
   }
 };
 
-using STA = Store<&State::a>;
-using STX = Store<&State::x>;
-using STY = Store<&State::y>;
+using STA = Store<&Registers::a>;
+using STX = Store<&Registers::x>;
+using STY = Store<&Registers::y>;
 
-template<State::Flag flag, bool condition>
+template<Registers::Flag flag, bool condition>
 struct Branch
 {
 
@@ -668,29 +668,29 @@ struct Branch
 
     if (offset == -2)
     {  // Self-branch detected
-      Generic6502Definition::trap(cpu.pc - 2);
+      Generic6502Definition::trap(cpu.registers.pc - 2);
     }
 
     // Add offset to PC low byte
-    auto tmp = static_cast<uint16_t>(cpu.pc) + offset;
+    auto tmp = static_cast<uint16_t>(cpu.registers.pc) + offset;
 
     // We have three pieces of information:
     // - The low byte of the new PC (LoByte(tmp))
     // - The high byte of the new PC (HiByte(tmp))
-    // - The high byte of the current PC (HiByte(cpu.pc))
+    // - The high byte of the current PC (HiByte(cpu.registers.pc))
 
     cpu.lo = static_cast<Common::Byte>(tmp & 0xFF);
-    cpu.hi = HiByte(cpu.pc);
+    cpu.hi = HiByte(cpu.registers.pc);
     cpu.operand = HiByte(static_cast<uint16_t>(tmp));
 
     // Read from the old PC address again
-    [[maybe_unused]] auto data = bus.read(cpu.pc);
+    [[maybe_unused]] auto data = bus.read(cpu.registers.pc);
 
     // Detect if page boundary is crossed
     if (cpu.operand == cpu.hi)
     {
       // No page boundary crossed - branch complete
-      cpu.pc = Common::MakeAddress(cpu.lo, cpu.hi);
+      cpu.registers.pc = Common::MakeAddress(cpu.lo, cpu.hi);
       return {};
     }
 
@@ -701,26 +701,26 @@ struct Branch
   static MicrocodeResponse branchPageFixup(State& cpu, BusToken bus)
   {
     // Read from the incorrect address
-    cpu.pc = Common::MakeAddress(cpu.lo, cpu.hi);
+    cpu.registers.pc = Common::MakeAddress(cpu.lo, cpu.hi);
 
-    [[maybe_unused]] auto byte = bus.read(cpu.pc);
+    [[maybe_unused]] auto byte = bus.read(cpu.registers.pc);
 
     cpu.hi = cpu.operand;
-    cpu.pc = Common::MakeAddress(cpu.lo, static_cast<Common::Byte>(cpu.hi));
+    cpu.registers.pc = Common::MakeAddress(cpu.lo, static_cast<Common::Byte>(cpu.hi));
 
     // 4 cycles total, we're done
     return {};
   }
 };
 
-using BNE = Branch<State::Flag::Zero, false>;
-using BEQ = Branch<State::Flag::Zero, true>;
-using BPL = Branch<State::Flag::Negative, false>;
-using BMI = Branch<State::Flag::Negative, true>;
-using BCC = Branch<State::Flag::Carry, false>;
-using BCS = Branch<State::Flag::Carry, true>;
-using BVC = Branch<State::Flag::Overflow, false>;
-using BVS = Branch<State::Flag::Overflow, true>;
+using BNE = Branch<Flag::Zero, false>;
+using BEQ = Branch<Flag::Zero, true>;
+using BPL = Branch<Flag::Negative, false>;
+using BMI = Branch<Flag::Negative, true>;
+using BCC = Branch<Flag::Carry, false>;
+using BCS = Branch<Flag::Carry, true>;
+using BVC = Branch<Flag::Overflow, false>;
+using BVS = Branch<Flag::Overflow, true>;
 
 using IncrementMemory = ReadModifyWrite<[](State& cpu, Common::Byte val)
     {
@@ -741,13 +741,13 @@ struct JumpSubroutine
 {
   static MicrocodeResponse execute(State& cpu, BusToken bus)
   {
-    cpu.lo = bus.read(cpu.pc++);
+    cpu.lo = bus.read(cpu.registers.pc++);
     return {internal};
   }
 
   static MicrocodeResponse internal(State& cpu, BusToken bus)
   {
-    cpu.operand = bus.read(Common::MakeAddress(cpu.sp, 0x01));
+    cpu.operand = bus.read(Common::MakeAddress(cpu.registers.sp, 0x01));
     return {pushHighPC};
   }
 
@@ -755,7 +755,7 @@ struct JumpSubroutine
   {
     // Push return address high byte (PC-1)
     // JSR pushes PC-1 where PC currently points past the JSR instruction
-    bus.write(Common::MakeAddress(cpu.sp--, 0x01), Common::HiByte(cpu.pc));
+    bus.write(Common::MakeAddress(cpu.registers.sp--, 0x01), Common::HiByte(cpu.registers.pc));
 
     return {pushLowPC};
   }
@@ -763,15 +763,15 @@ struct JumpSubroutine
   static MicrocodeResponse pushLowPC(State& cpu, BusToken bus)
   {
     // Push return address low byte and jump
-    bus.write(Common::MakeAddress(cpu.sp--, 0x01), Common::LoByte(cpu.pc));
+    bus.write(Common::MakeAddress(cpu.registers.sp--, 0x01), Common::LoByte(cpu.registers.pc));
 
     return {jump};
   }
 
   static MicrocodeResponse jump(State& cpu, BusToken bus)
   {
-    cpu.hi = bus.read(cpu.pc++);
-    cpu.pc = Common::MakeAddress(cpu.lo, cpu.hi);
+    cpu.hi = bus.read(cpu.registers.pc++);
+    cpu.registers.pc = Common::MakeAddress(cpu.lo, cpu.hi);
     return {};
   }
 };
@@ -780,13 +780,13 @@ struct JumpAbsolute
 {
   static MicrocodeResponse execute(State& cpu, BusToken bus)
   {
-    cpu.lo = bus.read(cpu.pc++);
+    cpu.lo = bus.read(cpu.registers.pc++);
     return {readHighPC};
   }
   static MicrocodeResponse readHighPC(State& cpu, BusToken bus)
   {
-    cpu.hi = bus.read(cpu.pc++);
-    cpu.pc = Common::MakeAddress(cpu.lo, cpu.hi);
+    cpu.hi = bus.read(cpu.registers.pc++);
+    cpu.registers.pc = Common::MakeAddress(cpu.lo, cpu.hi);
     return {};
   }
 };
@@ -821,11 +821,11 @@ struct JumpIndirect
     Address target = Common::MakeAddress(cpu.lo, cpu.hi);
     // JMP (indirect) requires 3 bytes, so if we are jumping to the current instruction,
     // it is a self-jump.
-    if (target == cpu.pc - 3)
+    if (target == cpu.registers.pc - 3)
     {  // Self-jump detected
       Generic6502Definition::trap(target);
     }
-    cpu.pc = target;
+    cpu.registers.pc = target;
 
     return {};
   }
@@ -1073,13 +1073,13 @@ static constexpr auto c_instructions = []()
 
 mos6502::Microcode mos6502::fetchNextOpcode(State& cpu, BusToken bus) noexcept
 {
-  auto opcode = bus.read(cpu.pc++);
+  auto opcode = bus.read(cpu.registers.pc++);
   const Instruction& instr = c_instructions[opcode];
   auto microcode = instr.op;
   return microcode;
 }
 
-void mos6502::disassemble(const VisibleState& cpu, std::span<const Common::Byte, 3> bytes, FixedFormatter& formatter) noexcept
+void mos6502::disassemble(const Registers& cpu, std::span<const Common::Byte, 3> bytes, FixedFormatter& formatter) noexcept
 {
   formatter << (cpu.pc - 1) << " : ";
 

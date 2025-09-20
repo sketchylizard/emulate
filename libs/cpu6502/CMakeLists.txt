@@ -5,7 +5,7 @@ add_library(cpu6502 STATIC
   include/cpu6502/cpu6502_types.h
   include/cpu6502/logger.h
   include/cpu6502/mos6502.h
-  include/cpu6502/state.h
+  include/cpu6502/registers.h
   src/address_mode.cpp
   src/logger.cpp
   src/cpu6502_types.cpp

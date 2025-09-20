@@ -8,7 +8,7 @@
 #include "common/bus.h"
 #include "common/microcode.h"
 #include "cpu6502/cpu6502_types.h"
-#include "cpu6502/state.h"
+#include "cpu6502/registers.h"
 
 namespace cpu6502
 {
@@ -16,7 +16,7 @@ namespace cpu6502
 // Some instructions want to read the operand first, others won't the effective address only
 // (e.g. STA). We can use this concept to indicate which behavior is desired.
 template<typename F>
-concept NeedsOperand = std::is_invocable_r_v<Generic6502Definition::Response, F, State&, Common::Byte>;
+concept NeedsOperand = std::is_invocable_r_v<Generic6502Definition::Response, F, Generic6502Definition&, Common::Byte>;
 
 template<typename T>
 concept IsWriteOperation = requires {
@@ -30,7 +30,7 @@ struct AddressMode
   using BusToken = Generic6502Definition::BusToken;
   using Address = Generic6502Definition::Address;
   using Byte = Common::Byte;
-  using State = Generic6502Definition::State;
+  using State = Generic6502Definition;
   using Format = Generic6502Definition::DisassemblyFormat;
 };
 
@@ -39,7 +39,7 @@ struct Implied : AddressMode
 {
   static MicrocodeResponse execute(State& cpu, BusToken bus)
   {
-    return Derived::step0(cpu, bus.read(cpu.pc));
+    return Derived::step0(cpu, bus.read(cpu.registers.pc));
   }
   static constexpr Format format;
 };
@@ -49,7 +49,7 @@ struct Accumulator : AddressMode
 {
   static MicrocodeResponse execute(State& cpu, BusToken bus)
   {
-    return Derived::step0(cpu, bus.read(cpu.pc));
+    return Derived::step0(cpu, bus.read(cpu.registers.pc));
   }
   static constexpr Format format;
 };
@@ -60,7 +60,7 @@ struct Immediate : AddressMode
   static MicrocodeResponse execute(State& cpu, BusToken bus)
   {
     // Read the immediate operand from the instruction
-    return Derived::step0(cpu, bus.read(cpu.pc++));
+    return Derived::step0(cpu, bus.read(cpu.registers.pc++));
   }
   static constexpr Format format{"#$", "", 1 /* e.g. "#$44" */};
 };
@@ -71,19 +71,19 @@ struct Relative : AddressMode
   static MicrocodeResponse execute(State& cpu, BusToken bus)
   {
     // Read the signed 8-bit offset from the instruction
-    return Derived::step0(cpu, bus.read(cpu.pc++));
+    return Derived::step0(cpu, bus.read(cpu.registers.pc++));
   }
   static constexpr Format format{"$", "", 1 /* e.g. "$44" */};
 };
 
-template<typename Derived, Common::Byte VisibleState::* reg>
+template<typename Derived, Common::Byte Registers::* reg>
 struct ZeroPageBase : AddressMode
 {
   // 3 cycles: fetch 8-bit address, add X to it (wrap in zero page), read from zero page
   // Effective address is $00XX where XX is the fetched byte + X (with wrap)
   static MicrocodeResponse execute(State& cpu, BusToken bus)
   {
-    cpu.lo = bus.read(cpu.pc++);
+    cpu.lo = bus.read(cpu.registers.pc++);
     cpu.hi = 0;
     if constexpr (reg != nullptr)
       return {addZeroPageIndex};
@@ -102,7 +102,7 @@ struct ZeroPageBase : AddressMode
     cpu.operand = bus.read(Common::MakeAddress(cpu.lo, 0x00));
 
     // Wrap around within zero page
-    cpu.lo += (cpu.*reg);
+    cpu.lo += (cpu.registers.*reg);
 
     return {finalize};
   }
@@ -117,25 +117,25 @@ struct ZeroPageBase : AddressMode
   }
 
   static constexpr Format format =  //
-      (reg == &State::x ? Format{"$", ",X", 1} :  //
-                          Format{"$", ",Y", 1});  // e.g. "$44,X"
+      (reg == &Registers::x ? Format{"$", ",X", 1} :  //
+                              Format{"$", ",Y", 1});  // e.g. "$44,X"
 };
 
 template<typename Derived>
 using ZeroPage = ZeroPageBase<Derived, nullptr>;
 
 template<typename Derived>
-using ZeroPageX = ZeroPageBase<Derived, &State::x>;
+using ZeroPageX = ZeroPageBase<Derived, &Registers::x>;
 
 template<typename Derived>
-using ZeroPageY = ZeroPageBase<Derived, &State::y>;
+using ZeroPageY = ZeroPageBase<Derived, &Registers::y>;
 
 template<typename Derived>
 struct Absolute : AddressMode
 {
   static MicrocodeResponse execute(State& cpu, BusToken bus)
   {
-    cpu.lo = bus.read(cpu.pc++);
+    cpu.lo = bus.read(cpu.registers.pc++);
     return {readHighByte};
   }
 
@@ -144,7 +144,7 @@ struct Absolute : AddressMode
 protected:
   static MicrocodeResponse readHighByte(State& cpu, BusToken bus)
   {
-    cpu.hi = bus.read(cpu.pc++);
+    cpu.hi = bus.read(cpu.registers.pc++);
 
     return {finalize};
   }
@@ -160,23 +160,23 @@ protected:
   }
 };
 
-template<typename Derived, Common::Byte VisibleState::* reg>
+template<typename Derived, Common::Byte Registers::* reg>
 struct AbsoluteIndex : AddressMode
 {
   static MicrocodeResponse execute(State& cpu, BusToken bus)
   {
-    cpu.lo = bus.read(cpu.pc++);
+    cpu.lo = bus.read(cpu.registers.pc++);
     return {readHighByte};
   }
 
   static constexpr Format format =  //
-      (reg == &State::x ? Format{"$", ",X", 2} :  //
-                          Format{"$", ",Y", 2});
+      (reg == &Registers::x ? Format{"$", ",X", 2} :  //
+                              Format{"$", ",Y", 2});
 
 private:
   static MicrocodeResponse readHighByte(State& cpu, BusToken bus)
   {
-    cpu.hi = bus.read(cpu.pc++);
+    cpu.hi = bus.read(cpu.registers.pc++);
 
     return {&addIndex};
   }
@@ -187,7 +187,7 @@ private:
     // action to fix the page boundary crossing. Either way, it will make a request to read from the
     // effective address (it just might be the wrong one).
     auto temp = static_cast<uint16_t>(cpu.lo);
-    temp += (cpu.*reg);
+    temp += (cpu.registers.*reg);
     cpu.lo = static_cast<Byte>(temp & 0xFF);
     bool carry = (temp & 0xFF00) != 0;
 
@@ -245,17 +245,17 @@ private:
 };
 
 template<typename Derived>
-using AbsoluteX = AbsoluteIndex<Derived, &State::x>;
+using AbsoluteX = AbsoluteIndex<Derived, &Registers::x>;
 
 template<typename Derived>
-using AbsoluteY = AbsoluteIndex<Derived, &State::y>;
+using AbsoluteY = AbsoluteIndex<Derived, &Registers::y>;
 
 struct AbsoluteJump : AddressMode
 {
   // 3 cycles: fetch 16-bit address, jump to it
   static MicrocodeResponse execute(State& cpu, BusToken bus)
   {
-    [[maybe_unused]] auto data = bus.read(cpu.pc++);
+    [[maybe_unused]] auto data = bus.read(cpu.registers.pc++);
     return {};
   }
 
@@ -267,7 +267,7 @@ struct AbsoluteIndirectJump : AddressMode
   // 5 cycles: fetch 16-bit pointer address, read 16-bit target address from pointer, jump to it
   static MicrocodeResponse execute(State& cpu, BusToken bus)
   {
-    cpu.lo = bus.read(cpu.pc++);
+    cpu.lo = bus.read(cpu.registers.pc++);
     return {};
   }
 
@@ -280,7 +280,7 @@ struct IndirectZeroPageX : AddressMode
   static MicrocodeResponse execute(State& cpu, BusToken bus)
   {
     // Read the zero page address from the instruction
-    cpu.lo = bus.read(cpu.pc++);
+    cpu.lo = bus.read(cpu.registers.pc++);
     cpu.hi = 0;
     return {spuriousRead};
   }
@@ -297,7 +297,7 @@ private:
   static MicrocodeResponse addZeroPageIndex(State& cpu, BusToken bus)
   {
     // Wrap around within zero page
-    cpu.lo += cpu.x;
+    cpu.lo += cpu.registers.x;
 
     cpu.operand = bus.read(Common::MakeAddress(cpu.lo++, 0x00));
     return {readHiByteFromZeroPage};
@@ -337,7 +337,7 @@ struct IndirectZeroPageY : AddressMode
   static MicrocodeResponse execute(State& cpu, BusToken bus)
   {
     // Read the zero page address from the instruction
-    cpu.lo = bus.read(cpu.pc++);
+    cpu.lo = bus.read(cpu.registers.pc++);
     cpu.hi = 0;
     return {readLoByteFromZeroPage};
   }
@@ -365,7 +365,7 @@ private:
   static MicrocodeResponse add16BitIndex(State& cpu, BusToken bus)
   {
     // Wrap around within zero page
-    auto effectiveAddr = Common::MakeAddress(cpu.lo, cpu.hi) + cpu.y;
+    auto effectiveAddr = Common::MakeAddress(cpu.lo, cpu.hi) + cpu.registers.y;
 
     cpu.lo = Common::LoByte(effectiveAddr);
 

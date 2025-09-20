@@ -104,20 +104,20 @@ void Logger::output()
   func(formatter_.finalize());
 }
 
-void Logger::logInstructionFromHex(const VisibleState& cpu, std::string_view hexStr)
+void Logger::logInstructionFromHex(const Registers& cpu, std::string_view hexStr)
 {
   auto bytes = parseHexBytes(hexStr);
   logInstruction(cpu, std::span<const Common::Byte, 3>{bytes});
 }
 
-void Logger::logInstruction(const VisibleState& cpu, std::span<const Common::Byte, 3> bytes)
+void Logger::logInstruction(const Registers& cpu, std::span<const Common::Byte, 3> bytes)
 {
   // Use the static disassemble function from mos6502
   mos6502::disassemble(cpu, bytes, formatter_);
   output();
 }
 
-void Logger::logInstructionFromMemory(const VisibleState& cpu, std::span<const Common::Byte> memory)
+void Logger::logInstructionFromMemory(const Registers& cpu, std::span<const Common::Byte> memory)
 {
   std::array<Common::Byte, 3> bytes{};
 

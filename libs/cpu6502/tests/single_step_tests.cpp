@@ -8,7 +8,7 @@
 #include "common/microcode_pump.h"
 #include "cpu6502/logger.h"
 #include "cpu6502/mos6502.h"
-#include "cpu6502/state.h"
+#include "cpu6502/registers.h"
 #include "simdjson.h"
 #include "test_reporter.h"
 #include "test_run.h"
@@ -81,7 +81,7 @@ int main(int argc, char* argv[])
     Snapshot final = test["final"].get<Snapshot>();
 
     MicrocodePump<mos6502> pump;
-    State cpu_state(initial.regs);
+    Generic6502Definition cpu_state(initial.regs);
 
     BusImpl bus{std::move(initial.memory)};
 
@@ -96,7 +96,7 @@ int main(int argc, char* argv[])
     //  continue;
     //}
 
-    LOG_INSTRUCTION_BYTES(cpu_state, name);
+    LOG_INSTRUCTION_BYTES(cpu_state.registers, name);
 
     while (pump.tick(cpu_state, BusToken{&bus}))
     {
@@ -107,7 +107,7 @@ int main(int argc, char* argv[])
     std::ranges::sort(final.memory, {}, &MemoryLocation::address);
 
     Snapshot actual;
-    actual.regs = cpu_state;
+    actual.regs = cpu_state.registers;
     actual.memory = bus.memory.mem;
     actual.cycles = bus.cycles;
 
