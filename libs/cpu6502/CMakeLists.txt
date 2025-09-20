@@ -1,3 +1,4 @@
+find_package(simdjson CONFIG REQUIRED)
 
 add_library(cpu6502 STATIC
   include/cpu6502/address_mode.h
@@ -19,12 +20,18 @@ if(BUILD_TESTING)
   find_package(Catch2 REQUIRED)
 
   add_executable(cpu6502Test
-    tests/address_mode_test.cpp
-    tests/mos6502_test.cpp
-    tests/helpers.cpp
-    tests/helpers.h
+    tests/single_step_tests.cpp
+    tests/test_reporter.h
+    tests/test_run.h
+    tests/test_reporter.cpp
+    tests/test_run.cpp
   )
 
-  target_link_libraries(cpu6502Test PRIVATE cpu6502 common Catch2::Catch2WithMain)
+  target_link_libraries(
+    cpu6502Test PRIVATE
+    cpu6502
+    common
+    simdjson::simdjson)
+
   target_include_directories(cpu6502Test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 endif()

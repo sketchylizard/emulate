@@ -427,7 +427,7 @@ Examples:
     parser.add_argument("-v", "--verbose", action="store_true",
                        help="Enable verbose output")
     parser.add_argument("-b", "--binary", type=Path, 
-                       default=Path("./build/clang/debug/harte/harte"),
+                       default=Path("./build/clang/debug/libs/cpu6502/cpu6502Test"),
                        help="Path to harte test binary")
     parser.add_argument("-d", "--data-dir", type=Path,
                        default=Path.home() / ".cpm_cache/65x02/1a4b/6502/v1",
