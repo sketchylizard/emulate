@@ -64,6 +64,12 @@ public:
     }
   }
 
+  constexpr bool contains(Address address) const noexcept
+  {
+    size_t addr = static_cast<size_t>(address);
+    return addr >= m_baseAddress && addr < m_baseAddress + BankSize;
+  }
+
   constexpr size_t size() const noexcept
   {
     return BankSize;
