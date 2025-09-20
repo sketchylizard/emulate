@@ -2,6 +2,7 @@ find_package(Catch2 REQUIRED)
 
 add_library(common STATIC
   include/common/address.h
+  include/common/bank_switcher.h
   include/common/bus.h
   include/common/fixed_formatter.h
   include/common/hex.h
@@ -9,6 +10,7 @@ add_library(common STATIC
   include/common/microcode_pump.h
   src/microcode_pump.cpp
   src/address.cpp
+  src/bank_switcher.cpp
   src/bus.cpp
   src/fixed_formatter.cpp
   src/hex.cpp
@@ -20,6 +22,7 @@ target_include_directories(common PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 if(BUILD_TESTING)
   add_executable(commonTest
     test/address_test.cpp
+    test/bank_switcher_test.cpp
     test/memory_test.cpp
     test/microcode_pump_test.cpp
   )

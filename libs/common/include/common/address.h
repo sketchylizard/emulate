@@ -13,6 +13,9 @@ enum class Address : uint16_t
 {
 };
 
+// Define a concept for a type that must be a Byte or Const Byte
+template<typename T>
+concept ByteOrConstByte = std::same_as<T, Byte> || std::same_as<T, const Byte>;
 
 // Address arithmetic operators
 constexpr Address& operator++(Address& addr) noexcept
