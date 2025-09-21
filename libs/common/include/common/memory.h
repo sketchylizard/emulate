@@ -77,6 +77,12 @@ public:
     }
   }
 
+  bool contains(Address address) const noexcept
+  {
+    size_t index = static_cast<size_t>(address) - m_baseAddress;
+    return index < m_memory.size();
+  }
+
 private:
   std::span<ValueType> m_memory;
   size_t m_baseAddress;
@@ -86,9 +92,15 @@ private:
 template<typename T, std::size_t N>
 MemoryDevice(std::array<T, N>&, Address baseAddress = Address{0}) -> MemoryDevice<T>;
 
+template<typename T, std::size_t N>
+MemoryDevice(const std::array<T, N>&, Address baseAddress = Address{0}) -> MemoryDevice<const T>;
+
 // For std::vector
 template<typename T>
 MemoryDevice(std::vector<T>&, Address baseAddress = Address{0}) -> MemoryDevice<T>;
+
+template<typename T>
+MemoryDevice(const std::vector<T>&, Address baseAddress = Address{0}) -> MemoryDevice<const T>;
 
 // For C-style array
 template<typename T, std::size_t N>

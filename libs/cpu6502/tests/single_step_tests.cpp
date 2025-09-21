@@ -67,8 +67,6 @@ int main(int argc, char* argv[])
   // position a pointer at the beginning of the JSON data
   ondemand::document doc = parser.iterate(json);
 
-  std::vector<Cycle> expectedCycles;
-
   [[maybe_unused]] int32_t testCount = 0;
   int32_t failCount = 0;
   for (auto test : doc.get_array())
