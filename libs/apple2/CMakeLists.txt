@@ -1,7 +1,9 @@
 
 add_library(apple2 STATIC
   include/apple2/apple2system.h
+  include/apple2/iodevice.h
   src/apple2system.cpp
+  src/iodevice.cpp
 )
 
 target_include_directories(apple2 PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
@@ -20,5 +22,5 @@ if(BUILD_TESTING)
     common
     cpu6502
   )
-  
+
 endif()

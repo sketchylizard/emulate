@@ -22,7 +22,7 @@ template<typename Processor, BusDevice... Devices>
 class Bus : public Processor::BusInterface
 {
 public:
-  Bus(Devices... devices)
+  Bus(Devices&... devices)
     : m_devices(devices...)
   {
   }
@@ -58,7 +58,7 @@ public:
   }
 
 private:
-  std::tuple<Devices...> m_devices;
+  std::tuple<Devices&...> m_devices;
 };
 
 }  // namespace Common

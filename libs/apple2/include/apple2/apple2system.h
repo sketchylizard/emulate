@@ -6,6 +6,7 @@
 #include <span>
 #include <utility>
 
+#include "apple2/iodevice.h"
 #include "common/address.h"
 #include "common/bank_switcher.h"
 #include "common/memory.h"
@@ -22,9 +23,12 @@ public:
   using Address = Common::Address;
   using Byte = Common::Byte;
 
+  template<size_t Size>
+  using RamSpan = std::span<Byte, Size>;
+  template<size_t Size>
+  using RomSpan = std::span<const Byte, Size>;
 
-  Apple2System(std::span<Common::Byte, 0xc000> memory, std::span<const Common::Byte, 0x2000> rom,
-      std::span<Common::Byte, 0x1000> langBank0, std::span<Common::Byte, 0x1000> langBank1);
+  Apple2System(RamSpan<0xc000> memory, RomSpan<0x3000> rom, RamSpan<0x1000> langBank0, RamSpan<0x1000> langBank1);
 
   ~Apple2System() = default;
 
@@ -45,6 +49,8 @@ public:
     return m_cpu;
   }
 
+  void pressKey(char c);
+
 private:
   using RamDevice = Common::MemoryDevice<Common::Byte>;
   using RomDevice = Common::MemoryDevice<const Common::Byte>;
@@ -52,14 +58,35 @@ private:
 
   using Apple2Bus = Common::Bus<Processor,
       RamDevice,  // Lower RAM
-      LanguageCardDevice,  // Language Card
-      RomDevice>;  // Upper ROM
+      RomDevice,  // Upper ROM
+      IoDevice,  // I/O
+      LanguageCardDevice  // Language Card
+      >;
+
+  void updateKeyboard();
+
+  void setupIoHandlers();
+  Byte handleKeyboardRead(Address address);
+  Byte handleKeyboardStrobeRead(Address address);
+  void handleTextOutput(Address address, Byte data);
+  Byte handleLanguageCardRead(Address address);
+  void handleLanguageCardWrite(Address address, Byte data);
+  Byte handleSpeakerRead(Address address);
+  void handleSpeakerWrite(Address address, Byte data);
 
   Processor m_cpu;
   MicrocodePump<Processor> m_pump;
+
+  RamDevice m_ram;
+  RomDevice m_rom;
+  IoDevice m_io;
   LanguageCardDevice m_languageCard;
 
   Apple2Bus m_bus;
+
+  // I/O state
+  std::queue<char> m_keyBuffer;
+  Common::Byte m_keyboardData = 0x00;
 };
 
 }  // namespace apple2
