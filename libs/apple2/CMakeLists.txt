@@ -2,8 +2,10 @@
 add_library(apple2 STATIC
   include/apple2/apple2system.h
   include/apple2/iodevice.h
+  include/apple2/text_video_device.h
   src/apple2system.cpp
   src/iodevice.cpp
+  src/text_video_device.cpp
 )
 
 target_include_directories(apple2 PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)

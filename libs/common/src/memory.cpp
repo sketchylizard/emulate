@@ -40,7 +40,8 @@ void Load(std::span<Byte> memory, const std::string& filename, Address start_add
     throw std::out_of_range("Start address beyond memory bounds");
   }
 
-  file.read(reinterpret_cast<char*>(memory.data() + offset), static_cast<std::streamsize>(memory.size() - offset));
+  auto bytesToRead = static_cast<std::streamsize>(memory.size() - offset);
+  file.read(reinterpret_cast<char*>(memory.data() + offset), bytesToRead);
 
   if (file.bad())
   {

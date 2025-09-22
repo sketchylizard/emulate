@@ -18,11 +18,13 @@ Apple2System::Apple2System(  //
     RamSpan<0x1000> langBank0,  // language card bank 0
     RamSpan<0x1000> langBank1  // language card bank 1
     )
-  : m_ram(memory)
-  , m_rom(rom, Address{0xE000})
+  : m_textVideo(RamSpan<0x400>(memory.data() + 0x400, 0x400))  // $0400-$07FF
+  , m_ram(memory)
+  , m_rom(rom, Address{0xD000})
   , m_io(this)
   , m_languageCard({0xD000, std::span(langBank0), std::span(langBank1)})
   , m_bus(  //
+        m_textVideo,  // $0400-$07FF: Text video memory
         m_ram,  //
         m_rom,  //
         m_io,  // $C000-$CFFF: I/O space
@@ -94,6 +96,17 @@ void Apple2System::pressKey(char c)
     c = c - 'a' + 'A';
   }
   m_keyBuffer.push(c);
+}
+
+char Apple2System::appleToAscii(Byte data) const noexcept
+{
+  // Apple II has some encoding quirks
+  Byte c = data & 0x7F;  // Strip high bit
+  if (c >= 0x20 && c <= 0x5F)
+    return static_cast<char>(c);
+  if (c >= 0x60 && c <= 0x7F)
+    return static_cast<char>(c - 0x40);  // Lowercase
+  return ' ';  // Default for control chars
 }
 
 void Apple2System::setupIoHandlers()
@@ -184,7 +197,7 @@ void Apple2System::handleLanguageCardWrite(Address address, Byte data)
 
 Common::Byte Apple2System::handleSpeakerRead(Address /*address*/)
 {
-  std::cout << "tick\n";
+  //  std::cout << "tick\n";
   return 0x00;  // Open bus
 }
 

@@ -7,6 +7,7 @@
 #include <utility>
 
 #include "apple2/iodevice.h"
+#include "apple2/text_video_device.h"
 #include "common/address.h"
 #include "common/bank_switcher.h"
 #include "common/memory.h"
@@ -51,12 +52,23 @@ public:
 
   void pressKey(char c);
 
+  bool isScreenDirty() const noexcept
+  {
+    return m_textVideo.isDirty();
+  }
+
+  TextVideoDevice::Screen getScreen() const noexcept
+  {
+    return m_textVideo.screen();
+  }
+
 private:
   using RamDevice = Common::MemoryDevice<Common::Byte>;
   using RomDevice = Common::MemoryDevice<const Common::Byte>;
   using LanguageCardDevice = Common::BankSwitcher<2, 0x1000>;
 
   using Apple2Bus = Common::Bus<Processor,
+      TextVideoDevice,  // Text video memory $0400-$07FF
       RamDevice,  // Lower RAM
       RomDevice,  // Upper ROM
       IoDevice,  // I/O
@@ -64,6 +76,7 @@ private:
       >;
 
   void updateKeyboard();
+  char appleToAscii(Byte data) const noexcept;
 
   void setupIoHandlers();
   Byte handleKeyboardRead(Address address);
@@ -77,6 +90,8 @@ private:
   Processor m_cpu;
   MicrocodePump<Processor> m_pump;
 
+  // Memory and devices
+  TextVideoDevice m_textVideo;
   RamDevice m_ram;
   RomDevice m_rom;
   IoDevice m_io;
