@@ -36,10 +36,6 @@ public:
         { ((devices.contains(address) && !found ? (result = devices.read(address), found = true) : false), ...); },
         m_devices);
 
-    if (!found)
-    {
-      throw std::out_of_range("No device handles this address");
-    }
     return result;
   }
 

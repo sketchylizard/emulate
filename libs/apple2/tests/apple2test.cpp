@@ -7,6 +7,7 @@
 #include <unistd.h>
 
 #include "apple2/apple2system.h"
+#include "common/logger.h"
 
 using namespace Common;
 
@@ -72,10 +73,19 @@ private:
   struct termios m_originalTermios;
 };
 
+void logOutput(std::string_view str)
+{
+  static std::ofstream logFile("debug.log", std::ios::app);
+  logFile << str;
+  logFile.flush();
+}
+
 }  // namespace
 
 int main()
 {
+  common::Logger::setOutputFunc(logOutput);
+
   try
   {
     std::cout << "Creating Apple II system...\n";
@@ -85,11 +95,18 @@ int main()
     Byte langBank0[0x1000] = {};  // Language Card Bank 0 (4KB)
     Byte langBank1[0x1000] = {};  // Language Card Bank
 
+    Byte diskRom[0x100] = {};  // Disk controller ROM (256 bytes, placeholder)
+
     KeyboardHandler keyboard;
 
     Common::Load(std::span(rom), "/home/jason/Downloads/apple.rom");
 
+    Common::Load(std::span(diskRom), "/home/jason/Downloads/DISK2.rom");
+
     apple2::Apple2System system{std::span(ram), std::span(rom), std::span(langBank0), std::span(langBank1)};
+
+    system.loadPeripheralRom(6, std::span(diskRom));  // Slot 6: Disk controller ROM
+    system.loadDisk("/home/jason/Downloads/Master.dsk");
 
     std::cout << "System created successfully!\n";
 
@@ -105,7 +122,17 @@ int main()
       auto start = std::chrono::high_resolution_clock::now();
       for (int i = 0; i != 16667; ++i)  // Roughly 1MHz
       {
-        system.clock();
+        if (!system.clock())
+        {
+          // Instruction complete
+          auto pc = system.cpu().registers.pc;
+          if ((pc >= Address{0x3F0} && pc <= Address{0x3F4}) || (pc >= Address(0xC000) && pc <= Address(0xCFFF)))
+          {
+            // std::stringstream stream;
+            // stream << "[EXECUTE] Running code at $" << std::hex << static_cast<int>(pc) << std::dec << "\n";
+            // LOG(stream.str());
+          }
+        }
       }
       auto elapsed = std::chrono::high_resolution_clock::now() - start;
       if (elapsed < std::chrono::microseconds(16'667))
@@ -129,7 +156,7 @@ int main()
       if (system.isScreenDirty())
       {
         auto screen = system.getScreen();
-        std::cout << "\033[2J\033[H";  // Clear screen, move cursor to top
+        //        std::cout << "\033[2J\033[H";  // Clear screen, move cursor to top
         std::cout << "\n--- Screen Update ---\n";
         for (const auto& line : screen)
         {

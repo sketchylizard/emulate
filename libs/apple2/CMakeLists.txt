@@ -1,9 +1,12 @@
 
 add_library(apple2 STATIC
   include/apple2/apple2system.h
+  include/apple2/disk_controller.h
   include/apple2/iodevice.h
+  include/apple2/slot_controller.h
   include/apple2/text_video_device.h
   src/apple2system.cpp
+  src/disk_controller.cpp
   src/iodevice.cpp
   src/text_video_device.cpp
 )

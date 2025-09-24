@@ -6,7 +6,9 @@
 #include <span>
 #include <utility>
 
+#include "apple2/disk_controller.h"
 #include "apple2/iodevice.h"
+#include "apple2/slot_controller.h"
 #include "apple2/text_video_device.h"
 #include "common/address.h"
 #include "common/bank_switcher.h"
@@ -62,6 +64,20 @@ public:
     return m_textVideo.screen();
   }
 
+  // Load a disk image:
+  bool loadDisk(const std::string& filename)
+  {
+    return m_disk.loadDisk(filename);
+  }
+
+  void loadPeripheralRom(int slot, RomSpan<0x100> romData)
+  {
+    if (slot < 0 || slot >= 8)
+      throw std::out_of_range("Slot number must be between 0 and 7");
+
+    m_slots.loadRom(slot, romData);
+  }
+
 private:
   using RamDevice = Common::MemoryDevice<Common::Byte>;
   using RomDevice = Common::MemoryDevice<const Common::Byte>;
@@ -72,7 +88,9 @@ private:
       RamDevice,  // Lower RAM
       RomDevice,  // Upper ROM
       IoDevice,  // I/O
-      LanguageCardDevice  // Language Card
+      LanguageCardDevice,  // Language Card
+      SlotController,  // Slots 0-7
+      RomDevice  // expansion ROM area (for slot ROMs)
       >;
 
   void updateKeyboard();
@@ -81,11 +99,12 @@ private:
   void setupIoHandlers();
   Byte handleKeyboardRead(Address address);
   Byte handleKeyboardStrobeRead(Address address);
-  void handleTextOutput(Address address, Byte data);
   Byte handleLanguageCardRead(Address address);
   void handleLanguageCardWrite(Address address, Byte data);
   Byte handleSpeakerRead(Address address);
   void handleSpeakerWrite(Address address, Byte data);
+  Byte handleDiskRead(Address address);
+  void handleDiskWrite(Address address, Byte data);
 
   Processor m_cpu;
   MicrocodePump<Processor> m_pump;
@@ -96,8 +115,14 @@ private:
   RomDevice m_rom;
   IoDevice m_io;
   LanguageCardDevice m_languageCard;
+  SlotController m_slots;
+
+  Byte m_expansionRom[0x2000] = {};  // 8KB expansion ROM area (for slot ROMs)
+  RomDevice m_expansionRomDevice;
 
   Apple2Bus m_bus;
+
+  DiskController m_disk;
 
   // I/O state
   std::queue<char> m_keyBuffer;

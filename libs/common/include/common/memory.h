@@ -2,14 +2,18 @@
 
 #include <array>
 #include <concepts>
+#include <fstream>
+#include <iostream>
 #include <ranges>
 #include <span>
+#include <sstream>
 #include <string>
 #include <type_traits>
 #include <vector>
 
 #include "common/address.h"
 #include "common/bus.h"
+#include "common/logger.h"
 
 namespace Common
 {
@@ -59,6 +63,13 @@ public:
     size_t index = static_cast<size_t>(address) - m_baseAddress;
     if (index < m_memory.size())
     {
+      if (address >= Address{0x300} && address < Address{0x3ff})
+      {
+        std::stringstream stream;
+        stream << "read " << std::hex << static_cast<uint16_t>(address) << " = " << std::hex
+               << static_cast<uint16_t>(m_memory[index]) << std::dec << "\n";
+        LOG(stream.str());
+      }
       return m_memory[index];
     }
     return 0;  // Out of range reads return 0
@@ -69,6 +80,13 @@ public:
   {
     if constexpr (!std::is_const_v<ValueType>)
     {
+      if (address >= Address{0x300} && address < Address{0x3ff})
+      {
+        std::stringstream stream;
+        stream << "write " << std::hex << static_cast<uint16_t>(address) << " = " << std::hex
+               << static_cast<uint16_t>(value) << std::dec << "\n";
+        LOG(stream.str());
+      }
       size_t index = static_cast<size_t>(address) - m_baseAddress;
       if (index < m_memory.size())
       {

@@ -6,6 +6,7 @@
 #include <span>
 
 #include "common/bus.h"
+#include "common/logger.h"
 #include "common/memory.h"
 #include "cpu6502/mos6502.h"
 
@@ -23,13 +24,15 @@ Apple2System::Apple2System(  //
   , m_rom(rom, Address{0xD000})
   , m_io(this)
   , m_languageCard({0xD000, std::span(langBank0), std::span(langBank1)})
+  , m_expansionRomDevice(std::span(m_expansionRom), Address{0xC800})  // $C800-$DFFF
   , m_bus(  //
         m_textVideo,  // $0400-$07FF: Text video memory
         m_ram,  //
         m_rom,  //
         m_io,  // $C000-$CFFF: I/O space
-        m_languageCard  //
-    )
+        m_languageCard,  //
+        m_slots,
+        m_expansionRomDevice)  // $C100-$C7FF: Slots 1-7
 {
   setupIoHandlers();
 }
@@ -114,7 +117,6 @@ void Apple2System::setupIoHandlers()
   // Individual addresses (same as before)
   m_io.registerReadHandler(Address{0xC000}, &Apple2System::handleKeyboardRead);
   m_io.registerReadHandler(Address{0xC010}, &Apple2System::handleKeyboardStrobeRead);
-  m_io.registerWriteHandler(Address{0xC040}, &Apple2System::handleTextOutput);
 
   // Speaker I/O
   m_io.registerReadHandler(Address{0xC030}, &Apple2System::handleSpeakerRead);
@@ -132,6 +134,9 @@ void Apple2System::setupIoHandlers()
   // Graphics soft switches
   // m_io.registerReadRange(Address{0xC050}, Address{0xC05F}, &Apple2System::handleGraphicsRead);
   // m_io.registerWriteRange(Address{0xC050}, Address{0xC05F}, &Apple2System::handleGraphicsWrite);
+
+  m_io.registerReadRange(Address{0xC0E0}, Address{0xC0EF}, &Apple2System::handleDiskRead);
+  m_io.registerWriteRange(Address{0xC0E0}, Address{0xC0EF}, &Apple2System::handleDiskWrite);
 }
 
 Common::Byte Apple2System::handleKeyboardRead(Address /*address*/)
@@ -145,19 +150,6 @@ Common::Byte Apple2System::handleKeyboardStrobeRead(Address /*address*/)
   // Reading the strobe clears the key ready flag (bit 7)
   m_keyboardData &= 0x7F;
   return m_keyboardData;
-}
-
-void Apple2System::handleTextOutput(Address /*address*/, Byte data)
-{
-  char c = static_cast<char>(data & 0x7F);  // Strip high bit
-  if (c >= 32 && c <= 126)  // Printable ASCII
-  {
-    std::cout << c << std::flush;
-  }
-  else if (c == 13)  // Carriage return
-  {
-    std::cout << '\n' << std::flush;
-  }
 }
 
 // The handler functions examine the specific address to determine behavior
@@ -204,6 +196,16 @@ Common::Byte Apple2System::handleSpeakerRead(Address /*address*/)
 void Apple2System::handleSpeakerWrite(Address /*address*/, Byte /*data*/)
 {
   handleSpeakerRead(Address{0});  // use the same logic as the read.
+}
+
+Common::Byte Apple2System::handleDiskRead(Address address)
+{
+  return m_disk.read(address);
+}
+
+void Apple2System::handleDiskWrite(Address address, Common::Byte data)
+{
+  m_disk.write(address, data);
 }
 
 }  // namespace apple2

@@ -37,7 +37,7 @@ public:
   void registerWriteRange(Address start, Address end, WriteHandler handler);
 
 private:
-  static constexpr size_t c_size{0x1000};
+  static constexpr size_t c_size{0x100};
   static constexpr Address c_baseAddress{0xC000};
 
   // Validate address is in I/O range

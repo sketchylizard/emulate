@@ -6,16 +6,22 @@ add_library(common STATIC
   include/common/bus.h
   include/common/fixed_formatter.h
   include/common/hex.h
+  include/common/logger.h
   include/common/memory.h
   include/common/microcode_pump.h
-  src/microcode_pump.cpp
   src/address.cpp
   src/bank_switcher.cpp
   src/bus.cpp
   src/fixed_formatter.cpp
   src/hex.cpp
+  src/logger.cpp
   src/memory.cpp
+  src/microcode_pump.cpp
 )
+
+if (EMULATE_ENABLE_LOGGING)
+  target_compile_definitions(common PUBLIC EMULATE_ENABLE_LOGGING=1)
+endif()
 
 target_include_directories(common PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 

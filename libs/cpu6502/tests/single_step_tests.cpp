@@ -4,9 +4,9 @@
 
 #include "common/address.h"
 #include "common/bus.h"
+#include "common/logger.h"
 #include "common/memory.h"
 #include "common/microcode_pump.h"
-#include "cpu6502/logger.h"
 #include "cpu6502/mos6502.h"
 #include "cpu6502/registers.h"
 #include "simdjson.h"
@@ -94,7 +94,7 @@ int main(int argc, char* argv[])
     //  continue;
     //}
 
-    LOG_INSTRUCTION_BYTES(cpu_state.registers, name);
+    // LOG_INSTRUCTION_BYTES(cpu_state.registers, name);
 
     while (pump.tick(cpu_state, BusToken{&bus}))
     {
