@@ -21,9 +21,8 @@ public:
   explicit TextVideoDevice(std::span<Byte, c_size> videoMemory) noexcept;
 
   // Bus interface methods
-  Byte read(Address address) const noexcept;
-  void write(Address address, Byte value) noexcept;
-  bool contains(Address address) const noexcept;
+  Byte read(Address address) const;
+  void write(Address address, Byte value);
 
   bool isDirty() const noexcept
   {

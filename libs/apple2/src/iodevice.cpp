@@ -15,12 +15,7 @@ IoDevice::IoDevice(Apple2System* system) noexcept
   m_writeHandlers.fill(nullptr);
 }
 
-bool IoDevice::contains(Common::Address address) const noexcept
-{
-  return isValidIoAddress(address);
-}
-
-Common::Byte IoDevice::read(Common::Address address)
+Common::Byte IoDevice::read(Common::Address address) const
 {
   if (!isValidIoAddress(address))
   {

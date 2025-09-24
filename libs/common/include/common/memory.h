@@ -35,9 +35,8 @@ public:
   using ValueType = T;
   using ReferenceType = T&;
 
-  explicit constexpr MemoryDevice(std::span<T> range, Address baseAddress = Address{0}) noexcept
+  explicit constexpr MemoryDevice(std::span<T> range) noexcept
     : m_memory(range)
-    , m_baseAddress(static_cast<size_t>(baseAddress))
   {
   }
 
@@ -47,63 +46,25 @@ public:
     return m_memory.size();
   }
 
-  constexpr Address startAddress() const noexcept
+  ValueType read(Address address) const
   {
-    return Address{static_cast<uint16_t>(m_baseAddress)};
+    // Address has already been validated & normalized by Bus
+    assert(static_cast<size_t>(address) < m_memory.size());
+    return m_memory[static_cast<size_t>(address)];
   }
 
-  constexpr Address endAddress() const noexcept
-  {
-    return Address{static_cast<uint16_t>(m_baseAddress + m_memory.size() - 1)};
-  }
-
-  // Read method for Bus interface
-  ValueType read(Address address) const noexcept
-  {
-    size_t index = static_cast<size_t>(address) - m_baseAddress;
-    if (index < m_memory.size())
-    {
-      if (address >= Address{0x300} && address < Address{0x3ff})
-      {
-        std::stringstream stream;
-        stream << "read " << std::hex << static_cast<uint16_t>(address) << " = " << std::hex
-               << static_cast<uint16_t>(m_memory[index]) << std::dec << "\n";
-        LOG(stream.str());
-      }
-      return m_memory[index];
-    }
-    return 0;  // Out of range reads return 0
-  }
-
-  // Read method for Bus interface
-  void write(Address address, ValueType value) const noexcept
+  void write(Address address, ValueType value)
   {
     if constexpr (!std::is_const_v<ValueType>)
     {
-      if (address >= Address{0x300} && address < Address{0x3ff})
-      {
-        std::stringstream stream;
-        stream << "write " << std::hex << static_cast<uint16_t>(address) << " = " << std::hex
-               << static_cast<uint16_t>(value) << std::dec << "\n";
-        LOG(stream.str());
-      }
-      size_t index = static_cast<size_t>(address) - m_baseAddress;
-      if (index < m_memory.size())
-      {
-        m_memory[index] = value;
-      }
+      // Address has already been validated & normalized by Bus
+      assert(static_cast<size_t>(address) < m_memory.size());
+      m_memory[static_cast<size_t>(address)] = value;
     }
-  }
-
-  bool contains(Address address) const noexcept
-  {
-    size_t index = static_cast<size_t>(address) - m_baseAddress;
-    return index < m_memory.size();
   }
 
 private:
   std::span<ValueType> m_memory;
-  size_t m_baseAddress;
 };
 
 // For std::array

@@ -4,57 +4,106 @@
 #include <concepts>
 #include <cstdint>
 #include <format>
-#include <tuple>
+#include <initializer_list>
+#include <memory>
+#include <ranges>
 #include <utility>
 
 #include "common/address.h"
 
 namespace Common
 {
-template<typename T>
-concept BusDevice = requires(T device, Address addr, Byte value) {
-  { device.read(addr) } -> std::convertible_to<Byte>;
-  { device.write(addr, value) } -> std::same_as<void>;
-  { device.contains(addr) } -> std::convertible_to<bool>;  // To check if device handles this address
-};
-
-template<typename Processor, BusDevice... Devices>
+template<typename Processor>
 class Bus : public Processor::BusInterface
 {
 public:
-  Bus(Devices&... devices)
-    : m_devices(devices...)
+  using Address = Common::Address;
+  using Byte = Common::Byte;
+
+  static constexpr size_t c_maxDevices{16};
+
+  class Device
+  {
+  public:
+    virtual ~Device() = default;
+    virtual Byte read(Address address) const = 0;
+    virtual void write(Address address, Byte value) = 0;
+  };
+
+  template<typename T>
+  class DeviceWrapper : public Device
+  {
+  public:
+    explicit DeviceWrapper(T& device)
+      : m_device(device)
+    {
+    }
+    Byte read(Address address) const override
+    {
+      return m_device.read(address);
+    }
+    void write(Address address, Byte value) override
+    {
+      m_device.write(address, value);
+    }
+
+  private:
+    T& m_device;
+  };
+
+  struct Entry
+  {
+    bool normalize;
+    uint16_t start;  // inclusive start
+    uint32_t end;  // exclusive end
+    std::unique_ptr<Device> device;
+  };
+
+  static Entry makeEntry(bool normalize, uint16_t start, uint32_t end, auto& device)
+  {
+    return Entry{normalize, start, end, std::make_unique<DeviceWrapper<decltype(device)>>(device)};
+  }
+
+  explicit Bus(std::array<Entry, c_maxDevices> devices) noexcept
+    : m_devices(std::move(devices))
   {
   }
 
   Byte read(Address address) override
   {
     Byte result = 0;
-    bool found = false;
 
-    std::apply([&](auto&... devices)
-        { ((devices.contains(address) && !found ? (result = devices.read(address), found = true) : false), ...); },
-        m_devices);
+    auto it = std::ranges::find_if(m_devices, [address](const Entry& entry)
+        { return static_cast<uint16_t>(address) >= entry.start && static_cast<uint32_t>(address) < entry.end; });
 
+    if (it != m_devices.end() && it->device != nullptr)
+    {
+      if (it->normalize)
+      {
+        address = Address{static_cast<uint16_t>(address - static_cast<uint16_t>(it->start))};
+      }
+      result = it->device->read(address);
+    }
     return result;
   }
 
   void write(Address address, Byte value) override
   {
-    bool found = false;
+    auto it = std::ranges::find_if(m_devices, [address](const Entry& entry)
+        { return static_cast<uint16_t>(address) >= entry.start && static_cast<uint32_t>(address) < entry.end; });
 
-    std::apply([&](auto&... devices)
-        { ((devices.contains(address) && !found ? (devices.write(address, value), found = true) : false), ...); },
-        m_devices);
-
-    if (!found)
+    if (it != m_devices.end() && it->device != nullptr)
     {
-      throw std::out_of_range("No device handles this address");
+      if (it->normalize)
+      {
+        address = Address{static_cast<uint16_t>(address - static_cast<uint16_t>(it->start))};
+      }
+      it->device->write(address, value);
     }
   }
 
 private:
-  std::tuple<Devices&...> m_devices;
+  std::array<Entry, c_maxDevices> m_devices;
 };
 
 }  // namespace Common

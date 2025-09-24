@@ -7,6 +7,16 @@
 
 namespace apple2
 {
+using Common::Address;
+using Common::Byte;
+
+Byte DiskController::c_rom[256] = {};
+
+bool DiskController::loadRom(std::span<const Byte, 256> romData)
+{
+  std::copy(romData.begin(), romData.end(), std::begin(c_rom));
+  return true;
+}
 
 bool DiskController::loadDisk(const std::string& filename)
 {
@@ -24,15 +34,16 @@ bool DiskController::loadDisk(const std::string& filename)
   return true;
 }
 
-Common::Byte DiskController::read(Address address)
+Common::Byte DiskController::read(Address address) const
 {
-  uint16_t offset = static_cast<uint16_t>(address) - 0xC0E0;
+  // There are two ranges that map to the disk controller: $C0E0-$C0EF and $C600-$C6FF.
+  // The second range will be normalized, so they should all be between 0x00 and 0xFF.
+  if (static_cast<size_t>(address) < std::size(c_rom))
+  {
+    return c_rom[static_cast<size_t>(address)];
+  }
 
-  std::stringstream stream;
-  stream << "DiskController::read($" << std::hex << static_cast<uint16_t>(address) << std::dec << ")\n";
-  LOG(stream.str());
-
-  switch (offset)
+  switch (static_cast<size_t>(address))
   {
     case 0x0C:  // Read data
       return readCurrentSector();
@@ -46,6 +57,9 @@ Common::Byte DiskController::read(Address address)
 
 void DiskController::write(Address address, Common::Byte data)
 {
+  if (address < Address{0xC0E0})
+    return;
+
   uint16_t offset = static_cast<uint16_t>(address) - 0xC0E0;
 
   std::stringstream stream;
@@ -67,19 +81,12 @@ void DiskController::write(Address address, Common::Byte data)
   }
 }
 
-Common::Byte DiskController::readCurrentSector()
+Common::Byte DiskController::readCurrentSector() const
 {
   if (!m_diskLoaded || m_bytesToRead <= 0)
     return 0;
 
-  std::stringstream stream;
-  stream << "DiskController::read sector(" << m_currentTrack << ", " << m_currentSector << ")\n";
-  LOG(stream.str());
-
-  size_t offset = static_cast<size_t>(m_currentTrack * 16 + m_currentSector) * 256 +
-                  static_cast<size_t>(256 - m_bytesToRead--);
-  // Simplified - real controller has complex state machine  ;
-  return offset < m_diskData.size() ? m_diskData[offset] : 0;
+  return 0;
 }
 
 }  // namespace apple2

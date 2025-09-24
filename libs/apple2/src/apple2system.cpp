@@ -21,18 +21,18 @@ Apple2System::Apple2System(  //
     )
   : m_textVideo(RamSpan<0x400>(memory.data() + 0x400, 0x400))  // $0400-$07FF
   , m_ram(memory)
-  , m_rom(rom, Address{0xD000})
+  , m_rom(rom)
   , m_io(this)
-  , m_languageCard({0xD000, std::span(langBank0), std::span(langBank1)})
-  , m_expansionRomDevice(std::span(m_expansionRom), Address{0xC800})  // $C800-$DFFF
-  , m_bus(  //
-        m_textVideo,  // $0400-$07FF: Text video memory
-        m_ram,  //
-        m_rom,  //
-        m_io,  // $C000-$CFFF: I/O space
-        m_languageCard,  //
-        m_slots,
-        m_expansionRomDevice)  // $C100-$C7FF: Slots 1-7
+  , m_languageCard(std::span(langBank0), std::span(langBank1))
+  , m_bus{{
+        Apple2Bus::makeEntry(false, 0x400, 0x800, m_textVideo),
+        Apple2Bus::makeEntry(true, 0x0000, 0xC000, m_ram),
+        Apple2Bus::makeEntry(true, 0xD000, 0x10000, m_rom),
+        Apple2Bus::makeEntry(false, 0xC0E0, 0xC0F0, m_disk),  // Disk (slot 6, control switches)
+        Apple2Bus::makeEntry(true, 0xC600, 0xC700, m_disk),  // Disk (slot 6, ROM)
+        Apple2Bus::makeEntry(true, 0xC000, 0xC0FF, m_io),  // I/O and soft switches
+        Apple2Bus::makeEntry(true, 0x0000, 0x0000, m_languageCard),
+    }}
 {
   setupIoHandlers();
 }
@@ -134,9 +134,6 @@ void Apple2System::setupIoHandlers()
   // Graphics soft switches
   // m_io.registerReadRange(Address{0xC050}, Address{0xC05F}, &Apple2System::handleGraphicsRead);
   // m_io.registerWriteRange(Address{0xC050}, Address{0xC05F}, &Apple2System::handleGraphicsWrite);
-
-  m_io.registerReadRange(Address{0xC0E0}, Address{0xC0EF}, &Apple2System::handleDiskRead);
-  m_io.registerWriteRange(Address{0xC0E0}, Address{0xC0EF}, &Apple2System::handleDiskWrite);
 }
 
 Common::Byte Apple2System::handleKeyboardRead(Address /*address*/)
@@ -196,16 +193,6 @@ Common::Byte Apple2System::handleSpeakerRead(Address /*address*/)
 void Apple2System::handleSpeakerWrite(Address /*address*/, Byte /*data*/)
 {
   handleSpeakerRead(Address{0});  // use the same logic as the read.
-}
-
-Common::Byte Apple2System::handleDiskRead(Address address)
-{
-  return m_disk.read(address);
-}
-
-void Apple2System::handleDiskWrite(Address address, Common::Byte data)
-{
-  m_disk.write(address, data);
 }
 
 }  // namespace apple2

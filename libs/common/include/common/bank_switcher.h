@@ -14,9 +14,8 @@ class BankSwitcher
 {
 public:
   template<typename... Spans>
-  constexpr BankSwitcher(size_t baseAddress, Spans... banks)
+  constexpr BankSwitcher(Spans... banks)
     : m_banks{banks...}
-    , m_baseAddress(baseAddress)
   {
     static_assert(sizeof...(banks) == BankCount);
   }
@@ -29,45 +28,35 @@ public:
 
   Byte read(Address address) const
   {
-    size_t addr = static_cast<size_t>(address);
-    if (addr < m_baseAddress || addr >= m_baseAddress + BankSize)
-      throw std::out_of_range("Address out of range for bank switcher");
+    // Address has already been validated & normalized by Bus
+    assert(static_cast<size_t>(address) < BankSize);
 
-    size_t offset = addr - m_baseAddress;
     const auto& activeBank = m_banks[m_activeBank];
     if (std::holds_alternative<RamBank>(activeBank))
     {
-      return std::get<RamBank>(activeBank)[offset];
+      return std::get<RamBank>(activeBank)[static_cast<size_t>(address)];
     }
     else if (std::holds_alternative<RomBank>(activeBank))
     {
-      return std::get<RomBank>(activeBank)[offset];
+      return std::get<RomBank>(activeBank)[static_cast<size_t>(address)];
     }
     throw std::runtime_error("Invalid bank type");
   }
 
   void write(Address address, Byte value)
   {
-    size_t addr = static_cast<size_t>(address);
-    if (addr < m_baseAddress || addr >= m_baseAddress + BankSize)
-      throw std::out_of_range("Address out of range for bank switcher");
+    // Address has already been validated & normalized by Bus
+    assert(static_cast<size_t>(address) < BankSize);
 
-    size_t offset = addr - m_baseAddress;
     auto& activeBank = m_banks[m_activeBank];
     if (std::holds_alternative<RamBank>(activeBank))
     {
-      std::get<RamBank>(activeBank)[offset] = value;
+      std::get<RamBank>(activeBank)[static_cast<size_t>(address)] = value;
     }
     else
     {
       throw std::runtime_error("Attempt to write to read-only bank");
     }
-  }
-
-  constexpr bool contains(Address address) const noexcept
-  {
-    size_t addr = static_cast<size_t>(address);
-    return addr >= m_baseAddress && addr < m_baseAddress + BankSize;
   }
 
   constexpr size_t size() const noexcept
@@ -82,10 +71,9 @@ private:
 
   std::array<Bank, BankCount> m_banks;
   size_t m_activeBank = 0;
-  size_t m_baseAddress;
 };
 
 template<typename T, size_t BankSize, typename... Spans>
-BankSwitcher(size_t, std::span<T, BankSize>, Spans...) -> BankSwitcher<sizeof...(Spans) + 1, BankSize>;
+BankSwitcher(std::span<T, BankSize>, Spans...) -> BankSwitcher<sizeof...(Spans) + 1, BankSize>;
 
 }  // namespace Common

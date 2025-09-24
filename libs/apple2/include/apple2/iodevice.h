@@ -24,9 +24,8 @@ public:
   explicit IoDevice(Apple2System* system) noexcept;
 
   // Bus interface methods
-  Byte read(Address address);
+  Byte read(Address address) const;
   void write(Address address, Byte data);
-  bool contains(Address address) const noexcept;
 
   // Register handlers for specific addresses
   void registerReadHandler(Address address, ReadHandler handler);

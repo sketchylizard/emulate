@@ -3,7 +3,6 @@ add_library(apple2 STATIC
   include/apple2/apple2system.h
   include/apple2/disk_controller.h
   include/apple2/iodevice.h
-  include/apple2/slot_controller.h
   include/apple2/text_video_device.h
   src/apple2system.cpp
   src/disk_controller.cpp
@@ -19,7 +18,7 @@ if(BUILD_TESTING)
 
   add_executable(apple2Test
     tests/apple2test.cpp
-    )
+  )
 
   target_link_libraries(
     apple2Test PRIVATE
@@ -27,5 +26,4 @@ if(BUILD_TESTING)
     common
     cpu6502
   )
-
 endif()
