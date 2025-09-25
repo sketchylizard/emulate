@@ -8,11 +8,12 @@
 #include <vector>
 
 #include "common/address.h"
+#include "common/bus.h"
 
 namespace apple2
 {
 
-class DiskController
+class DiskController : public Common::Bus::Device
 {
 public:
   using Address = Common::Address;
@@ -22,8 +23,8 @@ public:
 
   bool loadDisk(const std::string& filename);
 
-  Byte read(Address address) const;
-  void write(Address address, Byte data);
+  Byte read(Address address, Address normalizedAddress) const override;
+  void write(Address address, Address normalizedAddress, Byte data) override;
 
 private:
   static Byte c_rom[256];

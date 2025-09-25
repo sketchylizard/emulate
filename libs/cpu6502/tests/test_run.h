@@ -21,21 +21,12 @@ struct MemoryLocation
   }
 };
 
-struct Cycle
-{
-  Common::Address address;
-  Common::Byte data;
-  bool isRead;
-
-  bool operator==(const Cycle& cycle) const noexcept = default;
-};
-
 //! Snapshot of CPU registers and memory at a point in time
 struct Snapshot
 {
   cpu6502::Registers regs;
   std::vector<MemoryLocation> memory;
-  std::vector<Cycle> cycles;
+  std::vector<Common::Bus::Cycle> cycles;
 
   bool operator==(const Snapshot& other) const
   {
@@ -47,7 +38,7 @@ struct Snapshot
 };
 
 //! Wrapper around a vector of MemoryLocations to provide tick() method for memory operations
-struct SparseMemory
+struct SparseMemory : public Common::Bus::Device
 {
   std::vector<MemoryLocation> mem;
 
@@ -56,8 +47,8 @@ struct SparseMemory
   {
   }
 
-  Common::Byte read(Common::Address address);
-  void write(Common::Address address, Common::Byte data);
+  Common::Byte read(Common::Address address, Common::Address normalizedAddress) const override;
+  void write(Common::Address address, Common::Address normalizedAddress, Common::Byte data) override;
 };
 
 void reportError(std::string_view name, const Snapshot& expected, const Snapshot& actual);
@@ -93,7 +84,7 @@ auto tag_invoke(deserialize_tag, simdjson_value& val, MemoryLocation& location)
 }
 
 template<typename simdjson_value>
-auto tag_invoke(deserialize_tag, simdjson_value& val, Cycle& cycle)
+auto tag_invoke(deserialize_tag, simdjson_value& val, Common::Bus::Cycle& cycle)
 {
   int32_t value;
   auto arr = val.get_array();

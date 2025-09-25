@@ -4,7 +4,7 @@
 
 #include "simdjson.h"
 
-Common::Byte SparseMemory::read(Common::Address address)
+Common::Byte SparseMemory::read(Common::Address address, Common::Address /*normalizedAddress*/) const
 {
   auto it = std::ranges::find_if(mem, [=](const auto& pair) { return pair.address == address; });
   if (it == mem.end())
@@ -14,7 +14,7 @@ Common::Byte SparseMemory::read(Common::Address address)
   return it->value;
 }
 
-void SparseMemory::write(Common::Address address, Common::Byte data)
+void SparseMemory::write(Common::Address address, Common::Address /*normalizedAddress*/, Common::Byte data)
 {
   // Write
   auto it = std::ranges::find_if(mem, [=](const auto& pair) { return pair.address == address; });

@@ -82,8 +82,6 @@ private:
   using RomDevice = Common::MemoryDevice<const Common::Byte>;
   using LanguageCardDevice = Common::BankSwitcher<2, 0x1000>;
 
-  using Apple2Bus = Common::Bus<Processor>;
-
   void updateKeyboard();
   char appleToAscii(Byte data) const noexcept;
 
@@ -106,7 +104,7 @@ private:
   LanguageCardDevice m_languageCard;
   DiskController m_disk;
 
-  Apple2Bus m_bus;
+  Common::Bus m_bus;
 
   // I/O state
   std::queue<char> m_keyBuffer;

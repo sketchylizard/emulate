@@ -18,30 +18,12 @@ using namespace simdjson;  // optional
 using namespace Common;
 using namespace cpu6502;
 
-struct BusImpl : Generic6502Definition::BusInterface
+using Common::Bus;
+
+std::vector<Bus::Cycle> Copy(std::span<const Bus::Cycle> cycles)
 {
-  SparseMemory memory;
-  std::vector<Cycle> cycles{};
-
-  BusImpl(std::vector<MemoryLocation>&& mem)
-    : memory(std::move(mem))
-  {
-    cycles.reserve(7);
-  }
-
-  Byte read(Address address)
-  {
-    auto data = memory.read(address);
-    cycles.emplace_back(address, data, true);
-    return data;
-  }
-
-  void write(Address address, Byte data)
-  {
-    cycles.emplace_back(address, data, false);
-    memory.write(address, data);
-  }
-};
+  return std::vector<Bus::Cycle>(cycles.begin(), cycles.end());
+}
 
 int main(int argc, char* argv[])
 {
@@ -80,19 +62,22 @@ int main(int argc, char* argv[])
 
     MicrocodePump<mos6502> pump;
     Generic6502Definition cpu_state(initial.regs);
+    SparseMemory memory(std::move(initial.memory));
 
-    BusImpl bus{std::move(initial.memory)};
+    Bus bus{{
+        Bus::Entry{Address{0x0000}, Address{0xFFFF}, &memory},
+    }};
 
     test["cycles"].get(final.cycles);
 
     using BusToken = Generic6502Definition::BusToken;
 
     // Set a breakpoint if necessary
-    // if (name != "31 29 9a")
-    //{
-    //  std::cout << "Skipping " << name << "\n";
-    //  continue;
-    //}
+    // if (name != "01 a4 8f")
+    // {
+    //   std::cout << "Skipping " << name << "\n";
+    //   continue;
+    // }
 
     // LOG_INSTRUCTION_BYTES(cpu_state.registers, name);
 
@@ -101,13 +86,10 @@ int main(int argc, char* argv[])
       // Keep executing until the instruction is finished.
     }
 
-    std::ranges::sort(bus.memory.mem, {}, &MemoryLocation::address);
+    std::ranges::sort(memory.mem, {}, &MemoryLocation::address);
     std::ranges::sort(final.memory, {}, &MemoryLocation::address);
 
-    Snapshot actual;
-    actual.regs = cpu_state.registers;
-    actual.memory = bus.memory.mem;
-    actual.cycles = bus.cycles;
+    Snapshot actual{cpu_state.registers, memory.mem, Copy(bus.cycles())};
 
     if (actual != final)
     {

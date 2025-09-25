@@ -41,7 +41,7 @@ TextVideoDevice::TextVideoDevice(std::span<Byte, c_size> videoMemory) noexcept
 {
 }
 
-Common::Byte TextVideoDevice::read(Address address) const
+Common::Byte TextVideoDevice::read(Address address, Address /*normalizedAddress*/) const
 {
   assert(address >= c_baseAddress);
 
@@ -53,7 +53,7 @@ Common::Byte TextVideoDevice::read(Address address) const
   return 0;  // Out of range reads return 0
 }
 
-void TextVideoDevice::write(Address address, Byte value)
+void TextVideoDevice::write(Address address, Address /*normalizedAddress*/, Byte value)
 {
   assert(address >= c_baseAddress);
 

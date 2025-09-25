@@ -1,5 +1,7 @@
 #pragma once
 
+#include "common/address.h"
+#include "common/bus.h"
 #include "common/microcode_pump.h"
 
 namespace Common
@@ -75,36 +77,30 @@ struct ProcessorDefinition
   //    beginning and end of the microcode sequence for that opcode
 
   // Generic bus interface - most CPUs have address and data concepts
-  class BusInterface
-  {
-  public:
-    virtual ~BusInterface() = default;
-    virtual DataType read(Address addr) = 0;
-    virtual void write(Address addr, DataType data) = 0;
-  };
+  using Bus = Common::Bus;
 
   // Generic bus wrapper with single-use enforcement
   struct BusToken
   {
-    BusInterface* m_impl = nullptr;
+    Bus* m_bus = nullptr;
 
     DataType read(Address addr) noexcept
     {
-      assert(m_impl != nullptr);
-      auto* impl = m_impl;
+      assert(m_bus != nullptr);
+      auto* bus = m_bus;
 
       // Consume the token to prevent re-use
-      m_impl = nullptr;
-      return impl->read(addr);
+      m_bus = nullptr;
+      return bus->read(addr);
     }
 
     void write(Address addr, DataType data) noexcept
     {
-      assert(m_impl != nullptr);
-      auto* impl = m_impl;
+      assert(m_bus != nullptr);
+      auto* bus = m_bus;
       // Consume the token to prevent re-use
-      m_impl = nullptr;
-      impl->write(addr, data);
+      m_bus = nullptr;
+      bus->write(addr, data);
     }
   };
 

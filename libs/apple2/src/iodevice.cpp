@@ -15,7 +15,7 @@ IoDevice::IoDevice(Apple2System* system) noexcept
   m_writeHandlers.fill(nullptr);
 }
 
-Common::Byte IoDevice::read(Common::Address address) const
+Common::Byte IoDevice::read(Address address, Address /*normalizedAddress*/) const
 {
   if (!isValidIoAddress(address))
   {
@@ -32,7 +32,7 @@ Common::Byte IoDevice::read(Common::Address address) const
   return 0x00;
 }
 
-void IoDevice::write(Common::Address address, Common::Byte data)
+void IoDevice::write(Address address, Address /*normalizedAddress*/, Common::Byte data)
 {
   if (!isValidIoAddress(address))
   {

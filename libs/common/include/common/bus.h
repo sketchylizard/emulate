@@ -1,109 +1,67 @@
 #pragma once
 
-#include <cassert>
-#include <concepts>
+#include <array>
 #include <cstdint>
-#include <format>
-#include <initializer_list>
-#include <memory>
-#include <ranges>
-#include <utility>
+#include <span>
 
 #include "common/address.h"
 
 namespace Common
 {
-template<typename Processor>
-class Bus : public Processor::BusInterface
+
+//! A simple bus that maps address ranges to devices. Each device must implement the
+//! Device interface with read and write methods. The bus will route read and write
+//! requests to the appropriate device based on the address.
+class Bus
 {
 public:
   using Address = Common::Address;
   using Byte = Common::Byte;
 
   static constexpr size_t c_maxDevices{16};
+  static constexpr size_t c_maxCycles{16};
 
   class Device
   {
   public:
     virtual ~Device() = default;
-    virtual Byte read(Address address) const = 0;
-    virtual void write(Address address, Byte value) = 0;
-  };
-
-  template<typename T>
-  class DeviceWrapper : public Device
-  {
-  public:
-    explicit DeviceWrapper(T& device)
-      : m_device(device)
-    {
-    }
-    Byte read(Address address) const override
-    {
-      return m_device.read(address);
-    }
-    void write(Address address, Byte value) override
-    {
-      m_device.write(address, value);
-    }
-
-  private:
-    T& m_device;
+    virtual Byte read(Address address, Address normalizedAddress) const = 0;
+    virtual void write(Address address, Address normalizedAddress, Byte value) = 0;
   };
 
   struct Entry
   {
-    bool normalize;
-    uint16_t start;  // inclusive start
-    uint32_t end;  // exclusive end
-    std::unique_ptr<Device> device;
+    Address start;  // inclusive start
+    Address end;  // exclusive end
+    Device* device;
   };
 
-  static Entry makeEntry(bool normalize, uint16_t start, uint32_t end, auto& device)
+  struct Cycle
   {
-    return Entry{normalize, start, end, std::make_unique<DeviceWrapper<decltype(device)>>(device)};
-  }
+    Address address;
+    Byte data;
+    bool isRead;
 
-  explicit Bus(std::array<Entry, c_maxDevices> devices) noexcept
-    : m_devices(std::move(devices))
+    bool operator==(const Cycle& cycle) const noexcept = default;
+  };
+
+  explicit Bus(std::array<Entry, c_maxDevices> devices) noexcept;
+
+  Byte read(Address address) const;
+  void write(Address address, Byte value);
+
+  std::span<const Cycle> cycles() const noexcept
   {
-  }
-
-  Byte read(Address address) override
-  {
-    Byte result = 0;
-
-    auto it = std::ranges::find_if(m_devices, [address](const Entry& entry)
-        { return static_cast<uint16_t>(address) >= entry.start && static_cast<uint32_t>(address) < entry.end; });
-
-    if (it != m_devices.end() && it->device != nullptr)
-    {
-      if (it->normalize)
-      {
-        address = Address{static_cast<uint16_t>(address - static_cast<uint16_t>(it->start))};
-      }
-      result = it->device->read(address);
-    }
-    return result;
-  }
-
-  void write(Address address, Byte value) override
-  {
-    auto it = std::ranges::find_if(m_devices, [address](const Entry& entry)
-        { return static_cast<uint16_t>(address) >= entry.start && static_cast<uint32_t>(address) < entry.end; });
-
-    if (it != m_devices.end() && it->device != nullptr)
-    {
-      if (it->normalize)
-      {
-        address = Address{static_cast<uint16_t>(address - static_cast<uint16_t>(it->start))};
-      }
-      it->device->write(address, value);
-    }
+    size_t count = m_cycleIndex;
+    m_cycleIndex = 0;  // Reset for next instruction
+    return {m_cycles.data(), count};
   }
 
 private:
   std::array<Entry, c_maxDevices> m_devices;
+  // Longest possible instruction is 7 cycles I think.
+  mutable std::array<Cycle, c_maxCycles> m_cycles;
+  mutable size_t m_cycleIndex = 0;
 };
 
 }  // namespace Common

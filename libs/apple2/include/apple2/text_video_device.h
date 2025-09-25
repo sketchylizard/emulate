@@ -7,7 +7,7 @@
 
 namespace apple2
 {
-class TextVideoDevice
+class TextVideoDevice : public Common::Bus::Device
 {
 public:
   using Address = Common::Address;
@@ -21,8 +21,8 @@ public:
   explicit TextVideoDevice(std::span<Byte, c_size> videoMemory) noexcept;
 
   // Bus interface methods
-  Byte read(Address address) const;
-  void write(Address address, Byte value);
+  Byte read(Address address, Address normalizedAddress) const override;
+  void write(Address address, Address normalizedAddress, Byte value) override;
 
   bool isDirty() const noexcept
   {

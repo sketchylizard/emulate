@@ -25,25 +25,25 @@ TEST_CASE("BankSwitcher basic functionality", "[bank_switcher]")
   };
 
   // Initially mapped to bank 0
-  REQUIRE(switcher.read(Address{0x0000}) == 0x10);
-  REQUIRE(switcher.read(Address{0x1FFF}) == 0x10);
+  REQUIRE(switcher.read(Address{0x0000}, Address{0x0000}) == 0x10);
+  REQUIRE(switcher.read(Address{0x1FFF}, Address{0x1FFF}) == 0x10);
 
   // Switch to bank 1
   switcher.selectBank(1);
-  REQUIRE(switcher.read(Address{0x0000}) == 0x20);
-  REQUIRE(switcher.read(Address{0x1FFF}) == 0x20);
+  REQUIRE(switcher.read(Address{0x0000}, Address{0x0000}) == 0x20);
+  REQUIRE(switcher.read(Address{0x1FFF}, Address{0x1FFF}) == 0x20);
 
   // Switch to bank 2
   switcher.selectBank(2);
-  REQUIRE(switcher.read(Address{0x0000}) == 0x30);
-  REQUIRE(switcher.read(Address{0x1FFF}) == 0x30);
+  REQUIRE(switcher.read(Address{0x0000}, Address{0x0000}) == 0x30);
+  REQUIRE(switcher.read(Address{0x1FFF}, Address{0x1FFF}) == 0x30);
 
   // Switch back to bank 0
   switcher.selectBank(0);
-  REQUIRE(switcher.read(Address{0x0000}) == 0x10);
-  REQUIRE(switcher.read(Address{0x1FFF}) == 0x10);
+  REQUIRE(switcher.read(Address{0x0000}, Address{0x0000}) == 0x10);
+  REQUIRE(switcher.read(Address{0x1FFF}, Address{0x1FFF}) == 0x10);
 
   // Out of range address should throw
-  REQUIRE_THROWS_AS(switcher.read(Address{0x7FFF}), std::out_of_range);
-  REQUIRE_THROWS_AS(switcher.read(Address{0xA000}), std::out_of_range);
+  REQUIRE_THROWS_AS(switcher.read(Address{0x0000}, Address{0x7FFF}), std::out_of_range);
+  REQUIRE_THROWS_AS(switcher.read(Address{0x1FFF}, Address{0xA000}), std::out_of_range);
 }

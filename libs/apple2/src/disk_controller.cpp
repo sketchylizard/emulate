@@ -34,13 +34,13 @@ bool DiskController::loadDisk(const std::string& filename)
   return true;
 }
 
-Common::Byte DiskController::read(Address address) const
+Common::Byte DiskController::read(Address address, Address normalizedAddress) const
 {
   // There are two ranges that map to the disk controller: $C0E0-$C0EF and $C600-$C6FF.
   // The second range will be normalized, so they should all be between 0x00 and 0xFF.
-  if (static_cast<size_t>(address) < std::size(c_rom))
+  if (static_cast<size_t>(normalizedAddress) < std::size(c_rom))
   {
-    return c_rom[static_cast<size_t>(address)];
+    return c_rom[static_cast<size_t>(normalizedAddress)];
   }
 
   switch (static_cast<size_t>(address))
@@ -55,12 +55,12 @@ Common::Byte DiskController::read(Address address) const
   }
 }
 
-void DiskController::write(Address address, Common::Byte data)
+void DiskController::write(Address address, Address normalizedAddress, Common::Byte data)
 {
-  if (address < Address{0xC0E0})
+  if (normalizedAddress < Address{0xC0E0})
     return;
 
-  uint16_t offset = static_cast<uint16_t>(address) - 0xC0E0;
+  uint16_t offset = static_cast<uint16_t>(normalizedAddress) - 0xC0E0;
 
   std::stringstream stream;
   stream << "DiskController::write($" << std::hex << static_cast<uint16_t>(address) << ", " << data << std::dec << ")\n";

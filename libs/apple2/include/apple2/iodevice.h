@@ -5,6 +5,7 @@
 #include <queue>
 
 #include "common/address.h"
+#include "common/bus.h"
 
 namespace apple2
 {
@@ -12,7 +13,7 @@ namespace apple2
 // Forward declare to avoid circular dependency
 class Apple2System;
 
-class IoDevice
+class IoDevice : public Common::Bus::Device
 {
 public:
   using Address = Common::Address;
@@ -24,8 +25,8 @@ public:
   explicit IoDevice(Apple2System* system) noexcept;
 
   // Bus interface methods
-  Byte read(Address address) const;
-  void write(Address address, Byte data);
+  Byte read(Address address, Address normalizedAddress) const override;
+  void write(Address address, Address normalizedAddress, Byte data) override;
 
   // Register handlers for specific addresses
   void registerReadHandler(Address address, ReadHandler handler);

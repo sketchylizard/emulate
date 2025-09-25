@@ -29,11 +29,13 @@ void Load(std::span<Byte> memory, const std::string& filename, Address start_add
 //! backing storage. The range can be of Byte or const Byte, allowing for
 //! RAM-like (read/write) or ROM-like (read-only) behavior.
 template<ByteOrConstByte T>
-class MemoryDevice
+class MemoryDevice : public Bus::Device
 {
 public:
   using ValueType = T;
   using ReferenceType = T&;
+  using Address = Common::Address;
+  using Byte = Common::Byte;
 
   explicit constexpr MemoryDevice(std::span<T> range) noexcept
     : m_memory(range)
@@ -46,20 +48,20 @@ public:
     return m_memory.size();
   }
 
-  ValueType read(Address address) const
+  Byte read(Address /*address*/, Address normalizedAddress) const override
   {
     // Address has already been validated & normalized by Bus
-    assert(static_cast<size_t>(address) < m_memory.size());
-    return m_memory[static_cast<size_t>(address)];
+    assert(static_cast<size_t>(normalizedAddress) < m_memory.size());
+    return m_memory[static_cast<size_t>(normalizedAddress)];
   }
 
-  void write(Address address, ValueType value)
+  void write(Address /*address*/, Address normalizedAddress, Byte value) override
   {
     if constexpr (!std::is_const_v<ValueType>)
     {
       // Address has already been validated & normalized by Bus
-      assert(static_cast<size_t>(address) < m_memory.size());
-      m_memory[static_cast<size_t>(address)] = value;
+      assert(static_cast<size_t>(normalizedAddress) < m_memory.size());
+      m_memory[static_cast<size_t>(normalizedAddress)] = value;
     }
   }
 

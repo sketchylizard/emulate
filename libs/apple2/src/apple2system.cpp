@@ -13,6 +13,8 @@
 namespace apple2
 {
 
+using Common::Bus;
+
 Apple2System::Apple2System(  //
     RamSpan<0xc000> memory,  // Main memory
     RomSpan<0x3000> rom,  // upper ROM
@@ -25,13 +27,13 @@ Apple2System::Apple2System(  //
   , m_io(this)
   , m_languageCard(std::span(langBank0), std::span(langBank1))
   , m_bus{{
-        Apple2Bus::makeEntry(false, 0x400, 0x800, m_textVideo),
-        Apple2Bus::makeEntry(true, 0x0000, 0xC000, m_ram),
-        Apple2Bus::makeEntry(true, 0xD000, 0x10000, m_rom),
-        Apple2Bus::makeEntry(false, 0xC0E0, 0xC0F0, m_disk),  // Disk (slot 6, control switches)
-        Apple2Bus::makeEntry(true, 0xC600, 0xC700, m_disk),  // Disk (slot 6, ROM)
-        Apple2Bus::makeEntry(true, 0xC000, 0xC0FF, m_io),  // I/O and soft switches
-        Apple2Bus::makeEntry(true, 0x0000, 0x0000, m_languageCard),
+        Bus::Entry{Address{0x0400}, Address{0x07FF}, &m_textVideo},
+        Bus::Entry{Address{0x0000}, Address{0xBFFF}, &m_ram},
+        Bus::Entry{Address{0xD000}, Address{0xFFFF}, &m_rom},
+        Bus::Entry{Address{0xC0E0}, Address{0xC0EF}, &m_disk},  // Disk (slot 6, control switches)
+        Bus::Entry{Address{0xC600}, Address{0xC6FF}, &m_disk},  // Disk (slot 6, ROM)
+        Bus::Entry{Address{0xC000}, Address{0xC0FF}, &m_io},  // I/O and soft switches
+        Bus::Entry{Address{0x0000}, Address{0x0000}, &m_languageCard},
     }}
 {
   setupIoHandlers();

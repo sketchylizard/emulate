@@ -69,7 +69,7 @@ public:
     }
   }
 
-  void report(const Cycle& expected, const Cycle& actual)
+  void report(const Common::Bus::Cycle& expected, const Common::Bus::Cycle& actual)
   {
     static_cast<void>(expected);
     static_cast<void>(actual);
