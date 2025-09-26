@@ -16,14 +16,27 @@ target_link_libraries(apple2 PRIVATE common cpu6502)
 if(BUILD_TESTING)
   find_package(Catch2 REQUIRED)
 
-  add_executable(apple2Test
-    tests/apple2test.cpp
+  add_executable(console
+    console/apple2test.cpp
   )
 
   target_link_libraries(
-    apple2Test PRIVATE
+    console PRIVATE
     apple2
     common
     cpu6502
+  )
+
+  add_executable(apple2test
+    tests/disk_controller_test.cpp
+    tests/disk_controller_helper.h
+  )
+
+  target_link_libraries(
+    apple2test PRIVATE
+    apple2
+    common
+    cpu6502
+    Catch2::Catch2WithMain
   )
 endif()

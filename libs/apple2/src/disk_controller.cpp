@@ -82,10 +82,10 @@ Common::Byte DiskController::read(Address address, Address normalizedAddress) co
       {
         auto action = static_cast<Byte>((m_lastPhase << 4) | currentPhase);
         auto step = c_stepTable[action];
-        m_track = std::clamp<int8_t>(static_cast<int8_t>(m_track + step), 0, 68);
+        m_halfTrack = std::clamp<int8_t>(static_cast<int8_t>(m_halfTrack + step), 0, 68);
         std::stringstream stream;
         stream << std::hex << static_cast<int>(action) << std::dec << " : " << static_cast<int>(step)
-               << " track: " << static_cast<int>(m_track) << "\n";
+               << " track: " << static_cast<int>(m_halfTrack) << "\n";
         LOG(stream.str());
         m_lastPhase = currentPhase;
       }

@@ -19,12 +19,32 @@ public:
   using Address = Common::Address;
   using Byte = Common::Byte;
 
+  friend class DiskControllerHelper;
+
+  static constexpr int8_t c_maxTracks{35};
+
   static bool loadRom(std::span<const Byte, 256> romData);
 
   bool loadDisk(const std::string& filename);
 
   Byte read(Address address, Address normalizedAddress) const override;
   void write(Address address, Address normalizedAddress, Byte data) override;
+
+  // Return actual track (0-34), rounds down if on half track.
+  int getCurrentTrack() const
+  {
+    return m_halfTrack / 2;
+  }
+
+  Byte readStatus() const
+  {
+    return m_status;
+  }
+
+  bool isMotorOn() const
+  {
+    return (m_status & MotorMask) != 0;
+  }
 
 private:
   // All controller cards use ROM memory in the range of $C0n0-$C0nF where n is the slot number.
@@ -67,7 +87,7 @@ private:
   bool m_diskLoaded = false;
   mutable Byte m_status = 0x00;
   mutable Byte m_lastPhase = 0x00;
-  mutable int8_t m_track = 34 * 2;  // Actually half track (0-68)
+  mutable int8_t m_halfTrack = 34 * 2;
 
   Byte readCurrentSector() const;
 };
