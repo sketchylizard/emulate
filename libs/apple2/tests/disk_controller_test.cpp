@@ -21,6 +21,10 @@ TEST_CASE("DiskController.seek track zero", "[apple2][disk_controller]")
 
   helper.seekTrack(35);
   CHECK(dc.getCurrentTrack() == 34);
+
+  helper.seekTrack(10);
+  CHECK(dc.getCurrentTrack() == 10);
+
   helper.motorOff();
 
   CHECK_FALSE(dc.isMotorOn());

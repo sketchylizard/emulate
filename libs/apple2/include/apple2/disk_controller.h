@@ -81,6 +81,18 @@ private:
   static constexpr Byte Q6Mask{0x40};
   static constexpr Byte Q7Mask{0x80};
 
+  // Size of encoded address fields: 4 fields × 2 nibbles
+  static constexpr size_t c_addressFieldSize = 4 * 2;
+
+  struct TrackPosition
+  {
+    int16_t step = 0;  // Step within current state
+    int16_t nibblePos = 0;  // Overall position in 6656-byte track
+    Byte currentSector = 0;  // Which sector (0-15)
+  };
+
+  using State = Byte (DiskController::*)() const;
+
   static Byte c_rom[256];
 
   std::vector<Byte> m_diskData;
@@ -88,8 +100,36 @@ private:
   mutable Byte m_status = 0x00;
   mutable Byte m_lastPhase = 0x00;
   mutable int8_t m_halfTrack = 34 * 2;
+  // Track currently being read
+  mutable Byte m_currentTrack = 0;
+  mutable size_t m_bytePosition = 0;
+  mutable TrackPosition m_trackPos;
+  mutable State state = &DiskController::AddressPrologue;
+  mutable std::array<Byte, c_addressFieldSize> m_addressBuffer{};
 
-  Byte readCurrentSector() const;
+  Byte updateMotor() const;
+  Byte handleControlLines() const;
+  Byte readDiskData() const;
+  Byte getEncodedSectorByte(int track, int sector, int byteIndex) const;
+
+  // State functions
+  void Transition(State newState) const
+  {
+    state = newState;
+  }
+
+  // Sync Bytes (FF) D5 AA 96
+  Byte AddressPrologue() const;
+  // Volume, track, sector, checksum (4-and-4 encoded)
+  Byte AddressData() const;
+  // DE AA EB + sync bytes + D5 AA AD
+  Byte DataPrologue() const;
+  // 256 bytes of sector data (encoded)
+  Byte DataPayload() const;
+  // DE AA EB
+  Byte DataEpilogue() const;
+  // Fill to end of track
+  Byte TrackGap() const;
 };
 
 }  // namespace apple2

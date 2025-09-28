@@ -100,14 +100,6 @@ public:
       m_controller.read(Address{0xc0eb}, Address{0x0B});  // $C0EB - Drive 2
   }
 
-  // Public delay function for external use
-  void delay()
-  {
-    // Simulate timing delay between stepper operations
-    // Real Apple II needs time for stepper motor to settle
-    std::this_thread::sleep_for(std::chrono::microseconds(100));
-  }
-
 private:
   DiskController& m_controller;
   int8_t m_halfTrack{34 * 2};  // Start at track 34 (max track)
