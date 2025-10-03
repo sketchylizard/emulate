@@ -84,14 +84,15 @@ private:
   // Size of encoded address fields: 4 fields × 2 nibbles
   static constexpr size_t c_addressFieldSize = 4 * 2;
 
+  using State = Byte (DiskController::*)() const;
+
   struct TrackPosition
   {
     int16_t step = 0;  // Step within current state
     int16_t nibblePos = 0;  // Overall position in 6656-byte track
-    Byte currentSector = 0;  // Which sector (0-15)
+    Byte sectorIndex = 0;  // Which sector (0-15)
+    State state = &DiskController::AddressPrologue;
   };
-
-  using State = Byte (DiskController::*)() const;
 
   static Byte c_rom[256];
 
@@ -101,10 +102,10 @@ private:
   mutable Byte m_lastPhase = 0x00;
   mutable int8_t m_halfTrack = 34 * 2;
   // Track currently being read
-  mutable Byte m_currentTrack = 0;
-  mutable size_t m_bytePosition = 0;
+  mutable Byte m_currentTrack = 0xff;
   mutable TrackPosition m_trackPos;
-  mutable State state = &DiskController::AddressPrologue;
+  mutable Byte m_lastGeneratedTrack = 0xff;
+  mutable Byte m_lastGeneratedSector = 0xff;
   mutable std::array<Byte, c_addressFieldSize> m_addressBuffer{};
 
   Byte updateMotor() const;
@@ -115,7 +116,7 @@ private:
   // State functions
   void Transition(State newState) const
   {
-    state = newState;
+    m_trackPos.state = newState;
   }
 
   // Sync Bytes (FF) D5 AA 96

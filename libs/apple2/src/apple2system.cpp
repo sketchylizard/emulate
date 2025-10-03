@@ -28,12 +28,12 @@ Apple2System::Apple2System(  //
   , m_languageCard(std::span(langBank0), std::span(langBank1))
   , m_bus{{
         Bus::Entry{Address{0x0400}, Address{0x07FF}, &m_textVideo},
-        Bus::Entry{Address{0x0000}, Address{0xBFFF}, &m_ram},
-        Bus::Entry{Address{0xD000}, Address{0xFFFF}, &m_rom},
         Bus::Entry{Address{0xC0E0}, Address{0xC0EF}, &m_disk},  // Disk (slot 6, control switches)
         Bus::Entry{Address{0xC600}, Address{0xC6FF}, &m_disk},  // Disk (slot 6, ROM)
         Bus::Entry{Address{0xC000}, Address{0xC0FF}, &m_io},  // I/O and soft switches
         Bus::Entry{Address{0x0000}, Address{0x0000}, &m_languageCard},
+        Bus::Entry{Address{0x0000}, Address{0xBFFF}, &m_ram},
+        Bus::Entry{Address{0xD000}, Address{0xFFFF}, &m_rom},
     }}
 {
   setupIoHandlers();

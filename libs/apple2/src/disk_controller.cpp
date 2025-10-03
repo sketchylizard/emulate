@@ -13,6 +13,10 @@ using Common::Byte;
 
 namespace
 {
+
+// DOS 3.3 sector interleaving
+static constexpr int c_dosOrder[] = {0, 7, 14, 6, 13, 5, 12, 4, 11, 3, 10, 2, 9, 1, 8, 15};
+
 std::array<int8_t, 256> c_stepTable = []()
 {
   std::array<int8_t, 256> table{};
@@ -28,11 +32,17 @@ Byte encodeNibble(Byte value) noexcept
   return 0x80 | (value & 0x7F);
 }
 
+uint16_t encode4x4(Byte value) noexcept
+{
+  Byte even = value | 0b1010'1010;
+  Byte odd = ((value >> 1) | 0b1010'1010);
+  return static_cast<uint16_t>((static_cast<uint16_t>(even) << 8) | odd);
+}
+
 size_t calculateDiskOffset(int track, int sector, int byteIndex) noexcept
 {
   // DOS 3.3 sector interleaving
-  static constexpr int dosOrder[] = {0, 7, 14, 6, 13, 5, 12, 4, 11, 3, 10, 2, 9, 1, 8, 15};
-  int physicalSector = dosOrder[sector];
+  int physicalSector = c_dosOrder[sector];
 
   return (static_cast<size_t>(track) * 16 + static_cast<size_t>(physicalSector)) * 256 + static_cast<size_t>(byteIndex);
 }
@@ -46,15 +56,14 @@ std::array<Byte, 8> generateAddressField(int track, int sector)
   std::array<Byte, 8> buffer{};
 
   // Each value becomes 2 nibbles (simplified encoding)
-  buffer[0] = encodeNibble((volume >> 1) & 0x0F);
-  buffer[1] = encodeNibble(volume & 0x0F);
-  buffer[2] = encodeNibble((track >> 1) & 0x0F);
-  buffer[3] = encodeNibble(track & 0x0F);
-  buffer[4] = encodeNibble((sector >> 1) & 0x0F);
-  buffer[5] = encodeNibble(sector & 0x0F);
-  buffer[6] = encodeNibble((checksum >> 1) & 0x0F);
-  buffer[7] = encodeNibble(checksum & 0x0F);
-
+  auto word = encode4x4(volume);
+  memcpy(&buffer[0], &word, 2);
+  word = encode4x4(static_cast<Byte>(track));
+  memcpy(&buffer[2], &word, 2);
+  word = encode4x4(static_cast<Byte>(sector));
+  memcpy(&buffer[4], &word, 2);
+  word = encode4x4(checksum);
+  memcpy(&buffer[6], &word, 2);
   return buffer;
 }
 
@@ -90,6 +99,11 @@ Byte DiskController::read(Address address, Address normalizedAddress) const
 
   if (address < c_slot1Rom)
   {
+    std::stringstream stream;
+    stream << "DiskController::read(address=" << std::hex << static_cast<int>(address)
+           << ", normalizedAddress=" << static_cast<int>(normalizedAddress) << ")\n";
+    LOG(stream.str());
+
     // Control/status registers
     Control control{static_cast<Byte>(normalizedAddress)};
     switch (control)
@@ -121,22 +135,16 @@ Byte DiskController::read(Address address, Address normalizedAddress) const
   }
 }
 
-void DiskController::write(Address address, Address normalizedAddress, Byte /*data*/)
+void DiskController::write(Address address, Address normalizedAddress, Byte data)
 {
+  std::stringstream stream;
+  stream << "DiskController::write(address=" << std::hex << static_cast<int>(address)
+         << ", normalizedAddress=" << static_cast<int>(normalizedAddress) << ", data=" << static_cast<int>(data) << ")\n";
+  LOG(stream.str());
+
   if (address < c_slot1Rom)
   {
-    size_t offset = static_cast<size_t>(normalizedAddress);
-    switch (offset)
-    {
-      case 0x01:
-      case 0x03:
-      case 0x05:
-      case 0x07:  // Track selection
-        break;
-      case 0x09:
-      case 0x0B:  // Sector selection
-        break;
-    }
+    read(address, normalizedAddress);  // Trigger the same actions
   }
   else
   {
@@ -193,10 +201,10 @@ Byte DiskController::readDiskData() const
     m_trackPos = TrackPosition();
   }
 
-  auto lastState = state;
-  auto nibble = ((*this).*(state))();
+  auto lastState = m_trackPos.state;
+  auto nibble = ((*this).*(m_trackPos.state))();
   ++m_trackPos.nibblePos;
-  if (state != lastState)
+  if (m_trackPos.state != lastState)
     m_trackPos.step = 0;
   else
     ++m_trackPos.step;
@@ -224,27 +232,38 @@ Byte DiskController::AddressPrologue() const
   if (static_cast<size_t>(m_trackPos.step) >= std::size(prologue) - 1)
     Transition(&DiskController::AddressData);
 
+  std::stringstream stream;
+  stream << "DiskController::AddressPrologue() step=" << static_cast<int>(m_trackPos.step) << " returning " << std::hex
+         << static_cast<int>(prologue[m_trackPos.step]) << std::dec << "\n";
+  LOG(stream.str());
   return prologue[m_trackPos.step];
 }
 
 Byte DiskController::AddressData() const
 {
   // Generate 4-and-4 encoded address field on demand
-  static int lastGeneratedSector = -1;
-  static int lastGeneratedTrack = -1;
-
   // Only regenerate if sector or track changed
-  if (lastGeneratedSector != m_trackPos.currentSector || lastGeneratedTrack != m_currentTrack)
+  if (m_lastGeneratedSector != m_trackPos.sectorIndex || m_lastGeneratedTrack != m_currentTrack)
   {
-    m_addressBuffer = generateAddressField(m_currentTrack, m_trackPos.currentSector);
-    lastGeneratedSector = m_trackPos.currentSector;
-    lastGeneratedTrack = m_currentTrack;
+    std::stringstream stream;
+    stream << "DiskController::AddressData() generating address field for track=" << static_cast<int>(m_currentTrack)
+           << " sector=" << static_cast<int>(c_dosOrder[m_trackPos.sectorIndex]) << "\n";
+    LOG(stream.str());
+    m_addressBuffer = generateAddressField(m_currentTrack, c_dosOrder[m_trackPos.sectorIndex]);
+    m_lastGeneratedSector = m_trackPos.sectorIndex;
+    m_lastGeneratedTrack = m_currentTrack;
   }
 
   auto ret = m_addressBuffer[static_cast<size_t>(m_trackPos.step)];
   if (static_cast<size_t>(m_trackPos.step) >= c_addressFieldSize - 1)
     Transition(&DiskController::DataPrologue);
 
+  std::stringstream stream;
+  stream << "DiskController::AddressData() track=" << static_cast<int>(m_currentTrack)
+         << " sector=" << static_cast<int>(c_dosOrder[m_trackPos.sectorIndex])
+         << " step=" << static_cast<int>(m_trackPos.step) << " returning " << std::hex << static_cast<int>(ret)
+         << std::dec << "\n";
+  LOG(stream.str());
   return ret;
 }
 
@@ -255,6 +274,11 @@ Byte DiskController::DataPrologue() const
       0xFF, 0xFF, 0xFF, 0xFF, 0xFF,  // Sync bytes
       0xD5, 0xAA, 0xAD  // Start of data field
   };
+
+  std::stringstream stream;
+  stream << "DiskController::DataPrologue() step=" << static_cast<int>(m_trackPos.step) << " returning " << std::hex
+         << static_cast<int>(prologue[m_trackPos.step]) << std::dec << "\n";
+  LOG(stream.str());
 
   if (static_cast<size_t>(m_trackPos.step) >= std::size(prologue) - 1)
     Transition(&DiskController::DataPayload);
@@ -269,8 +293,14 @@ Byte DiskController::DataPayload() const
 
   if (m_trackPos.step < 256)
   {
+    std::stringstream stream;
+    stream << "DiskController::DataPayload() track=" << static_cast<int>(m_currentTrack)
+           << " sector=" << static_cast<int>(c_dosOrder[m_trackPos.sectorIndex])
+           << " step=" << static_cast<int>(m_trackPos.step) << " returning data byte\n";
+    LOG(stream.str());
+
     // Return encoded sector data byte
-    ret = getEncodedSectorByte(m_currentTrack, m_trackPos.currentSector, m_trackPos.step);
+    ret = getEncodedSectorByte(m_currentTrack, c_dosOrder[m_trackPos.sectorIndex], m_trackPos.step);
   }
 
   if (m_trackPos.step >= 259)  // 256 data + checksum
@@ -283,11 +313,16 @@ Byte DiskController::DataEpilogue() const
 {
   static constexpr Byte epilogue[] = {0xDE, 0xAA, 0xEB};
 
+  std::stringstream stream;
+  stream << "DiskController::DataEpilogue() step=" << static_cast<int>(m_trackPos.step) << " returning " << std::hex
+         << static_cast<int>(epilogue[m_trackPos.step]) << std::dec << "\n";
+  LOG(stream.str());
+
   if (static_cast<size_t>(m_trackPos.step) >= std::size(epilogue) - 1)
   {
     // Move to next sector or end of track
-    m_trackPos.currentSector++;
-    if (m_trackPos.currentSector < 16)
+    m_trackPos.sectorIndex++;
+    if (m_trackPos.sectorIndex < 16)
     {
       Transition(&DiskController::AddressPrologue);
     }
@@ -302,9 +337,14 @@ Byte DiskController::DataEpilogue() const
 
 Byte DiskController::TrackGap() const
 {
+  std::stringstream stream;
+  stream << "DiskController::TrackGap() step=" << static_cast<int>(m_trackPos.step) << " returning 0xFF\n";
+  LOG(stream.str());
+
   if (m_trackPos.nibblePos >= 6656)  // Standard track size
   {
     m_trackPos = TrackPosition();  // Wrap to beginning of track
+    Transition(&DiskController::AddressPrologue);
   }
   return 0xFF;  // Fill rest of track
 }
